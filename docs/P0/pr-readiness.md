@@ -22,6 +22,8 @@ The previous independent source review covers source `60ccbb5` and earlier. Subs
 
 ## Post-merge review follow-up (2026-11-01 KST)
 
+**Subsequent dependency candidate:** [Guava remediation](guava-remediation.md) upgrades the existing transitive library to `33.7.2-android` and its [fresh 121-coordinate audit](guava-remediation-audit.json) returns zero OSV matches. This is candidate-branch evidence until merged; it does not change the historical audit below or close any physical-device gate. Use the report for exact compatibility results and limits.
+
 A fresh [security/dependency review](final-security-review.md) now covers master source `6392eb1`, including the subsequent runtime, signing and CI changes. The audit queried 117 release runtime / 118 debug runtime / 123 JVM-test runtime coordinates (123 distinct); the same three Guava advisories remain, including HIGH native-deserialization memory exhaustion. No direct app deserialization path was found, but full transitive unreachability is not proven and no patch was applied. The review therefore does not approve production readiness. [Exact coordinate/advisory evidence](dependency-audit.json).
 
 The [residual Galaxy checklist](device-acceptance.md) separates denial/partial grants, pre-read and mid-read revocation, actual offline Drive attempts, in-flight departure, process restart, source coverage and Google authorization withdrawal. Every new device result and owner-controlled key backup remains pending. Settings/quick-settings departure can cancel a foreground job; it must not be misreported as isolated revocation/network-failure proof. V1 implementation remains subject to P0 exit gates.
