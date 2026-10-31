@@ -8,13 +8,13 @@ The user reports the fixed-signature APK installs, authorizes and completes fore
 
 | Area | Evidence / status |
 | --- | --- |
-| Core and transport verification | 27 core + 6 local TLS app tests pass, APK/lint pass; lint 0 errors/11 existing warnings |
+| Core and transport verification | 27 core + 6 local TLS app JVM tests, APK/lint pass; additionally 3 Android 15 emulator instrumentation tests passed (0 failed/skipped), [run 41212355650](https://github.com/nyeonu/health-app/actions/runs/41212355650). See [automated test matrix](automated-testing.md) |
 | Hosted source and fixed signing | Source 59bf62e, successful PR run 41183100902 and owner-secret push run 41183096679; APK artifact 13036249453 package/certificate checked against signing.txt |
 | New package/OAuth/foreground read/upload | User-reported success on fixed-signature APK, two confirmed files; first migration is no longer merely pending |
 | Review comments | PATCH client/tests, package migration and V1 SAF design addressed; no inline review threads and no new discussion requests found beyond the four recorded reviews/comments |
 | Actual CSV/date/source contents | **Verified** by authorized Drive content read: expected v0.1 headers, local report day, valid rows, Samsung Health source metadata, timestamps and intentionally blank missing fields. **The user also provided a Samsung Health screen for the same local date and its daily step count exactly matched the exported Drive CSV.** No real values stored in Git |
 | Private Drive sharing and same-day updates | **Observed** via Drive metadata: app folder and both CSV files are non-shared/owner-only, each is unique within its dataset folder; each file retains the same ID with **two confirmed Drive revisions**. Comparison confirms the daily-summary values are unchanged apart from the export-generation timestamp and the heart-rate CSV body remains unchanged. This confirms repeated same-target updates, not concurrent-write race safety |
-| Permissions and failure UI | Granted 5/5 reported; denial/partial/zero/revocation/offline/lifecycle scenarios remain pending per validation checklist |
+| Permissions and failure UI | Core JVM tests cover denied/partial grants and cancelled/failed upload; emulator validates first-launch consent gate, zero-grant refusal and idle Activity background/return. Actual mid-read permission revocation, real offline Drive attempts and in-flight interruption on Galaxy remain pending |
 | ChatGPT actual file-content access | **Verified** after connector reconnection: both raw CSV bodies fetched and parsed via the authenticated Google Drive connector. Content verified, not only names/metadata. No data disclosed in public PR |
 | Key backup | User-controlled; not confirmed |
 
