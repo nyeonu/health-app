@@ -13,7 +13,7 @@ The user reports the fixed-signature APK installs, authorizes and completes fore
 | New package/OAuth/foreground read/upload | User-reported success on fixed-signature APK, two confirmed files; first migration is no longer merely pending |
 | Review comments | PATCH client/tests, package migration and V1 SAF design addressed; no inline review threads and no new discussion requests found beyond the four recorded reviews/comments |
 | Actual CSV/date/source contents | **Verified** by authorized Drive content read: expected v0.1 headers, local report day, valid rows, Samsung Health source metadata, timestamps and intentionally blank missing fields. No real values stored in Git |
-| Private Drive sharing and same-day updates | **Observed** via Drive metadata: app folder and both CSV files are non-shared/owner-only, each is unique within its dataset folder; each file retains the same ID with creation and later modification timestamps. This supports successful same-target update, not a full revision-diff or concurrent-write race proof |
+| Private Drive sharing and same-day updates | **Observed** via Drive metadata: app folder and both CSV files are non-shared/owner-only, each is unique within its dataset folder; each file retains the same ID with **two confirmed Drive revisions**. Comparison confirms the daily-summary values are unchanged apart from the export-generation timestamp and the heart-rate CSV body remains unchanged. This confirms repeated same-target updates, not concurrent-write race safety |
 | Permissions and failure UI | Granted 5/5 reported; denial/partial/zero/revocation/offline/lifecycle scenarios remain pending per validation checklist |
 | ChatGPT actual file-content access | **Verified** after connector reconnection: both raw CSV bodies fetched and parsed via the authenticated Google Drive connector. Content verified, not only names/metadata. No data disclosed in public PR |
 | Key backup | User-controlled; not confirmed |
@@ -24,7 +24,7 @@ The prior independent source review covers source 60ccbb5 and earlier. Subsequen
 ## Verified remote integration evidence (2026-10-31)
 - Authenticated connected Google Drive listed one app root and two dataset folders with one CSV each; no same-named duplicates were observed in those target folders.
 - Read file bodies (not just search result metadata), checked schema headers, row structure, timestamp format, source metadata, and missing-cell semantics.
-- Metadata shows owner-only permissions, `shared=false`, no shared-drive location, and existing file identities with later modification timestamps.
+- Metadata shows owner-only permissions, `shared=false`, no shared-drive location, and two saved revisions for each existing file ID. Previous/current content comparison shows only the daily-generation timestamp changed; the detailed sample CSV is unchanged.
 - No live health values, personal account names, IDs, or private folder URLs are stored in this public repository.
 - Product scope remains P0 foreground manual sync; automatic scheduled sync, SAF storage and MCP are later phases.
 
@@ -32,7 +32,7 @@ The prior independent source review covers source 60ccbb5 and earlier. Subsequen
 
 1. Cross-check the exported daily aggregate against the source Samsung Health/Health Connect values on the phone. The remote file confirms a valid number but does **not** prove the source's full-day data is complete. Verify the intended absence/availability of weight, sleep and exercise records separately.
 2. Run missing device edge cases: permission denial, partial/zero grants, revocation, offline behavior, cancel/background and process restart. Do not expose real measurements in reports.
-3. Optionally verify Drive revision content across two controlled same-day writes (e.g., synthetic fixture) and race/partial-failure recovery; current metadata confirms later modification of the same file IDs and no visible duplicates, not byte-for-byte revision comparison.
+3. Previous/current Drive revisions have been compared; race conditions and partial-failure recovery remain separate tests using synthetic data.
 4. Review still-open dependency advisories and refresh final code/security review, then reassess readiness under the existing draft restriction. Keep P0 scope; SAF and WorkManager remain V1.
 
 The explicit existing review requests draft/no merge until real device/Drive/ChatGPT checks: https://github.com/nyeonu/health-app/pull/1#pullrequestreview-5720488649 . Roadmap gate source: ../implementation-plan.md (P0). This record does not silently waive those conditions.
