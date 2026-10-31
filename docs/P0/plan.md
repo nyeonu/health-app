@@ -2,58 +2,58 @@
 plan_id: P0
 title: P0 Android proof of concept
 kind: single
-status: approved
+status: done
 author: Codex
 created: 2026-10-31
 target: nyeonu/health-app
 spec: spec.md
-spec_rev: uncommitted-index-of-de491c08e0472cdafba83d1514cd65994fde8ea3
+spec_rev: a23ece51a3969d84302edde85398dd10fdbaaaaa
 approval_basis: User designated existing instructions as spec and explicitly requested breakdown through completion.
 tasks:
   - id: T1
     title: Gradle wrapper bootstrap
     depends_on: []
-    status: pending
+    status: done
     tier: standard
   - id: T2
     title: Android and JVM module configuration
     depends_on: [T1]
-    status: pending
+    status: done
     tier: standard
   - id: T3
     title: Authorized snapshot domain and normalization
     depends_on: [T2]
-    status: pending
+    status: done
     tier: standard
   - id: T4
     title: Manual CSV synchronization
     depends_on: [T3]
-    status: pending
+    status: done
     tier: standard
   - id: T5
     title: Foreground Health Connect adapter
     depends_on: [T3]
-    status: pending
+    status: done
     tier: standard
   - id: T6
     title: Private Drive idempotent upload
     depends_on: [T4]
-    status: pending
+    status: done
     tier: standard
   - id: T7
     title: Health permission entry points
     depends_on: [T2]
-    status: pending
+    status: done
     tier: standard
   - id: T8
     title: Compose manual consent and sync screen
     depends_on: [T4, T5, T6, T7]
-    status: pending
+    status: done
     tier: standard
   - id: T9
     title: Verification and device handoff
     depends_on: [T8]
-    status: pending
+    status: done
     tier: standard
 ---
 
@@ -97,7 +97,7 @@ interface DriveUploader { suspend fun upsert(file: CsvFile): String }
 data class SyncResult(val status: SyncStatus, val uploadedFiles: Int = 0, val errorCode: String? = null)
 enum class SyncStatus { SUCCESS, EMPTY, PERMISSION_REQUIRED, FAILED }
 // SyncCoordinator — one manual snapshot, cancellation propagates
-class SyncCoordinator(reader: HealthReader, normalizer: Normalizer, exporter: CsvExporter, uploader: DriveUploader, clock: Clock) { suspend fun sync(date: LocalDate): SyncResult }
+class SyncCoordinator(reader: HealthReader, normalizer: Normalizer, exporter: CsvExporter, uploader: DriveUploader, clock: Clock) { suspend fun sync(date: LocalDate): SyncResult; suspend fun syncYesterday(onDateSelected: (LocalDate) -> Unit = {}): SyncResult }
 // DayWindow — all dates interpreted in Asia/Seoul
 object DayWindow { val zone: ZoneId; fun start(date: LocalDate): Instant; fun end(date: LocalDate): Instant; fun yesterday(clock: Clock): LocalDate }
 // DefaultNormalizer — last in-day weight, filter/order samples, retain session identity
@@ -120,11 +120,13 @@ class GoogleDriveTransport(accessToken: String) : DriveTransport
 ```
 ### 결정 로직 위치
 DayWindow and DefaultNormalizer are pure Kotlin in core/Model.kt and core/Normalization.kt. CSV quoting and naming live in core/VersionedCsvExporter.kt; state transitions in core/SyncCoordinator.kt. Drive lookup/upsert decisions live in core/PrivateDriveUploader.kt; no Android dependencies in core.
+- `BuildStack`: AGP 8.13.2; Gradle 8.13; Kotlin/Compose plugin 2.2.20; compile/target SDK36; minSDK28; Java target17 on JDK21; HC1.1.0; Compose BOM2025.09.01; activity-compose1.11.0; lifecycle-viewmodel-compose2.9.4; coroutines1.10.2; serialization-json1.9.0; play-services-auth21.4.0; JUnit4.13.2.
+
 ### 관련된 암묵적 동작
 - Health Connect aggregation handles supported cumulative data; do not sum raw steps (confirmed: official get-started documentation).
 - GIS AuthorizationClient supplies user consent resolution and access tokens; tokens stay in memory (confirmed: official identity/authorization).
 - Compose/activity lifecycle can cancel work; cancellation must never become success (to verify by core cancellation test).
-- Build stack: AGP 8.13.2, Gradle 8.13, Kotlin/Compose plugin 2.2.20, compile/target SDK 36, min SDK 28, Java target 17. Health Connect 1.1.0; Compose BOM 2025.09.01; activity-compose 1.11.0; lifecycle-viewmodel-compose 2.9.4; coroutines 1.10.2; kotlinx-serialization-json 1.9.0; play-services-auth 21.4.0; JUnit 4.13.2. Supported stable baseline, not a claim of latest versions; verify artifact existence before introducing it (추정).
+- Build stack: AGP 8.13.2, Gradle 8.13, Kotlin/Compose plugin 2.2.20, compile/target SDK 36, min SDK 28, Java target 17. Health Connect 1.1.0; Compose BOM 2025.09.01; activity-compose 1.11.0; lifecycle-viewmodel-compose 2.9.4; coroutines 1.10.2; kotlinx-serialization-json 1.9.0; play-services-auth 21.4.0; JUnit 4.13.2. Supported stable baseline, not a claim of latest versions; artifact existence verified against official Google Maven metadata on 2026-10-31; compilation compatibility still to verify.
 
 
 ## 3. 추적성
@@ -134,7 +136,7 @@ DayWindow and DefaultNormalizer are pure Kotlin in core/Model.kt and core/Normal
 | App builds in an adequately configured Android environment, or remaining environment blockers are explicit. | Gradle wrapper runs and reports version 8.13; Core Gradle context starts without Android SDK (①/integration), app assemble/lint (①/build) | T1,T2,T8,T9 |
 | Health Connect is queried only with proper runtime permissions; permission denial does not crash. | Denied categories never produce normalized measurements (③/unit); Device procedure covers partial permissions pagination source and timestamps (①/device) | T3,T5,T7,T8,T9 |
 | CSV serializer is deterministic and unit-tested; never writes real health data to the repository. | KST day boundaries are half open across UTC midnight; Last authorized in-day weight is selected and missing values stay null; Session identity and original bounds are preserved; CSV headers ordering quoting and missing values follow v0_1; Repeated exports use the same date paths and stable row order (①②④/unit) | T3,T4 |
-| User initiates sync in the PoC; status and errors are clear. | Empty and denied reads never upload or report success; Partial upload failure reports only confirmed files; Cancellation propagates without reporting success (③④/unit); Manual device flow distinguishes consent denial empty read upload failure and success (①/device) | T4,T8,T9 |
+| User initiates sync in the PoC; status and errors are clear. | Empty and denied reads never upload or report success; Partial upload failure reports only confirmed files; Cancellation propagates without reporting success; Successful partial-grant sync uploads only authorized populated datasets; Read normalization and export failures expose only redacted phase codes; Already cancelled sync performs no read or upload; Consecutive manual attempts choose yesterday across KST midnight (②③④/unit); Manual device flow distinguishes consent denial empty read upload failure and success (①/device) | T4,T8,T9 |
 | Drive integration code is bounded and does not presume credentials are present. | Existing private date file is updated without creating duplicates; Missing private folders and file are created with deterministic metadata; Ambiguous or shared targets are rejected before upload; HTTP failures and malformed responses never report confirmed upload; Invalid export paths are rejected before network access (①③④/unit with fake transport, NOT real Drive) | T6,T8,T9 |
 | No unrelated infrastructure, no fake end-to-end success and no expansion beyond P0. | Documentation distinguishes automated evidence from pending physical account validation; Manifest exposes official permission rationale routes and read permissions only (①/manual static) | T7,T9, overall verification |
 
@@ -182,7 +184,7 @@ T1 완료 후 시작.
   | `android/core/build.gradle.kts` | 신규 | Android and JVM module configuration |
   | `android/app/build.gradle.kts` | 신규 | Android and JVM module configuration |
 
-- **인터페이스**: No shared type changes.
+- **인터페이스**: 2절 `BuildStack` 참조.
 - **결정 로직**:
 
   Configure :core as Kotlin JVM and :app Android/Compose; core test task must run without SDK using -PcoreOnly conditional app inclusion in settings. Use stack in shared design, jvmTarget 17 with installed JDK21 (no automatic JDK17 download). App depends on core, Health Connect, GIS, coroutines Android, Compose Material3, lifecycle ViewModel. Introduce only named build plugins; no backend. May verify artifact metadata read-only and report unavailable versions before changing them.
@@ -250,6 +252,10 @@ T3 완료 후 시작.
   - "Empty and denied reads never upload or report success" — new; verify stated contract using synthetic data only.
   - "Partial upload failure reports only confirmed files" — new; verify stated contract using synthetic data only.
   - "Cancellation propagates without reporting success" — new; verify stated contract using synthetic data only.
+  - "Successful partial-grant sync uploads only authorized populated datasets" — new; partial authorization, ordered uploads, exact confirmed count/status.
+  - "Read normalization and export failures expose only redacted phase codes" — new; fail each upstream phase and assert no upload.
+  - "Already cancelled sync performs no read or upload" — new; cancelled job context must throw before any IO.
+  - "Consecutive manual attempts choose yesterday across KST midnight" — same coordinator + mutable Clock, two successful actual reader/export paths select Oct29 before and Oct30 after 2026-10-30T15:00Z.
 - **완료 기준**: Listed verification succeeds, or environment-only/device-only blocker is evidenced explicitly; code defects remain incomplete.
 - **검증 방법**:
   ```bash
@@ -405,6 +411,14 @@ Only new P0 app files and scoped documentation are changed on feat/p0-android-po
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T2 | 1/2 | Brief had no Shared design although task references dependency baseline | Make existing version baseline an explicit BuildStack reference | Formatting only; unchanged versions and scope | plan.md, T2 brief; no code | reassemble and inspect before dispatch | PASS; complete baseline present in brief; no code change |
+| T2 | 2/2 | App plugin failed NoClassDefFoundError BaseVariant; official AGP8.13.2 JAR contains class | Root Kotlin JVM plugin loaded without AGP on same parent plugin classpath | Declare existing AGP/Android Kotlin/Compose plugins apply false at root alongside JVM; unchanged versions and no SDK configuration in coreOnly | android/build.gradle.kts only; preserve other tasks | coreOnly test PASS, manifest PASS independently confirmed | t2_build partial correction |
+| T4 | 1/2 | Executor identified missing successful partial-grant and upstream error/cancel-context test cases | Existing manual/permission/error contracts specify expected results | Add three focused coordinator tests only, no behavior changes | SyncCoordinatorTest.kt; preserve all implementation | focused T4 tests PASS, 8 tests zero skips | t4_csv_sync |
+| T1 | 1/2 | Kotlin plugin generated untracked android/.kotlin build cache | Add cache ignore alongside existing Gradle ignores | Ignore .kotlin/ only; preserve source and build results | .gitignore | git check-ignore android/.kotlin PASS | t1_tooling |
+| T9 | 1/2 | Official Android OAuth setup link returned HTTP404 | Canonical developer.android.com/identity/authorization returned200 and contains setup instructions | Replace broken reference only; no behavior or setup-contract change | docs/P0/validation.md | canonical URL200 and diff check PASS | t9_docs |
+
+| T4,T8 | T4 2/2; T8 1/2 | Quality review found VM cached state.date across KST midnight | Select date in actual core manual-attempt entry using existing injected Clock; UI consumes selected date | Add SyncCoordinator.syncYesterday(onDateSelected) wrapping sync(date), callback before read; VM authorization display refresh + actual continuation calls fresh core entry; preserve permission/CSV/upload contracts | SyncCoordinator.kt, SyncCoordinatorTest.kt, SyncViewModel.kt | 18 core tests + APK/lint PASS independently; fresh conformance PASS58s; final quality/security APPROVE on corrected source4828485 | t8_ui scoped correction |
+| T9 | 2/2 | Midnight regression correction increases executed tests from17 to18 | New XML totals18/0/0/0 and full build43s; independent incremental11s | Update automated evidence counts and dated-window regression note only | validation.md, implementation-plan.md | diff check and XML recount PASS18/0/0/0 | t9_docs |
 
 ## 환경 준비 기록
 
@@ -412,3 +426,11 @@ Only new P0 app files and scoped documentation are changed on feat/p0-android-po
 |---|---|---|---|---|---|
 | Default shell could not reach proxy; network-enabled command cloned repo successfully | Request additional network permission on networked commands | 1/1 | git clone succeeded | 1/1 | Preserve proxy and CA trust |
 
+
+Build environment: Java proxy properties are set process-locally from inherited HTTP(S)_PROXY; `/tmp/run-health-gradle.py` invokes equivalent Gradle commands with this setup. Wrapper version independently verified: Gradle 8.13, JDK21.
+
+Environment preparation evidence: JDK Gradle proxy selection 1/1 PASS (Gradle8.13); SDK CLI writable ANDROID_USER_HOME=/workspace/tooling/android-user 1/1 PASS. SDK36, build-tools35.0.0, platform-tools installed at /workspace/tooling/android-sdk. Latest sdkmanager bootstrap otherwise attempted a read-only home path; HOME was preserved.
+
+Compiler environment correction: original Java21 runtime has jdk.compiler module but no javac launcher, so app compile reports JAVA_COMPILER unavailable. Installing full official JDK21 under workspace tooling (same approved major baseline); no repository dependency/version change.
+
+Full compiler environment verified: official Temurin JDK21.0.13+9 installed /workspace/tooling/jdk21, SHA256 d7f5d5cf865a2902b70ff549b97586a7d3f234e016f041ab447ea740c7d66d1c matched upstream. javac and synthetic Java compile/run PASS. Process-local JAVA_HOME selects it and javax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts retains managed CA trust. Adoptium API403 discovery replaced by official GitHub release, no proxy bypass.

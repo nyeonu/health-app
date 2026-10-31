@@ -6,12 +6,12 @@ Last verified: 2026-10-31. **Automated verification passed; all physical-device,
 
 | Check | Actual result |
 | --- | --- |
-| Core JVM tests | 17 tests, 0 failures, 0 errors, 0 skipped; four XML suites under `android/core/build/test-results/test/` |
+| Core JVM tests | 18 tests, 0 failures, 0 errors, 0 skipped; four XML suites under `android/core/build/test-results/test/` |
 | Debug APK | `:app:assembleDebug` passed; `android/app/build/outputs/apk/debug/app-debug.apk`, approximately 32 MB |
 | Android lint | `:app:lintDebug` passed; 0 errors, 8 warnings |
-| Latest combined verification | `python3 /tmp/run-health-gradle.py :core:test :app:assembleDebug :app:lintDebug` → `BUILD SUCCESSFUL in 11s` (incremental; preceding full run 2m 7s) |
+| Latest combined verification | `python3 /tmp/run-health-gradle.py :core:test :app:assembleDebug :app:lintDebug` → `BUILD SUCCESSFUL in 11s` (incremental; preceding full run 43s) |
 
-The verification environment used full JDK 21.0.13, Gradle 8.13 and Android SDK 36. The `/tmp` helper/logs are local session evidence, not repository prerequisites: the helper supplied process-local Java/proxy/trust configuration. The result is recorded in `/tmp/health-final-verification.log`; durable commands are below. XML tests use synthetic values only. Core tests cover normalization and authorized-category filtering, KST boundaries, CSV quoting/missing values/stable ordering, private Drive target validation and deterministic upsert, redacted failures, partial upload and cancellation. They do not exercise the Android framework, real Health Connect pagination, OAuth or Google Drive.
+The verification environment used full JDK 21.0.13, Gradle 8.13 and Android SDK 36. The `/tmp` helper/logs are local session evidence, not repository prerequisites: the helper supplied process-local Java/proxy/trust configuration. The result is recorded in `/tmp/health-final-verification.log`; durable commands are below. XML tests use synthetic values only. Core tests cover normalization and authorized-category filtering, KST boundaries, CSV quoting/missing values/stable ordering, private Drive target validation and deterministic upsert, redacted failures, partial upload and cancellation. The regression `Consecutive manual attempts choose yesterday across KST midnight` confirms that each manual attempt selects fresh yesterday at invocation, including successive attempts across KST midnight. They do not exercise the Android framework, real Health Connect pagination, OAuth or Google Drive.
 
 Lint report: `android/app/build/reports/lint-results-debug.txt` (HTML sibling available). Six warnings announce newer dependency versions; `DataExtractionRules` requests Android 12+ transfer rules (`allowBackup=false` is already set; P0 does not persist health data/tokens); `MissingApplicationIcon` requests an explicit launcher icon. These remain open production follow-ups, not suppressed findings.
 
@@ -49,7 +49,7 @@ The implemented stack is Kotlin 2.2.20, AGP 8.13.2 / Gradle 8.13, Compose BOM 20
 
 - [Android Gradle plugin 8.13 compatibility](https://developer.android.com/build/releases/past-releases/agp-8-13-0-release-notes), [Kotlin releases](https://kotlinlang.org/docs/releases.html), [Compose BOM](https://developer.android.com/develop/ui/compose/bom).
 - [Health Connect setup](https://developer.android.com/health-and-fitness/guides/health-connect/develop/get-started), [read data](https://developer.android.com/health-and-fitness/guides/health-connect/develop/read-data), [aggregate data](https://developer.android.com/health-and-fitness/guides/health-connect/develop/aggregate-data), [data types](https://developer.android.com/health-and-fitness/guides/health-connect/data-and-data-types/data-types).
-- [Google Android authorization](https://developers.google.com/identity/authorization/android), [Android OAuth client setup](https://developers.google.com/identity/authorization/android/start), [Drive API scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth), [upload files](https://developers.google.com/workspace/drive/api/guides/manage-uploads).
+- [Google Android authorization](https://developers.google.com/identity/authorization/android), [Android OAuth client setup](https://developer.android.com/identity/authorization), [Drive API scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth), [upload files](https://developers.google.com/workspace/drive/api/guides/manage-uploads).
 - [Samsung Health and Health Connect](https://developer.samsung.com/health/blog/en/2022/10/12/accessing-samsung-health-data-through-health-connect).
 
 ### Google project configuration (pending user-controlled setup)
@@ -98,6 +98,6 @@ If CSV contents cannot be read, record the concrete account/client/file-format b
 
 ## Documentation validation
 
-**Documentation distinguishes automated evidence from pending physical account validation** — inspect this file, README, data contract and P0 checkboxes using synthetic test/report evidence only. Confirm the 17-test/build/lint evidence is explicit; physical-device/cloud/content results remain pending; no real fixtures or success claims are introduced. Run `git diff --check`. This documentation review is distinct from executable JVM tests and does not increase their count.
+**Documentation distinguishes automated evidence from pending physical account validation** — inspect this file, README, data contract and P0 checkboxes using synthetic test/report evidence only. Confirm the 18-test/build/lint evidence is explicit; physical-device/cloud/content results remain pending; no real fixtures or success claims are introduced. Run `git diff --check`. This documentation review is distinct from executable JVM tests and does not increase their count.
 
 Next action: configure the user's Android OAuth client and test-user consent, install the debug APK, then run the foreground synthetic device/private-Drive checklist before the separately authorized real-record/content checks. V1 remains gated on P0 evidence.

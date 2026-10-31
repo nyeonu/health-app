@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 source: ../codex-first-task.md
 approved_by: user
 approved_at: 2026-10-31

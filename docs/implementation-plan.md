@@ -38,7 +38,7 @@ Status: **P0 implemented; automated verification passed; physical-device/cloud/c
 - [ ] Generate valid UTF-8 CSV (without PII) from authorized records.
 - [ ] Successfully upload and update a private file in Google Drive with user authorization.
 - [ ] Verify ChatGPT's actual access to data contents, not merely file visibility (manual validation).
-- [x] Unit tests for DTO mapping, CSV quoting, missing values, date boundaries pass (17 core JVM tests, 0 failures/errors/skips; 2026-10-31).
+- [x] Unit tests for DTO mapping, CSV quoting, missing values, date boundaries pass (18 core JVM tests, 0 failures/errors/skips; 2026-10-31).
 - [x] Write real device and cloud validation instructions ([P0 validation](P0/validation.md)).
 - [ ] Record real device and cloud results; none have been executed.
 
