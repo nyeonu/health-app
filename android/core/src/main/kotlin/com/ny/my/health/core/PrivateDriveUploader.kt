@@ -31,8 +31,7 @@ class PrivateDriveUploader(private val transport: DriveTransport) : DriveUploade
         require(runCatching { LocalDate.parse(name.removeSuffix(".csv")) }.isSuccess) { "Invalid export date" }
         val bytes = file.content.toByteArray(Charsets.UTF_8)
         require(bytes.size <= 5_000_000) { "Export exceeds simple upload limit" }
-        val myDrive = operation(DriveOperation.ROOT_LOOKUP) { id(request(DriveOperation.ROOT_LOOKUP, "GET", "$base/root?fields=id")) }
-        val root = folder("HealthApp", myDrive, DriveOperation.APP_FOLDER_LOOKUP, DriveOperation.APP_FOLDER_CREATE)
+        val root = appFolder()
         val parent = folder(dataset, root, DriveOperation.DATASET_FOLDER_LOOKUP, DriveOperation.DATASET_FOLDER_CREATE)
         val existing = operation(DriveOperation.FILE_LOOKUP) { find(DriveOperation.FILE_LOOKUP, name, parent, "text/csv") }
         if (existing != null) operation(DriveOperation.FILE_UPDATE) {
@@ -52,6 +51,30 @@ class PrivateDriveUploader(private val transport: DriveTransport) : DriveUploade
         }
     }
 
+    private suspend fun appFolder(): String {
+        // drive.file need not expose My Drive's own metadata. Use the documented
+        // root alias in the membership query rather than GET files/root.
+        val found = operation(DriveOperation.APP_FOLDER_LOOKUP) {
+            find(DriveOperation.APP_FOLDER_LOOKUP, "HealthApp", "root", folderMime)
+        }
+        if (found != null) return id(found)
+        val created = operation(DriveOperation.APP_FOLDER_CREATE) {
+            // Omitting parents places a new item directly in My Drive (Drive v3 contract).
+            val value = request(DriveOperation.APP_FOLDER_CREATE, "POST", "$base?ignoreDefaultVisibility=true&fields=${encode(fields)}",
+                "application/json; charset=UTF-8", metadata("HealthApp", null, folderMime).toString().toByteArray(Charsets.UTF_8))
+            validate(value, "HealthApp", "root", folderMime)
+            value
+        }
+        return operation(DriveOperation.APP_FOLDER_LOOKUP) {
+            // Confirm root membership and identity before any dataset or CSV write.
+            val confirmed = find(DriveOperation.APP_FOLDER_LOOKUP, "HealthApp", "root", folderMime)
+            check(confirmed != null && id(confirmed) == id(created) && confirmed["parents"] == created["parents"]) {
+                "Unconfirmed Drive app folder"
+            }
+            id(confirmed)
+        }
+    }
+
     private suspend fun folder(name: String, parent: String, lookup: DriveOperation, create: DriveOperation): String {
         val found = operation(lookup) { find(lookup, name, parent, folderMime) }
         if (found != null) return id(found)
@@ -62,10 +85,10 @@ class PrivateDriveUploader(private val transport: DriveTransport) : DriveUploade
         }
     }
 
-    private fun metadata(name: String, parent: String, mime: String) = buildJsonObject {
+    private fun metadata(name: String, parent: String?, mime: String) = buildJsonObject {
         put("name", name)
         put("mimeType", mime)
-        putJsonArray("parents") { add(parent) }
+        if (parent != null) putJsonArray("parents") { add(parent) }
         putJsonObject("appProperties") { put("healthApp", "p0-v1") }
     }
 
@@ -98,8 +121,15 @@ class PrivateDriveUploader(private val transport: DriveTransport) : DriveUploade
 
     private fun validate(value: JsonObject, name: String, parent: String, mime: String) {
         id(value)
+        val parents = value["parents"] as? JsonArray
+        val canonicalParent = (parents?.singleOrNull() as? JsonPrimitive)?.takeIf { it.isString }?.content
+        // Root membership comes from the server-side 'root' in parents predicate.
+        // Responses contain canonical IDs, not the alias. Child parents remain exact.
+        val validParent = if (parent == "root") {
+            canonicalParent != null && canonicalParent != "root" && Regex("[A-Za-z0-9_-]{1,200}").matches(canonicalParent)
+        } else value["parents"] == buildJsonArray { add(parent) }
         check(value["name"] == JsonPrimitive(name) && value["mimeType"] == JsonPrimitive(mime) &&
-            value["parents"] == buildJsonArray { add(parent) } &&
+            validParent &&
             value["ownedByMe"] == JsonPrimitive(true) && value["shared"] == JsonPrimitive(false) &&
             value["trashed"] == JsonPrimitive(false) && value["driveId"] == null &&
             (value["appProperties"] as? JsonObject)?.get("healthApp") == JsonPrimitive("p0-v1")) {

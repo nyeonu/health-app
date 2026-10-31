@@ -60,7 +60,6 @@ class GoogleDriveTransportTest {
     }
 
     private fun lookup(local: LocalTls, exists: Boolean) {
-        local.enqueue("""{"id":"my-drive"}""")
         local.enqueue("""{"files":[$root],"incompleteSearch":false}""")
         local.enqueue("""{"files":[$dataset],"incompleteSearch":false}""")
         local.enqueue("""{"files":[${if (exists) remote else ""}],"incompleteSearch":false}""")
@@ -76,12 +75,12 @@ class GoogleDriveTransportTest {
             lookup(local, true)
             local.enqueue(remote)
             assertEquals("date-file", uploader.upsert(file.copy(content = file.content + "\r\n")))
-            val requests = List(10) { local.request() }
-            assertEquals(listOf("GET", "GET", "GET", "GET", "POST", "GET", "GET", "GET", "GET", "PATCH"), requests.map { it.method })
+            val requests = List(8) { local.request() }
+            assertEquals(listOf("GET", "GET", "GET", "POST", "GET", "GET", "GET", "PATCH"), requests.map { it.method })
             assertTrue(requests.all { it.handshake != null })
             assertTrue(requests.all { it.headers["Authorization"] == "Bearer synthetic-test-token" })
-            assertTrue(requests[4].url.queryParameter("uploadType") == "multipart")
-            assertTrue(requests[4].body!!.utf8().contains(file.content))
+            assertTrue(requests[3].url.queryParameter("uploadType") == "multipart")
+            assertTrue(requests[3].body!!.utf8().contains(file.content))
             assertEquals("/upload/drive/v3/files/date-file", requests.last().url.encodedPath)
             assertEquals(file.content + "\r\n", requests.last().body!!.utf8())
             assertEquals(1, requests.count { it.method == "POST" })
@@ -100,12 +99,12 @@ class GoogleDriveTransportTest {
             val error = runCatching { uploader.upsert(file) }.exceptionOrNull()!!
             assertEquals("Drive request failed (HTTP 401)", error.message)
             assertNull(error.cause)
-            assertEquals(10, local.server.requestCount)
+            assertEquals(8, local.server.requestCount)
             // The caller explicitly retries; the transport never refreshes or repeats a write.
             lookup(local, true)
             local.enqueue(remote)
             assertEquals("date-file", uploader.upsert(file))
-            val requests = List(15) { local.request() }
+            val requests = List(12) { local.request() }
             assertEquals(1, requests.count { it.method == "POST" })
             assertEquals(2, requests.count { it.method == "PATCH" })
             assertTrue(requests.filter { it.method == "PATCH" }.all { it.url.encodedPath.endsWith("/date-file") })

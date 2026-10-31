@@ -121,3 +121,5 @@ Storage choice/coexistence is [documented as V1 design with seven pending Galaxy
 For each phase record: implemented files, tests and results, manual/device verification, remaining blockers, and the next smallest task.
 
 Latest P0 follow-up: [safe sync diagnostic reporting](PR-1-sync-diagnostics/report.md) passes 31 JVM tests, APK build and lint. User-reported read coverage advanced to all five types, with a subsequent generic failure and zero confirmed uploads. Root cause, private Drive create/update and ChatGPT content-access gates remain open.
+
+P0 runtime correction: the user supplied `DRIVE_ROOT_LOOKUP:HTTP_404`. [Root metadata dependency removed](PR-1-drive-root/report.md), with root-query membership and post-create confirmation before health writes; 33 JVM tests, APK build and lint pass. Private account upload remains pending, so no P0 exit checkbox is closed by this correction.

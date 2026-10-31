@@ -144,3 +144,7 @@ Next action: privately check the actual APK certificate and Google Cloud setup a
 ## Latest sync failure diagnostic handoff
 
 The user subsequently reported an all-five-type completed read and generic sync failure with zero confirmed uploads. The cause is still unknown. See the [bounded diagnostic correction and 31-test evidence](../PR-1-sync-diagnostics/report.md). Check Google Drive API enablement in the same Cloud project, then retry the current installation. A new diagnostic build displays a fixed phase/Drive operation/HTTP status; share only that code if needed. No credential JSON, raw log, health export or account identifier is required. Do not reuse an old artifact SHA-1 for a freshly signed CI APK. Real private create/update remains pending.
+
+### Root metadata 404 correction
+
+The next screenshot identifies `UPLOAD_FAILED:DRIVE_ROOT_LOOKUP:HTTP_404`. This is a root metadata access failure, not evidence that the user needs to change API enablement or broaden OAuth permissions. The [root lookup correction](../PR-1-drive-root/report.md) uses root-alias membership queries and confirms new private app folders before writing datasets/CSV, retaining `drive.file`. Automated evidence: 33 tests, APK and lint pass; actual account create/update remains pending. Fresh CI signing still requires actual-artifact certificate checks and matching Android OAuth registration before installation.
