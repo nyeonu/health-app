@@ -1,7 +1,7 @@
 # Implementation plan — Health App
 
 Last updated: 2026-10-31 (Asia/Seoul)  
-Status: **P0 implemented; 33 automated tests/build/lint passed, foreground Drive CSV bodies, private metadata and same-target update observed via connected Google Drive; remaining device edge-case/source completeness/security checks pending; PR 1 draft**
+Status: **P0 implemented; 33 JVM tests plus 3 Android 15 emulator UI/lifecycle tests passed, build/lint passed; private Drive contents/updates and source step count verified; real-device permission-revocation/offline/in-flight failure checks and final security review remain; PR 1 draft**
 
 ## Project outcomes
 1. Collect user-authorized Health Connect health records that Samsung Health actually writes on the target Galaxy phone.
@@ -31,6 +31,8 @@ Status: **P0 implemented; 33 automated tests/build/lint passed, foreground Drive
 - Provide manual `Sync now` action and visible status; no scheduled sync required for PoC.
 - Document how to verify Samsung Health -> Health Connect data availability, including source app and timestamp.
 - Verify separately that ChatGPT can really access/read one uploaded file via the available Drive integration. If not possible, record the blocker and assess a Google Sheets read alternative.
+
+**Automated UI update (2026-11-01 KST):** [Android emulator run](https://github.com/nyeonu/health-app/actions/runs/41212355650) passed 3/3 tests on API 35 (first-launch consent gate, refused upload with zero HC grants, Activity background/resume without fake success). The [regular CI run](https://github.com/nyeonu/health-app/actions/runs/41212355674) passed JVM tests, APK build and lint. These are account-free tests and do not close device-only permission revocation/airplane-mode/in-flight upload tests. [Test matrix](P0/automated-testing.md).
 
 **Exit gates (not assumed passed)**
 - [ ] Fully validate permission behavior on target Galaxy phone: user reports install/launch, HC available, 5/5 grants and opt-in (comment 6537911289); denial/partial/zero/revocation scenarios remain pending. This limited observation does not close the gate.
