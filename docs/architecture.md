@@ -57,6 +57,15 @@ ChatGPT -- supported MCP client --> MCP adapter (TypeScript)
 - Android push delivery and background execution are best effort, not immediate guarantees.
 - Do not implement remote commands until supported product access and a secure auth model are confirmed.
 
+
+## Background execution and energy budget
+- WorkManager persists the periodic task and delegates its execution to OS background scheduling; `CoroutineWorker` invokes the app's `SyncCoordinator`. The app does not need a constantly running process.
+- Never confuse **frequency** (roughly daily) with **wall-clock deadline** (exactly at 06:00). Android may defer jobs by minutes or hours, and extended blocking can prevent a day's execution altogether.
+- Persistence/repair: local last-success cursor + day coverage status; every allowed execution and foreground open checks for missed local dates and performs bounded, idempotent catch-up. Recently synced days may be refreshed for late upstream source writes.
+- Automatic work: network-connected and battery-not-low; retry transient failures with backoff. Manual sync can be initiated by the user, with clear status when it cannot proceed.
+- Keep the device asleep between executions: batch Health Connect reads and Drive uploads, use aggregation for summary values, do not poll sensors or run a foreground service continuously.
+- Quality gate: device testing of Doze, reboot, missed days, offline state, low battery, and battery usage before declaring V1 complete.
+
 ## Component responsibilities
 - `HealthReader`: permissions, availability, pagination, record reads.
 - `Normalizer`: clean domain entities, units, timestamps and provenance; no speculative values.
