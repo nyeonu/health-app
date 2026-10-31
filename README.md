@@ -9,7 +9,7 @@ Read authorized health records from Android Health Connect (including data synch
 **Repository:** `nyeonu/health-app`  
 **Primary device:** Galaxy S23 Ultra (Android 16)  
 **Time zone for daily reporting:** Asia/Seoul  
-**Status:** P0 Android application implemented; JVM tests, debug APK build and lint pass. The user reports install/launch, Health Connect availability, 5/5 grants, completed reads, Google authorization and two confirmed export uploads after the root lookup correction. Independent record/file-content checks, private-folder inspection, same-day update behavior and ChatGPT file-content access remain pending. PR 1 remains draft; P0 exit gates remain open.
+**Status (2026-11-01 KST):** **P0 merged into `master`** via [PR #1](https://github.com/nyeonu/health-app/pull/1) (merged 2026-11-01 00:45 KST, Draft = false). 33 JVM tests and 3 Android emulator tests passed; APK build and lint passed. The Galaxy reported successful Health Connect/Drive sync. The connected Drive CSV bodies, owner-only permissions, two same-ID revisions and source Samsung Health step-count match were independently verified. Device-only permission revocation, offline/in-flight cancellation and final dependency/security follow-up remain open; merge does **not** mean those checks passed.
 
 ## Delivery phases
 
@@ -77,4 +77,7 @@ The next device diagnostic identified `DRIVE_ROOT_LOOKUP:HTTP_404`. The [Drive r
 
 Fixed CI signing is configured using two owner-managed Actions Repository secrets. Trusted branch builds distribute APKs only when the fixed key is available; PR validation never uses the key and missing secrets do not produce a random-certificate download. See the [phone/Codespaces key creation and setup guide](docs/P0/fixed-signing.md). Owner Secrets were accepted after correcting a Base64 paste; the hosted fixed-certificate build passed and its distributed APK certificate was independently checked against signing.txt. The user now reports successful fixed-certificate installation/OAuth/sync with two confirmed files. Private backup, remote CSV/private-sharing/no-duplicate-update inspection and permission edge cases remain pending; repeated local synthetic-key builds verified certificate reuse.
 
-[PR readiness](docs/P0/pr-readiness.md) records the fixed-signature device success and the user-confirmed remaining Drive inspection. ChatGPT Drive discovery returned a repeated authentication-retry response, so no remote file contents or visibility were verified in that attempt. PR 1 remains draft under the existing review conditions.
+[PR #1 post-merge acceptance status](docs/P0/pr-readiness.md) records successful live private Drive CSV content reads, source step-count matching, two-revision idempotent updates and completed Android emulator tests. The owner's merge is recorded; unresolved device-edge and security follow-ups remain tracked rather than silently marked complete.
+
+
+> Historical diagnostic sections above describe earlier failures during PR development; they are retained for troubleshooting and are superseded by the current P0 post-merge status at the top and in the readiness report.
