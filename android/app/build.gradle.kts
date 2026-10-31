@@ -58,6 +58,11 @@ kotlin {
 }
 
 dependencies {
+    constraints {
+        implementation("com.google.guava:guava:33.7.2-android") {
+            because("Fix temporary-file disclosure and native deserialization advisories in Health Connect's transitive Guava")
+        }
+    }
     implementation(project(":core"))
     implementation("com.squareup.okhttp3:okhttp:5.3.0")
     testImplementation("junit:junit:4.13.2")
