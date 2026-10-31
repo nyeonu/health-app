@@ -20,6 +20,12 @@ The user reports the fixed-signature APK installs, authorizes and completes fore
 
 The previous independent source review covers source `60ccbb5` and earlier. Subsequent root, diagnostics and signing changes have their own reports. The repository owner merged PR #1 after reviewing the evidence. This document preserves unresolved verification as post-merge risk, not a claim of a new independent security review or completion of every device scenario.
 
+## Post-merge review follow-up (2026-11-01 KST)
+
+A fresh [security/dependency review](final-security-review.md) now covers master source `6392eb1`, including the subsequent runtime, signing and CI changes. The audit queried 117 release runtime / 118 debug runtime / 123 JVM-test runtime coordinates (123 distinct); the same three Guava advisories remain, including HIGH native-deserialization memory exhaustion. No direct app deserialization path was found, but full transitive unreachability is not proven and no patch was applied. The review therefore does not approve production readiness. [Exact coordinate/advisory evidence](dependency-audit.json).
+
+The [residual Galaxy checklist](device-acceptance.md) separates denial/partial grants, pre-read and mid-read revocation, actual offline Drive attempts, in-flight departure, process restart, source coverage and Google authorization withdrawal. Every new device result and owner-controlled key backup remains pending. Settings/quick-settings departure can cancel a foreground job; it must not be misreported as isolated revocation/network-failure proof. V1 implementation remains subject to P0 exit gates.
+
 
 ## Verified remote integration evidence (2026-10-31)
 - Authenticated connected Google Drive listed one app root and two dataset folders with one CSV each; no same-named duplicates were observed in those target folders.

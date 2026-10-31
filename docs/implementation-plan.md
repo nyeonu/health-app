@@ -53,6 +53,8 @@ Downloaded CI APKs now require the fixed owner key; PR runs never receive signin
 
 ## V1 — Android MVP
 
+**Current entry check (2026-11-01 KST):** the post-merge [security/dependency review](P0/final-security-review.md) and [resolved-coordinate audit](P0/dependency-audit.json) cover source `6392eb1`. Three Guava advisories remain; compatible remediation or a complete reachability/risk disposition is still required before production. [D01–D09 Galaxy cases and private key-backup confirmation](P0/device-acceptance.md) are all pending. No P0 device checkbox is closed by this review, and no V1 implementation is started by it.
+
 Storage choice/coexistence is [documented as V1 design with seven pending Galaxy scenarios](V1/storage-destinations.md). It does not implement SAF or change P0 gates. Capability defaults remain unsupported/unverified until each device/provider is tested; SAF uses system consent without app Google OAuth setup, while Drive API retains its OAuth requirements.
 
 - [ ] Implement the shared `StorageDestination.upsert(CsvFile)` boundary with Drive API and SAF destinations only in V1, after P0 gates.
