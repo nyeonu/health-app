@@ -1,7 +1,7 @@
 # Implementation plan — Health App
 
 Last updated: 2026-10-31 (Asia/Seoul)  
-Status: **P0 implemented; 33 automated tests/build/lint and hosted fixed signing passed; user reports two successful uploads from the fixed-signature APK; private-file/update/content/permission gates pending; PR 1 draft**
+Status: **P0 implemented; 33 automated tests/build/lint passed, foreground Drive CSV bodies, private metadata and same-target update observed via connected Google Drive; remaining device edge-case/source completeness/security checks pending; PR 1 draft**
 
 ## Project outcomes
 1. Collect user-authorized Health Connect health records that Samsung Health actually writes on the target Galaxy phone.
@@ -34,17 +34,20 @@ Status: **P0 implemented; 33 automated tests/build/lint and hosted fixed signing
 
 **Exit gates (not assumed passed)**
 - [ ] Fully validate permission behavior on target Galaxy phone: user reports install/launch, HC available, 5/5 grants and opt-in (comment 6537911289); denial/partial/zero/revocation scenarios remain pending. This limited observation does not close the gate.
-- [ ] Read at least one real supported Health Connect record, or document precisely which records are unavailable.
-- [ ] Generate valid UTF-8 CSV (without PII) from authorized records.
-- [ ] Successfully upload and update a private file in Google Drive with user authorization.
-- [ ] Verify ChatGPT's actual access to data contents, not merely file visibility (manual validation).
+- [x] Read supported live Health Connect records: Samsung Health-origin data appeared in the authorized Drive CSV output. Source-side completeness and unavailable categories require separate phone cross-check.
+- [x] Verify exported CSV content and schema through the authenticated Drive connector: daily summary and sample rows parsed; intentionally missing fields remain blank; no direct personal identifiers exported.
+- [x] Verify private Google Drive upload/update: owner-only, non-shared folder and CSV metadata; same file identities with later modification timestamps and no duplicate day files in target folders.
+- [x] Verify ChatGPT's authenticated Google Drive connector can read actual CSV bodies, not only file names or metadata (2026-10-31).
 - [x] Unit tests for DTO mapping, CSV quoting, missing values and date boundaries pass, with uploader/diagnostic/transport regressions: 27 core + 6 local TLS app tests = 33; 0 failures/errors/skips (2026-10-31).
 - [x] Write real device and cloud validation instructions ([P0 validation](P0/validation.md)).
-- [ ] Complete real device and cloud results: user now reports two confirmed uploads and a successful sync from the fixed-signature APK after OAuth/Health Connect approval. The user has not yet inspected CSV contents or repeated a date to check remote no-duplicate updates. Private-file inspection, permission edge cases and ChatGPT content checks remain pending.
+- [ ] Complete all device acceptance results: user-reported installation, permissions and sync, plus independently verified private Drive CSV content/update are recorded; permission denial/revocation, offline/background/lifecycle behavior and source completeness cross-check remain pending.
 
 Automated evidence on 2026-10-31: `:core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` passed with 27 core + 6 real-client local TLS app tests = 33 (0 failures/errors/skips), lint 0 errors/11 existing warnings. Hosted source `59bf62e` passed PR checks and the owner-secret push build (run 41183096679); the distributed APK package/certificate matched signing.txt. App-screen success on the fixed-signature APK is now user-reported. This does not prove CSV contents, independent private sharing inspection, same-day remote update or full permission-edge behavior. The runtime OSV audit of 117 coordinates retains three Guava advisory matches and the preproduction review/2026-11-30 recheck; no dependency changes were introduced in subsequent runtime/signing corrections. See [latest readiness evidence and remaining checks](P0/pr-readiness.md).
 
 Downloaded CI APKs now require the fixed owner key; PR runs never receive signing secrets, absent secrets skip publication, invalid signing never falls back to a random downloadable key. Keep the same key to retain the certificate; never commit credentials or signing keys. The independent earlier code review remains documented in PR-1-followup; final merge readiness depends on the remaining checks below, not an app success message alone.
+
+
+**Live P0 verification update (2026-10-31):** After Google Drive reconnection, the assistant independently retrieved both CSV file bodies from the connected private Drive, validated schema/date/source structure and blank missing fields, and checked that the root/files remain owner-only and unshared. Both files have stable identities with creation preceding later modification and no duplicate within their target dataset folder. Do not infer whole-day Health Connect completeness or that permission-denial, offline and lifecycle edge cases passed. No private health values, user/account identifiers, or resource URLs are committed. Details: [PR readiness](P0/pr-readiness.md).
 
 ## V1 — Android MVP
 
