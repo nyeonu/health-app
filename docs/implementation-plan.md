@@ -1,7 +1,7 @@
 # Implementation plan — Health App
 
-Last updated: 2026-10-31 (Asia/Seoul)  
-Status: **P0 implemented; 33 JVM tests plus 3 Android 15 emulator UI/lifecycle tests passed, build/lint passed; private Drive contents/updates and source step count verified; real-device permission-revocation/offline/in-flight failure checks and final security review remain; PR 1 draft**
+Last updated: 2026-11-01 (Asia/Seoul)  
+Status: **P0 merged to `master` in PR #1 on 2026-11-01 00:45 KST (Draft = false). 33 JVM + 3 Android 15 emulator tests, APK build and lint passed; private Drive CSV contents, owner-only metadata, same-file updates and source step count verified. Device-only revocation/offline/in-flight interruption and security/dependency follow-ups remain tracked post-merge.**
 
 ## Project outcomes
 1. Collect user-authorized Health Connect health records that Samsung Health actually writes on the target Galaxy phone.
@@ -46,7 +46,7 @@ Status: **P0 implemented; 33 JVM tests plus 3 Android 15 emulator UI/lifecycle t
 
 Automated evidence on 2026-10-31: `:core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` passed with 27 core + 6 real-client local TLS app tests = 33 (0 failures/errors/skips), lint 0 errors/11 existing warnings. Hosted source `59bf62e` passed PR checks and the owner-secret push build (run 41183096679); the distributed APK package/certificate matched signing.txt. App-screen success on the fixed-signature APK is now user-reported. This does not prove CSV contents, independent private sharing inspection, same-day remote update or full permission-edge behavior. The runtime OSV audit of 117 coordinates retains three Guava advisory matches and the preproduction review/2026-11-30 recheck; no dependency changes were introduced in subsequent runtime/signing corrections. See [latest readiness evidence and remaining checks](P0/pr-readiness.md).
 
-Downloaded CI APKs now require the fixed owner key; PR runs never receive signing secrets, absent secrets skip publication, invalid signing never falls back to a random downloadable key. Keep the same key to retain the certificate; never commit credentials or signing keys. The independent earlier code review remains documented in PR-1-followup; final merge readiness depends on the remaining checks below, not an app success message alone.
+Downloaded CI APKs now require the fixed owner key; PR runs never receive signing secrets, absent secrets skip publication, invalid signing never falls back to a random downloadable key. Keep the same key to retain the certificate; never commit credentials or signing keys. The independent earlier code review remains documented in PR-1-followup; the repository owner merged PR #1 with the outstanding device and security items still open; acceptance of merge is not evidence that unperformed checks passed.
 
 
 **Live P0 verification update (2026-10-31):** After Google Drive reconnection, the assistant independently retrieved both CSV file bodies from the connected private Drive, validated schema/date/source structure and blank missing fields, and checked that the root/files remain owner-only and unshared. Both files have stable identities with creation preceding later modification and no duplicate within their target dataset folder. The user additionally supplied a Samsung Health daily activity screenshot for the same local date: **the daily step count matched the uploaded CSV exactly**. The screenshot's activity time, energy and distance are distinct measures not implemented in P0 CSV; their absence is not a transport failure. Do not infer completeness for weight/sleep/exercise records or that permission-denial, offline and lifecycle edge cases passed. No private health values, user/account identifiers, or resource URLs are committed. Details: [PR readiness](P0/pr-readiness.md).
@@ -134,3 +134,10 @@ P0 runtime correction: the user supplied `DRIVE_ROOT_LOOKUP:HTTP_404`. [Root met
 User-reported follow-up: successful foreground sync with two confirmed files after the root correction. Independently verified afterward: authenticated Drive connector read both CSV bodies; both are owner-only/unshared, unique within their target dataset folders, with stable file IDs and later modification times. Source-side completeness, permission-edge flows and final security review remain open. [Fixed CI signing setup](P0/fixed-signing.md) supports owner-managed key reuse and prevents random-certificate APK publication. The hosted fixed-signing run succeeded; owner-controlled key backup is not verified.
 
 Hosted fixed signing now passed using owner-provided Repository Secrets after correcting Base64 input: run 41183096679 / artifact 13036249453. Distributed APK package and certificate were verified against signing.txt. Owner backup and fixed-certificate OAuth/device migration remain pending.
+
+
+## P0 merge record — 2026-11-01 (KST)
+- [PR #1](https://github.com/nyeonu/health-app/pull/1) has `state=closed`, `merged=true`, `draft=false`, target `master`, merge commit `9a787901d0e8066b311d75e112c82a1cd84f3fa6`.
+- Accepted scope: foreground manual Health Connect read, versioned CSV export, authorized private Google Drive upload/update, connected ChatGPT file-body reading, Android emulator regression tests.
+- Post-merge follow-up, **not considered passed**: on-device permission denial/revocation during an active read, airplane-mode/real network loss, in-flight upload cancellation and recovery, signing-key private backup, and production dependency/security review.
+- V1 WorkManager background scheduling and SAF destination are not implemented and remain separate planned work.
