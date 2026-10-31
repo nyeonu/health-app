@@ -17,7 +17,7 @@ HealthReader -> Normalizer -> CsvExporter -> CsvFile
                           Google Drive API        selected local/provider tree
 ```
 
-These are proposed interfaces, not implemented classes. `CsvFile` carries the deterministic dataset/date name, schema version and UTF-8 bytes defined by the existing [CSV contract](../data-contract.md). Both destinations consume the same normalized export; a storage choice must not change measurements, quoting, time windows or missing-value semantics.
+`StorageDestination`, `DriveApiDestination` and `SafDestination` are proposed interfaces/classes, not implemented components. The existing `CsvFile(relativePath: String, content: String)` DTO remains unchanged: `relativePath` identifies the deterministic dataset/date target, `schema_version` belongs to the CSV payload, and destinations encode the `content` string as UTF-8 at the destination boundary under the existing [CSV contract](../data-contract.md). This design proposes no new `CsvFile` fields or DTO refactor. Both destinations consume the same normalized export; a storage choice must not change measurements, quoting, time windows or missing-value semantics.
 
 V1 selection offers **SAF local/provider folder** or **Drive API**. A later, separately implemented **both** mode selects two destinations explicitly; it does not silently copy to another location. App-private staging, if needed, is distinct from a user-visible SAF export and needs bounded retention/deletion. Do not retain extra health-data copies by default.
 

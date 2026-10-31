@@ -52,7 +52,7 @@ jobs:
         working-directory: android
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon :core:test :app:assembleDebug :app:lintDebug
+          ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 
       - name: Upload debug APK
         if: success()
@@ -70,6 +70,7 @@ jobs:
           name: android-test-reports
           path: |
             android/core/build/test-results/test/
+            android/app/build/test-results/testDebugUnitTest/
             android/app/build/reports/lint-results-debug.html
           if-no-files-found: ignore
           retention-days: 14

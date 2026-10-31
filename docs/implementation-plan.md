@@ -1,7 +1,7 @@
 # Implementation plan — Health App
 
 Last updated: 2026-10-31 (Asia/Seoul)  
-Status: **P0 implemented; automated verification passed; physical-device/cloud/content gates pending**
+Status: **P0 implemented; automated verification passed; partial device observations user-reported; real-record/cloud/content gates pending; PR 1 draft**
 
 ## Project outcomes
 1. Collect user-authorized Health Connect health records that Samsung Health actually writes on the target Galaxy phone.
@@ -33,16 +33,16 @@ Status: **P0 implemented; automated verification passed; physical-device/cloud/c
 - Verify separately that ChatGPT can really access/read one uploaded file via the available Drive integration. If not possible, record the blocker and assess a Google Sheets read alternative.
 
 **Exit gates (not assumed passed)**
-- [ ] Can request and inspect permissions on target Galaxy phone.
+- [ ] Fully validate permission behavior on target Galaxy phone: user reports install/launch, HC available, 5/5 grants and opt-in (comment 6537911289); denial/partial/zero/revocation scenarios remain pending. This limited observation does not close the gate.
 - [ ] Read at least one real supported Health Connect record, or document precisely which records are unavailable.
 - [ ] Generate valid UTF-8 CSV (without PII) from authorized records.
 - [ ] Successfully upload and update a private file in Google Drive with user authorization.
 - [ ] Verify ChatGPT's actual access to data contents, not merely file visibility (manual validation).
-- [x] Unit tests for DTO mapping, CSV quoting, missing values, date boundaries pass (18 core JVM tests, 0 failures/errors/skips; 2026-10-31).
+- [x] Unit tests for DTO mapping, CSV quoting, missing values, date boundaries pass (21 core JVM tests: original 18 + 3 OAuth diagnostic tests; 0 failures/errors/skips; 2026-10-31).
 - [x] Write real device and cloud validation instructions ([P0 validation](P0/validation.md)).
-- [ ] Record real device and cloud results; none have been executed.
+- [ ] Complete real device and cloud results: partial user-reported observations recorded; generic OAuth failure, zero uploads and no successful sync. Root cause and Cloud setup unknown; actual records, real Drive and ChatGPT content checks remain pending.
 
-Automated evidence on 2026-10-31: `:core:test :app:assembleDebug :app:lintDebug` passed; lint has 0 errors and 8 warnings. This proves neither device reads nor OAuth, real uploads or ChatGPT content access. Synthetic CSV tests pass; the authorized real-record CSV gate above remains open. Dependency audit found three Guava advisory matches requiring review before production; see the validation handoff.
+Automated evidence on 2026-10-31: `:core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` passed (combined run also resolved `debugRuntimeClasspath`); 21 core + 5 local TLS app tests = 26, with 0 failures/errors/skips; lint has 0 errors and 11 warnings. This proves neither device reads nor OAuth, real uploads or ChatGPT content access. Synthetic CSV tests pass; the authorized real-record CSV gate above remains open. The updated 117-coordinate runtime OSV query returned the same three Guava advisory matches, with no new OkHttp/Okio matches; preproduction review and the 2026-11-30 recheck remain due (see the validation handoff). The follow-up uses OkHttp for PATCH; historical P0 verification reports are snapshots superseded by this evidence. No emulator/UI or Google Cloud account access was performed. Privately check the actual installed APK signing SHA-1, Android OAuth package/client, test audience/user and enabled Drive API using the [beginner handoff](P0/validation.md#google-project-configuration-beginner-handoff-pending-user-controlled-setup); never commit credentials or signing keys. CI-generated debug keys may differ by build. Report only the updated fixed diagnostic category/numeric status, never raw account/token/error data.
 
 ## V1 — Android MVP
 
