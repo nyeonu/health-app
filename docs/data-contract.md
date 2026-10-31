@@ -64,7 +64,7 @@ Heart-rate samples are filtered to the selected day and preserve their parent re
 - Future incremental sync requires deletion handling, token-expiry recovery, and changes to past-day records.
 
 ## P0 limits and partial outcomes
-- Reads are bounded to 100 pages of up to 1,000 records per paginated type and 100,000 heart-rate samples. Limit exhaustion fails explicitly; data is not silently truncated.
+- Reads are bounded to 100 pages of up to 1,000 records per paginated type and 100,000 inspected heart-rate samples. The heart-rate running total is checked when each page arrives, before requesting another page; only target-day domain samples are retained across pages. A single SDK response is already allocated before this check, so this is not an absolute heap-byte bound. Limit exhaustion fails explicitly; data is not silently truncated. See [per-page budget evidence](P0/reader-sample-budget-fix.md).
 - Each encoded CSV must be at most 5,000,000 bytes for the simple upload path. Oversized exports fail.
 - Multi-file upload is not transactional: failure/cancellation may leave earlier confirmed files or an indeterminate in-flight remote write. A failed job does not advance last-success state. No automatic POST retry is performed; manually retry and verify remote state.
 - Same-instance operations are serialized. Cross-instance concurrent creation and a sharing change racing privacy checks remain limitations; device/account checks must verify actual IDs and privacy.

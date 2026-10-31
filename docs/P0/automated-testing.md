@@ -16,7 +16,7 @@ This file separates repeatable automated evidence from tests requiring a real Ga
 | No Health Connect grants and user opts into Drive | `HealthAppInstrumentedTest.grantingDriveOptInWithoutHealthPermissionsDoesNotStartUpload` | Provider-specific consent UI or post-grant reads |
 | Activity background → resume | `HealthAppInstrumentedTest.backgroundAndReturnDoNotFabricateSuccessfulSynchronization` | In-flight network/upload cancellation in an Activity with real OAuth |
 | Zero/partial grants | `SyncCoordinatorTest` fake HealthReader permission-partition tests | Revoking individual Health Connect permissions mid-read on Samsung device |
-| Raw reader query bounds, overnight/multi-day sessions, half-open heart-rate samples, terminal/cyclic tokens and limits | Ten `HealthConnectReaderTest` JVM cases exercise the actual reader with real SDK request/record objects and a start-time-selecting SDK double | Real Galaxy provider selection/history enforcement, IPC serialization, quota and permission revocation |
+| Raw reader query bounds, overnight/multi-day sessions, half-open samples, terminal/cyclic tokens, per-page sample budget and read-before-upload failure | Fourteen `HealthConnectReaderTest` JVM cases exercise the actual reader with real SDK objects, provider call-count assertions and a start-time-selecting SDK double | Real Galaxy provider selection/history enforcement, IPC serialization, quota, heap/battery usage and permission revocation |
 | Error, cancellation, partial upload | `SyncCoordinatorTest` and `GoogleDriveTransportTest` | Real Drive provider failure or physical network-off toggle |
 | Repeat uploads, HTTP PATCH, 401/503, no implicit write replay | `GoogleDriveTransportTest` local TLS tests | Actual Google account policy, network, remote Drive API behavior |
 
@@ -29,6 +29,8 @@ This file separates repeatable automated evidence from tests requiring a real Ga
 - Do not copy personal measurements, auth tokens, logcat containing account details, or screenshots of health information into public GitHub Actions artifacts.
 
 ## Result log
+
+- PR #4 Important review correction: **47 JVM tests** (27 core + 20 app; fourteen reader tests), zero failures/errors/skips; debug APK and lint pass (0 errors / 14 warnings). The four added tests expose the old deferred budget check: three fail on the previous head, all pass after per-page processing. Earlier 43-test/three-emulator evidence applies only to the earlier head; updated CI must be checked separately. [Budget correction and evidence](reader-sample-budget-fix.md).
 
 - P0 reader correction candidate, based on merged PR #3 (`178ee3f`): 27 core + 16 app JVM tests = **43**, zero failures/errors/skips; debug APK and lint pass. The new reader suite has ten tests. Before the query/token correction, its initial eight tests failed five cases against the old reader logic with a constructor-only test seam; the corrected logic passes. [Correction and limitations](reader-boundary-fix.md). This does not add a physical-device pass or a new emulator result.
 

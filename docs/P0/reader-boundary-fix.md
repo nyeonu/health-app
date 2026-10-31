@@ -4,6 +4,8 @@ Scope: the two existing reader defects identified in the owner's [PR #3 review c
 
 Verified implementation/test source commit: `b19fb036cdfb789d945053d9080d8389a5d1436e`.
 
+**Owner review correction:** [REQUEST CHANGES at `192ab46`](https://github.com/nyeonu/health-app/pull/4#issuecomment-6550528982) identified that the sample cap was checked only after all raw heart-rate pages had accumulated. The initial same-session approval below is superseded. The [page-by-page sample-budget correction and new evidence](reader-sample-budget-fix.md) address that finding in the same PR. Merge remains pending re-review; the original 43-test result alone is insufficient.
+
 ## Required behavior and correction
 
 The existing [data contract](../data-contract.md) requires overlapping sleep/exercise sessions with their full original bounds, and heart-rate samples only in the half-open reporting day. The reader previously applied the day's lower bound to raw interval-record queries, so a start-time-selecting provider could omit a record before the normalizer ever saw it. Extending only the normalizer, or assuming every session starts within a one-day lookback, cannot correct that omission.
@@ -43,7 +45,7 @@ Combined verification: `:core:test :app:testDebugUnitTest :app:assembleDebug :ap
 
 ## Review, limitations and next check
 
-**Same-session code/security review: APPROVE for this bounded correction**, subject to the recorded automated checks. No remaining Critical/Important finding identified in the diff. The type permission checks remain fresh, no extra permissions or logging are introduced, nonempty token/page/sample protections are retained, aggregate-step semantics are unchanged, and the shared pipeline still redacts failed reads and does not upload a partial snapshot. Security, local-reasoning and external-call/memory review checklists were applied. This is not an independent agent review, physical-provider proof, or P0 completion declaration.
+**Initial same-session approval: superseded by the owner's REQUEST CHANGES.** It missed the deferred sample-count check and raw-page accumulation described in the follow-up above. The type permission checks remain fresh, no extra permissions or logging are introduced, and aggregate-step semantics are unchanged. The corrected page-budget implementation must be assessed with its new regression evidence, not this historical approval. No independent agent review, physical-provider proof or P0 completion is claimed here.
 
 The broader raw lookup may read more authorized history than the exported day. **Historical volume can now hit the unchanged page/sample bounds even when the desired day is small.** All inspected heart-rate samples count toward the safety cap, including earlier samples later excluded from export. This is an explicit failure tradeoff, not a battery/performance improvement claim. No arbitrary lookback or early-stop rule based on session duration was invented. Provider quota/history rejection fails rather than fabricating rows or success. Records whose starts are outside the platform's authorized history cannot be recovered by this change; full source completeness must not be inferred.
 
