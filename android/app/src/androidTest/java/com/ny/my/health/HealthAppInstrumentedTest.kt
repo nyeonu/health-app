@@ -1,11 +1,8 @@
 package com.ny.my.health
 
-import androidx.compose.ui.test.assertDoesNotExist
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.isToggleable
-import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -37,7 +34,7 @@ class HealthAppInstrumentedTest {
     @Test
     fun grantingDriveOptInWithoutHealthPermissionsDoesNotStartUpload() {
         // Fresh emulator install: the app has never been granted Health Connect access.
-        compose.onAllNodes(isToggleable()).onFirst().performClick()
+        compose.onAllNodes(isToggleable())[0].performClick()
         compose.waitForIdle()
         compose.onNodeWithText("2. Sync now · Google 권한 확인").performClick()
         compose.onNodeWithText("PERMISSION_REQUIRED:", substring = true).assertExists()
