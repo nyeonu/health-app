@@ -36,6 +36,10 @@ kotlin {
 
 dependencies {
     implementation(project(":core"))
+    implementation("com.squareup.okhttp3:okhttp:5.3.0")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:5.3.0")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:5.3.0")
     implementation("androidx.health.connect:connect-client:1.1.0")
     implementation("com.google.android.gms:play-services-auth:21.4.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
