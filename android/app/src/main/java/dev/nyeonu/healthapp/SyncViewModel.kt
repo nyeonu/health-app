@@ -128,6 +128,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         accessToken = null
         mutableState.value = state.copy(
             pendingConsent = true, readyToUpload = false, uploadedFiles = 0, coverage = emptySet(),
+            date = DayWindow.yesterday(clock),
             lastAttempt = clock.instant(), message = "Google Drive 권한 확인 중…",
         )
         return true
@@ -162,6 +163,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         mutableState.value = state.copy(syncing = true, readyToUpload = false, message = "허용된 데이터 읽기 및 업로드 중…")
         syncJob = viewModelScope.launch {
             try {
+                var selectedDate: LocalDate? = null
                 var coverage = emptySet<DataType>()
                 val foregroundReader = object : HealthReader {
                     override suspend fun read(date: LocalDate): dev.nyeonu.healthapp.core.HealthSnapshot {
@@ -177,7 +179,10 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 val result = SyncCoordinator(
                     foregroundReader, DefaultNormalizer(), VersionedCsvExporter(),
                     PrivateDriveUploader(GoogleDriveTransport(token)), clock,
-                ).sync(state.date)
+                ).syncYesterday { date ->
+                    selectedDate = date
+                    mutableState.value = mutableState.value.copy(date = date)
+                }
                 currentCoroutineContext().ensureActive()
                 if (!foreground) return@launch
                 val message = when (result.status) {
@@ -192,7 +197,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 mutableState.value = previous.copy(
                     syncing = false, message = message, uploadedFiles = result.uploadedFiles,
                     lastSuccess = if (result.status == SyncStatus.SUCCESS) clock.instant() else previous.lastSuccess,
-                    lastSuccessDate = if (result.status == SyncStatus.SUCCESS) state.date else previous.lastSuccessDate,
+                    lastSuccessDate = if (result.status == SyncStatus.SUCCESS) selectedDate else previous.lastSuccessDate,
                     lastSuccessCoverage = if (result.status == SyncStatus.SUCCESS) coverage else previous.lastSuccessCoverage,
                 )
             } catch (cancelled: CancellationException) {

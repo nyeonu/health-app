@@ -13,6 +13,13 @@ class SyncCoordinator(
     private val uploader: DriveUploader,
     private val clock: Clock,
 ) {
+    suspend fun syncYesterday(onDateSelected: (LocalDate) -> Unit = {}): SyncResult {
+        currentCoroutineContext().ensureActive()
+        val date = DayWindow.yesterday(clock)
+        onDateSelected(date)
+        return sync(date)
+    }
+
     suspend fun sync(date: LocalDate): SyncResult {
         var uploadedFiles = 0
         var errorCode = "READ_FAILED"

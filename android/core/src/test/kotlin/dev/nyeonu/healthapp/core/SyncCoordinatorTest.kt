@@ -3,6 +3,7 @@ package dev.nyeonu.healthapp.core
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -184,5 +185,42 @@ class SyncCoordinatorTest {
             assertEquals(0, reads)
             assertEquals(0, uploads)
         }
+    }
+
+    @Test
+    fun `Consecutive manual attempts choose yesterday across KST midnight`() = runBlocking {
+        var now = Instant.parse("2026-10-30T14:59:59Z")
+        val mutableClock = object : Clock() {
+            override fun instant(): Instant = now
+            override fun getZone(): ZoneId = ZoneOffset.UTC
+            override fun withZone(zone: ZoneId): Clock = Clock.fixed(now, zone)
+        }
+        val selectedDates = mutableListOf<LocalDate>()
+        val readDates = mutableListOf<LocalDate>()
+        val uploadedPaths = mutableListOf<String>()
+        val manualReader = object : HealthReader {
+            override suspend fun read(date: LocalDate): HealthSnapshot {
+                assertEquals(selectedDates.last(), date)
+                readDates += date
+                return HealthSnapshot(date, 42, emptyList(), emptyList(), emptyList(), emptyList(), setOf(DataType.STEPS))
+            }
+        }
+        val uploader = object : DriveUploader {
+            override suspend fun upsert(file: CsvFile): String {
+                uploadedPaths += file.relativePath
+                return "synthetic-confirmed-${uploadedPaths.size}"
+            }
+        }
+        val coordinator = SyncCoordinator(manualReader, DefaultNormalizer(), VersionedCsvExporter(), uploader, mutableClock)
+        assertEquals(SyncResult(SyncStatus.SUCCESS, 1), coordinator.syncYesterday { selectedDates += it })
+        assertEquals(listOf(LocalDate.of(2026, 10, 29)), selectedDates)
+        assertEquals(selectedDates, readDates)
+        assertEquals(listOf("daily/2026-10-29.csv"), uploadedPaths)
+
+        now = Instant.parse("2026-10-30T15:00:01Z")
+        assertEquals(SyncResult(SyncStatus.SUCCESS, 1), coordinator.syncYesterday { selectedDates += it })
+        assertEquals(listOf(LocalDate.of(2026, 10, 29), LocalDate.of(2026, 10, 30)), selectedDates)
+        assertEquals(selectedDates, readDates)
+        assertEquals(listOf("daily/2026-10-29.csv", "daily/2026-10-30.csv"), uploadedPaths)
     }
 }
