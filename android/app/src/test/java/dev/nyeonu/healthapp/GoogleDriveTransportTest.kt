@@ -176,6 +176,33 @@ class GoogleDriveTransportTest {
     }
 
     @Test
+    fun `Server retry after zero never replays POST or PATCH without an explicit new attempt`() = runBlocking {
+        for (method in listOf("POST", "PATCH")) {
+            for (body in listOf(file.content.toByteArray(), null)) {
+                LocalTls().use { local ->
+                    val transport = local.transport()
+                    local.server.enqueue(MockResponse.Builder().code(503).addHeader("Retry-After", "0").body("sensitive-provider-body").build())
+                    local.enqueue("{}")
+                    val first = transport.execute(method, endpoint, "text/csv", body)
+                    assertEquals(503, first.status)
+                    assertEquals("", first.body)
+                    assertEquals(1, local.server.requestCount)
+                    val firstRequest = local.request()
+                    assertEquals(method, firstRequest.method)
+                    assertEquals(body?.toString(Charsets.UTF_8) ?: "", firstRequest.body?.utf8() ?: "")
+                    val retry = transport.execute(method, endpoint, "text/csv", body)
+                    assertEquals(200, retry.status)
+                    assertEquals("{}", retry.body)
+                    assertEquals(2, local.server.requestCount)
+                    val retryRequest = local.request()
+                    assertEquals(method, retryRequest.method)
+                    assertEquals(body?.toString(Charsets.UTF_8) ?: "", retryRequest.body?.utf8() ?: "")
+                }
+            }
+        }
+    }
+
+    @Test
     fun `Cancellation cancels the in flight HTTP call without reporting success`() = runBlocking {
         LocalTls().use { local ->
             val call = AtomicReference<Call>()

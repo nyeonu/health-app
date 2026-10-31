@@ -14,12 +14,22 @@ import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okio.BufferedSink
 
 /** Keeps coroutine stack-trace recovery from exposing an exception cause. */
 private class DriveTransportException : IOException("Drive transport failed") {
     override val cause: Throwable? get() = null
+}
+
+/** Drive writes require an explicit caller retry, including server-directed retries. */
+private class OneShotDriveRequestBody(private val delegate: RequestBody) : RequestBody() {
+    override fun contentType() = delegate.contentType()
+    override fun contentLength() = delegate.contentLength()
+    override fun writeTo(sink: BufferedSink) = delegate.writeTo(sink)
+    override fun isOneShot() = true
 }
 
 /** The token remains in memory for the user-authorized operation only. */
@@ -43,15 +53,18 @@ class GoogleDriveTransport internal constructor(
         require(contentType == null || contentType.all { it.code in 32..126 }) { "Invalid content type" }
         require(body == null || contentType != null) { "Missing content type" }
         val request = try {
+            val requestBody = when {
+                body != null -> body.toRequestBody()
+                method == "POST" || method == "PATCH" -> ByteArray(0).toRequestBody()
+                else -> null
+            }
             Request.Builder().url(url)
                 .header("Authorization", "Bearer $accessToken")
                 .header("Accept", "application/json")
                 .apply { if (contentType != null && body != null) header("Content-Type", contentType) }
-                .method(method, when {
-                    body != null -> body.toRequestBody()
-                    method == "POST" || method == "PATCH" -> ByteArray(0).toRequestBody()
-                    else -> null
-                }).build()
+                .method(method, if (method == "POST" || method == "PATCH") {
+                    OneShotDriveRequestBody(checkNotNull(requestBody))
+                } else requestBody).build()
         } catch (_: IllegalArgumentException) {
             throw IllegalArgumentException("Invalid Drive request")
         }
