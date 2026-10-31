@@ -1,0 +1,43 @@
+# Android / Gradle
+.gradle/
+build/
+**/build/
+local.properties
+*.iml
+.idea/
+*.apk
+*.aab
+*.jks
+*.keystore
+*.hprof
+captures/
+
+# Node.js / future backend
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+
+# Credentials and user data
+*credentials*.json
+*oauth*secret*.json
+*service-account*.json
+*.p12
+*.pem
+*.key
+health-data/
+exports/
+private/
+**/health-data/
+**/exports/
+**/*.csv
+**/*.tsv
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
