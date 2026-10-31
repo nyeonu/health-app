@@ -38,5 +38,15 @@ Build a minimal, reliable, privacy-first Android app that reads user-authorized 
 - Keep `docs/implementation-plan.md` checkboxes/status synchronized with real evidence, not intentions.
 - Use English for code identifiers and documentation conventions; Korean is fine for user-facing text.
 
+
+## Battery-aware scheduling (V1+)
+- WorkManager is an Android Jetpack **persistent background work scheduler**, not a custom thread manager. Implement work itself in a `CoroutineWorker`; let WorkManager/OS handle scheduling, constraints, and process lifecycle. Do not build a polling loop, custom periodic threads, or always-on service.
+- `PeriodicWorkRequest` does **not** guarantee a fixed wall-clock time or even completion within a given calendar day. Doze, app standby, OEM restrictions, absent network, low battery, phone power-off, revoked permission, or force-stop may defer work, sometimes for hours or longer. Do not describe a periodic worker as a reliable 06:00 alarm.
+- Persist `lastSuccessfulSyncDay` and per-day outcomes in a durable local store. On worker execution **and** app open/manual sync, identify missing local dates and enqueue idempotent catch-up work. If nothing can run, show an explicit stale/failed state instead of claiming freshness.
+- Distinguish `scheduledAt`, `startedAt`, `lastSuccessAt`, and coverage dates. A successful job is not necessarily a complete day's dataset, because Samsung Health can sync later.
+- Use WorkManager constraints (network available, battery not low for automatic runs); use appropriate exponential backoff for transient failures. A blocked constraint does not imply that a job has run or will finish today.
+- Prefer Health Connect Aggregate API for supported summary metrics and batch outputs into the fewest reasonable Drive requests. Limit detailed heart-rate samples to workout sessions and explicit targeted queries.
+- Never assume constraints, battery percentage, exact wake-ups, or Android OS scheduling on a test device. Validate actual behavior on Galaxy S23 Ultra, including Doze, reboot, no network, low battery, and missed-day recovery.
+- Avoid exact alarms and battery-optimization exemptions for routine daily exports; they are unnecessary, can cost power, and can be permission restricted. If exact-time functionality is ever proposed, justify it separately before implementation.
 ## Definition of done
 A task is done only when code exists, automated verification was run where supported, and any device-only or account-only manual validation is explicitly identified as pending. Do not confuse a mock test with real Health Connect, Google OAuth, or ChatGPT integration.
