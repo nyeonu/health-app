@@ -1,6 +1,6 @@
 # Architecture and integration boundaries
 
-## Data path now (P0/V1)
+## Current P0 data path
 ```text
 Galaxy Watch / phone sensors
           |
@@ -17,7 +17,7 @@ Health App / Android APK
                          ^
                          |
                  SyncCoordinator
-                 Manual / Scheduled
+                 Manual (P0)
           |
           | OAuth with least privileges
           v
@@ -29,6 +29,12 @@ ChatGPT (analysis/fitness suggestions)
 ```
 
 Health Connect is an Android-managed shared data store, not an open remote API or automatic Google Drive backup. Other connected apps may also write records; do not assume all data originates from Samsung Health.
+
+## V1 storage coexistence (design only)
+
+V1 proposes `HealthReader -> Normalizer -> CsvExporter -> StorageDestination.upsert(CsvFile)`, with `DriveApiDestination` and `SafDestination`. Users choose an explicitly authorized private SAF local/provider folder or Drive API; later both mode needs independent date/destination outcomes, coverage and retries. Full success requires every intended sink to confirm; a failed sink must not erase or repeat healthy confirmed results.
+
+SAF uses system folder consent, persisted granted URI permissions and provider-verified create/update behavior; it needs no app Google OAuth/Cloud setup. A provider can have its own account requirements. No provider capability, including Google Drive tree support, is enabled before device verification. Selected local/provider folders are not inherently private. See the [V1 storage design and seven pending Galaxy scenarios](V1/storage-destinations.md) for privacy boundaries, truncation/idempotency and failure recovery. This is future design only: P0 retains `DriveUploader`, manual triggering and existing OAuth/private-Drive protections. SAF is not a P0 merge gate.
 
 ## Future command flow (V3+)
 ```text
@@ -58,7 +64,7 @@ ChatGPT -- supported MCP client --> MCP adapter (TypeScript)
 - Do not implement remote commands until supported product access and a secure auth model are confirmed.
 
 
-## Background execution and energy budget
+## Background execution and energy budget (V1 design)
 - WorkManager persists the periodic task and delegates its execution to OS background scheduling; `CoroutineWorker` invokes the app's `SyncCoordinator`. The app does not need a constantly running process.
 - Never confuse **frequency** (roughly daily) with **wall-clock deadline** (exactly at 06:00). Android may defer jobs by minutes or hours, and extended blocking can prevent a day's execution altogether.
 - Persistence/repair: local last-success cursor + day coverage status; every allowed execution and foreground open checks for missed local dates and performs bounded, idempotent catch-up. Recently synced days may be refreshed for late upstream source writes.
@@ -72,14 +78,15 @@ ChatGPT -- supported MCP client --> MCP adapter (TypeScript)
 - `CsvExporter`: deterministic file formats, proper escaping and column ordering.
 - `DriveUploader`: Google OAuth account access, create/update, retry and metadata.
 - `SyncCoordinator`: trigger-independent orchestration, status, idempotency and history.
-- `SyncState`: persistent last-success timestamp, pending uploads, and future change tokens.
+- V1 `SyncState` (future): durable date/destination coverage, per-file/revision confirmation and pending exports; later change tokens. P0 last-success metadata remains memory-only.
 - Future `REST API`: authentication, stored read models, jobs and workout plans.
 - Future `MCP adapter`: thin tool handlers delegating to the REST API.
 
 ## Privacy / trust boundaries
 1. **Health Connect -> App:** foreground/background authorization must be granted; permissions are revocable.
 2. **App -> Drive:** distinct Google OAuth consent; use least-privilege scopes and private file access.
-3. **Drive -> ChatGPT:** separately user-authorized connector; access must be empirically tested.
-4. **ChatGPT -> MCP -> App:** authenticate each tool action; limit data exposure; protect command queue from replay/spoofing.
+3. **App -> SAF (V1 design):** separate system picker consent; private URI/grant state, verified provider operations and explicit destination privacy review. No automatic sharing or assumption that a user-visible folder is private.
+4. **Drive -> ChatGPT:** separately user-authorized connector; access must be empirically tested.
+5. **ChatGPT -> MCP -> App:** authenticate each tool action; limit data exposure; protect command queue from replay/spoofing.
 
 The repository is public. No real data, tokens, personal identifying values, signing keys, or export archives in Git or CI logs.

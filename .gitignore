@@ -1,5 +1,6 @@
 # Android / Gradle
 .gradle/
+.kotlin/
 build/
 **/build/
 local.properties
@@ -9,6 +10,7 @@ local.properties
 *.aab
 *.jks
 *.keystore
+*.keystore.base64
 *.hprof
 captures/
 
@@ -41,3 +43,9 @@ private/
 # OS
 .DS_Store
 Thumbs.db
+
+# Agent execution and local tooling
+docs/*/briefs/
+.tooling/
+android-sdk/
+*.tmp
