@@ -12,7 +12,7 @@ The user reports the fixed-signature APK installs, authorizes and completes fore
 | Hosted source and fixed signing | Source 59bf62e, successful PR run 41183100902 and owner-secret push run 41183096679; APK artifact 13036249453 package/certificate checked against signing.txt |
 | New package/OAuth/foreground read/upload | User-reported success on fixed-signature APK, two confirmed files; first migration is no longer merely pending |
 | Review comments | PATCH client/tests, package migration and V1 SAF design addressed; no inline review threads and no new discussion requests found beyond the four recorded reviews/comments |
-| Actual CSV/date/source contents | **Verified** by authorized Drive content read: expected v0.1 headers, local report day, valid rows, Samsung Health source metadata, timestamps and intentionally blank missing fields. No real values stored in Git |
+| Actual CSV/date/source contents | **Verified** by authorized Drive content read: expected v0.1 headers, local report day, valid rows, Samsung Health source metadata, timestamps and intentionally blank missing fields. **The user also provided a Samsung Health screen for the same local date and its daily step count exactly matched the exported Drive CSV.** No real values stored in Git |
 | Private Drive sharing and same-day updates | **Observed** via Drive metadata: app folder and both CSV files are non-shared/owner-only, each is unique within its dataset folder; each file retains the same ID with **two confirmed Drive revisions**. Comparison confirms the daily-summary values are unchanged apart from the export-generation timestamp and the heart-rate CSV body remains unchanged. This confirms repeated same-target updates, not concurrent-write race safety |
 | Permissions and failure UI | Granted 5/5 reported; denial/partial/zero/revocation/offline/lifecycle scenarios remain pending per validation checklist |
 | ChatGPT actual file-content access | **Verified** after connector reconnection: both raw CSV bodies fetched and parsed via the authenticated Google Drive connector. Content verified, not only names/metadata. No data disclosed in public PR |
@@ -30,7 +30,7 @@ The prior independent source review covers source 60ccbb5 and earlier. Subsequen
 
 ## Smallest next device check
 
-1. Cross-check the exported daily aggregate against the source Samsung Health/Health Connect values on the phone. The remote file confirms a valid number but does **not** prove the source's full-day data is complete. Verify the intended absence/availability of weight, sleep and exercise records separately.
+1. The Samsung Health daily step count was **cross-checked and matched exactly** against the uploaded CSV for the same date. This validates the step count for that date, not all possible upstream records. Verify the intended absence/availability of weight, sleep and exercise records separately.
 2. Run missing device edge cases: permission denial, partial/zero grants, revocation, offline behavior, cancel/background and process restart. Do not expose real measurements in reports.
 3. Previous/current Drive revisions have been compared; race conditions and partial-failure recovery remain separate tests using synthetic data.
 4. Review still-open dependency advisories and refresh final code/security review, then reassess readiness under the existing draft restriction. Keep P0 scope; SAF and WorkManager remain V1.
