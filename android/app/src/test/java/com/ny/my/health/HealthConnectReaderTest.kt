@@ -17,9 +17,17 @@ import androidx.health.connect.client.response.ReadRecordsResponse
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.units.Mass
 import com.ny.my.health.core.DayWindow
+import com.ny.my.health.core.CsvFile
+import com.ny.my.health.core.DefaultNormalizer
+import com.ny.my.health.core.DriveUploader
+import com.ny.my.health.core.SyncCoordinator
+import com.ny.my.health.core.SyncStatus
+import com.ny.my.health.core.VersionedCsvExporter
 import java.lang.reflect.Proxy
 import java.time.Instant
+import java.time.Clock
 import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlin.reflect.KClass
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -37,6 +45,10 @@ class HealthConnectReaderTest {
     private fun exercise(id: String, from: Instant, until: Instant) =
         ExerciseSessionRecord(from, null, until, null, Metadata.manualEntryWithId(id),
             ExerciseSessionRecord.EXERCISE_TYPE_WALKING)
+
+    private fun heartRate(id: String, time: Instant, count: Int) =
+        HeartRateRecord(time.minusSeconds(1), null, time.plusSeconds(1), null,
+            List(count) { HeartRateRecord.Sample(time, 70) }, Metadata.manualEntryWithId(id))
 
     private class Provider(vararg granted: KClass<out Record>) {
         var grants = granted.map { HealthPermission.getReadPermission(it) }.toSet()
@@ -227,5 +239,89 @@ class HealthConnectReaderTest {
         val reader = HealthConnectReader({ error("Must not acquire unavailable client") },
             { HealthConnectClient.SDK_UNAVAILABLE })
         assertEquals("Health Connect unavailable", runCatching { reader.read(day) }.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun `Heart rate sample cap stops after the second oversized page without requesting a third`() = runBlocking {
+        val provider = Provider(HeartRateRecord::class)
+        provider.read = {
+            check(provider.requests.size <= 2) { "Unexpected third page after sample budget exhausted" }
+            ReadRecordsResponse(listOf(heartRate("past", start.minusSeconds(86400), 60_000)),
+                "next-${provider.requests.size}")
+        }
+        val failure = runCatching { provider.reader.read(day) }.exceptionOrNull()
+        assertEquals("Requests must stop at the first over-budget page", 2, provider.requests.size)
+        assertEquals("Health Connect sample limit exceeded", failure?.message)
+    }
+
+    @Test
+    fun `Heart rate sample budget accepts exactly 100000 and rejects 100001 across pages`() = runBlocking {
+        for (secondPageCount in listOf(40_000, 40_001)) {
+            val provider = Provider(HeartRateRecord::class)
+            provider.read = { request ->
+                when (request.pageToken) {
+                    null -> ReadRecordsResponse(listOf(heartRate("past", start.minusSeconds(86400), 60_000)), "next")
+                    "next" -> ReadRecordsResponse(listOf(heartRate("today", start, secondPageCount)), "")
+                    else -> error("Unexpected continuation token")
+                }
+            }
+            val result = runCatching { provider.reader.read(day) }
+            assertEquals(2, provider.requests.size)
+            if (secondPageCount == 40_000) {
+                assertEquals(40_000, result.getOrThrow().heartRateSamples.size)
+                assertTrue(result.getOrThrow().heartRateSamples.all { it.recordId == "today" && it.time == start })
+            } else assertEquals("Health Connect sample limit exceeded", result.exceptionOrNull()?.message)
+        }
+    }
+
+    @Test
+    fun `Past heart rate samples are processed and discarded before requesting the next page`() = runBlocking {
+        val provider = Provider(HeartRateRecord::class)
+        var inspected = 0
+        val oldTime = start.minusSeconds(86400)
+        val oldSamples = object : AbstractList<HeartRateRecord.Sample>() {
+            override val size = 3
+            override fun get(index: Int): HeartRateRecord.Sample {
+                inspected++
+                return HeartRateRecord.Sample(oldTime, 70)
+            }
+        }
+        val oldRecord = HeartRateRecord(oldTime.minusSeconds(1), null, oldTime.plusSeconds(1), null,
+            oldSamples, Metadata.manualEntryWithId("past"))
+        inspected = 0 // Ignore SDK-constructor validation; observe reader page processing only.
+        provider.read = { request ->
+            when (request.pageToken) {
+                null -> ReadRecordsResponse(listOf(oldRecord), "next")
+                "next" -> {
+                    assertEquals("First page must be consumed before the next provider request", 3, inspected)
+                    ReadRecordsResponse(listOf(heartRate("today", start, 2)), null)
+                }
+                else -> error("Unexpected continuation token")
+            }
+        }
+        val result = provider.reader.read(day)
+        assertEquals(2, provider.requests.size)
+        assertEquals(2, result.heartRateSamples.size)
+        assertTrue(result.heartRateSamples.all { it.recordId == "today" })
+    }
+
+    @Test
+    fun `Read limit failure after a populated page never uploads a partial day`() = runBlocking {
+        val provider = Provider(HeartRateRecord::class)
+        provider.read = {
+            check(provider.requests.size <= 2) { "Unexpected third page after sample budget exhausted" }
+            ReadRecordsResponse(listOf(heartRate("today", start, 60_000)), "next-${provider.requests.size}")
+        }
+        var uploads = 0
+        val uploader = object : DriveUploader {
+            override suspend fun upsert(file: CsvFile): String { uploads++; return "synthetic-confirmation" }
+        }
+        val result = SyncCoordinator(provider.reader, DefaultNormalizer(), VersionedCsvExporter(), uploader,
+            Clock.fixed(end, ZoneOffset.UTC)).sync(day)
+        assertEquals(SyncStatus.FAILED, result.status)
+        assertEquals("READ_FAILED", result.errorCode)
+        assertEquals(0, result.uploadedFiles)
+        assertEquals(0, uploads)
+        assertEquals(2, provider.requests.size)
     }
 }

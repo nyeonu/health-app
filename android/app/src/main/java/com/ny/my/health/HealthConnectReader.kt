@@ -72,14 +72,19 @@ class HealthConnectReader internal constructor(
         val heartRateSamples = if (DataType.HEART_RATE in grantedTypes) {
             val samples = mutableListOf<HeartRateSample>()
             var sampleCount = 0L
-            readAll(client, HeartRateRecord::class, intervalWindow).forEach { record ->
-                sampleCount += record.samples.size
+            readPages(client, HeartRateRecord::class, intervalWindow) { page ->
+                // Check the received page before processing it or requesting another one.
+                sampleCount += page.sumOf { it.samples.size.toLong() }
                 check(sampleCount <= MAX_HEART_RATE_SAMPLES) { "Health Connect sample limit exceeded" }
-                record.samples.filter { it.time >= start && it.time < end }.forEach { sample ->
-                    samples += HeartRateSample(
-                        record.metadata.id, record.metadata.dataOrigin.packageName,
-                        sample.time, sample.beatsPerMinute,
-                    )
+                page.forEach { record ->
+                    record.samples.forEach { sample ->
+                        if (sample.time >= start && sample.time < end) {
+                            samples += HeartRateSample(
+                                record.metadata.id, record.metadata.dataOrigin.packageName,
+                                sample.time, sample.beatsPerMinute,
+                            )
+                        }
+                    }
                 }
             }
             samples
@@ -123,6 +128,16 @@ class HealthConnectReader internal constructor(
         window: TimeRangeFilter,
     ): List<T> {
         val records = mutableListOf<T>()
+        readPages(client, recordType, window) { records += it }
+        return records
+    }
+
+    private suspend fun <T : Record> readPages(
+        client: HealthConnectClient,
+        recordType: KClass<T>,
+        window: TimeRangeFilter,
+        consume: (List<T>) -> Unit,
+    ) {
         val seenTokens = mutableSetOf<String>()
         var token: String? = null
         repeat(MAX_PAGES) {
@@ -135,9 +150,9 @@ class HealthConnectReader internal constructor(
                 ),
             )
             check(response.records.size <= PAGE_SIZE) { "Health Connect page size exceeded" }
-            records += response.records
+            consume(response.records)
             val next = response.pageToken
-            if (next.isNullOrEmpty()) return records
+            if (next.isNullOrEmpty()) return
             check(seenTokens.add(next)) { "Health Connect repeated page token" }
             token = next
         }
