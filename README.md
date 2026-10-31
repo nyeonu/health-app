@@ -9,7 +9,7 @@ Read authorized health records from Android Health Connect (including data synch
 **Repository:** `nyeonu/health-app`  
 **Primary device:** Galaxy S23 Ultra (Android 16)  
 **Time zone for daily reporting:** Asia/Seoul  
-**Status:** P0 Android application implemented; JVM tests, debug APK build and lint pass. Install/launch, Health Connect availability and 5/5 grants are user-reported partial evidence; actual records, Google OAuth/private Drive upload and ChatGPT file-content access remain unverified. PR 1 remains draft. P0 exit gates remain open.
+**Status:** P0 Android application implemented; JVM tests, debug APK build and lint pass. The user reports install/launch, Health Connect availability, 5/5 grants, completed reads, Google authorization and two confirmed export uploads after the root lookup correction. Independent record/file-content checks, private-folder inspection, same-day update behavior and ChatGPT file-content access remain pending. PR 1 remains draft; P0 exit gates remain open.
 
 ## Delivery phases
 
@@ -74,3 +74,5 @@ V1 storage design adds a future choice of SAF local/provider folder or Drive API
 Latest device report shows a completed Health Connect read with all five allowed types, followed by generic sync failure and zero confirmed uploads. The [sync diagnostics correction](docs/PR-1-sync-diagnostics/report.md) now displays allowlisted phase, Drive operation and numeric HTTP status without provider bodies or personal data (31 tests pass). The actual account failure and private upload remain unverified; check Drive API enablement before installing a differently signed diagnostic APK.
 
 The next device diagnostic identified `DRIVE_ROOT_LOOKUP:HTTP_404`. The [Drive root correction](docs/PR-1-drive-root/report.md) removes the root-metadata prerequisite, looks up app folders with the documented root alias, and confirms newly created app folders under My Drive before dataset/CSV writes. The regression failed before correction and passes afterward; 33 JVM tests, APK build and lint pass. `drive.file` and private-target checks remain; actual Google upload and P0 gates are still pending.
+
+Fixed CI signing is configured using two owner-managed Actions Repository secrets. Trusted branch builds distribute APKs only when the fixed key is available; PR validation never uses the key and missing secrets do not produce a random-certificate download. See the [phone/Codespaces key creation and setup guide](docs/P0/fixed-signing.md). Actual owner key generation, backup, Secret registration and hosted fixed-certificate build are pending; repeated local synthetic-key builds verified certificate reuse.

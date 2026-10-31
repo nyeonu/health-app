@@ -148,3 +148,9 @@ The user subsequently reported an all-five-type completed read and generic sync 
 ### Root metadata 404 correction
 
 The next screenshot identifies `UPLOAD_FAILED:DRIVE_ROOT_LOOKUP:HTTP_404`. This is a root metadata access failure, not evidence that the user needs to change API enablement or broaden OAuth permissions. The [root lookup correction](../PR-1-drive-root/report.md) uses root-alias membership queries and confirms new private app folders before writing datasets/CSV, retaining `drive.file`. Automated evidence: 33 tests, APK and lint pass; actual account create/update remains pending. Fresh CI signing still requires actual-artifact certificate checks and matching Android OAuth registration before installation.
+
+## Fixed CI signing and latest device evidence
+
+After the root correction, the user reported a successful sync with two confirmed uploaded files, all five allowed categories and a recorded success state. This is user-reported application evidence; private remote contents, same-day no-duplicate update and ChatGPT content access still require verification. Five allowed categories do not prove all categories had populated records.
+
+[Fixed signing setup, including phone-only Codespaces instructions](fixed-signing.md) replaces per-run downloadable debug certificates with an owner-managed PKCS12 key. Register two Actions secrets; until both are available, CI verifies but does not publish a random-key APK. Trusted push builds can publish a fixed-key APK; PR builds never receive signing secrets. The real owner key/Secret setup is pending.

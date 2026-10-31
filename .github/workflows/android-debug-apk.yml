@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/p0-android-poc
+      - master
     paths:
       - 'android/**'
       - '.github/workflows/android-debug-apk.yml'
@@ -54,14 +55,69 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 
+      - name: Prepare fixed signing for trusted branch builds
+        id: signing
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' &&
+          (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/feat/p0-android-poc'))
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_PASSWORD: ${{ secrets.ANDROID_SIGNING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ] && [ -z "$SIGNING_PASSWORD" ]; then
+            echo 'Fixed signing secrets are not configured; APK publication skipped.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$SIGNING_PASSWORD" ]; then
+            echo '::error::Configure both fixed signing secrets. No APK will be published.'
+            exit 1
+          fi
+          umask 077
+          if ! printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/healthapp-signing.p12" 2>/dev/null; then
+            echo '::error::Invalid signing keystore encoding.'
+            exit 1
+          fi
+          test -s "$RUNNER_TEMP/healthapp-signing.p12"
+          echo 'enabled=true' >> "$GITHUB_OUTPUT"
+
+      - name: Build APK with the fixed key
+        if: steps.signing.outputs.enabled == 'true'
+        working-directory: android
+        env:
+          ANDROID_SIGNING_KEYSTORE: ${{ runner.temp }}/healthapp-signing.p12
+          ANDROID_SIGNING_PASSWORD: ${{ secrets.ANDROID_SIGNING_PASSWORD }}
+        run: ./gradlew --no-daemon --no-configuration-cache :app:assembleDebug
+
+      - name: Verify distributed APK certificate
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk > "$RUNNER_TEMP/apk-certificate.txt"
+          SHA1=$(awk '/certificate SHA-1 digest:/ {print $NF}' "$RUNNER_TEMP/apk-certificate.txt")
+          [[ "$SHA1" =~ ^[0-9a-fA-F]{40}$ ]]
+          printf 'Package: com.ny.my.health\nCertificate SHA-1: %s\n' "$SHA1" > android/app/build/outputs/apk/debug/signing.txt
+          cat android/app/build/outputs/apk/debug/signing.txt >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload debug APK
-        if: success()
+        if: success() && steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: health-app-p0-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/signing.txt
           if-no-files-found: error
           retention-days: 14
+
+      - name: Remove temporary signing material
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/healthapp-signing.p12" "$RUNNER_TEMP/apk-certificate.txt"
 
       - name: Upload diagnostic reports
         if: always()

@@ -6,6 +6,16 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val fixedKeystore = providers.environmentVariable("ANDROID_SIGNING_KEYSTORE").orNull
+val fixedPassword = providers.environmentVariable("ANDROID_SIGNING_PASSWORD").orNull
+val fixedSigning = fixedKeystore != null || fixedPassword != null
+if (fixedSigning) {
+    require(!fixedKeystore.isNullOrBlank() && !fixedPassword.isNullOrBlank()) {
+        "Fixed signing requires both ANDROID_SIGNING_KEYSTORE and ANDROID_SIGNING_PASSWORD"
+    }
+    require(file(checkNotNull(fixedKeystore)).isFile) { "Fixed signing keystore is unavailable" }
+}
+
 android {
     namespace = "com.ny.my.health"
     compileSdk = 36
@@ -20,6 +30,18 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            if (fixedSigning) {
+                storeFile = file(checkNotNull(fixedKeystore))
+                storePassword = fixedPassword
+                keyAlias = "healthapp"
+                keyPassword = fixedPassword
+                storeType = "PKCS12"
+            }
+        }
     }
 
     compileOptions {
