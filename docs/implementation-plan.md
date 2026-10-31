@@ -49,6 +49,19 @@ Status: **Not started**
 - [ ] Retry/backoff and idempotent Drive upsert; network and permission denial handling.
 - [ ] No false promise of exact-time execution; handle missed days.
 
+
+## Battery optimization and timing semantics (approved for V1)
+- WorkManager / `CoroutineWorker` is the official Android scheduling and execution mechanism. **We write the `SyncWorker` business logic; we do not implement a custom scheduler/thread manager.** No infinite polling loop, continuous background service, or manually-held wake lock.
+- Automatic sync target: approximately once per day; **not** a guaranteed wall-clock time. A 24-hour `PeriodicWorkRequest` can be deferred significantly due to Doze, system quotas, standby, device power-off, force-stop, absent connectivity, and configured constraints. Work can fail or miss a calendar day.
+- Schedule with network-connected and battery-not-low constraints. Use exponential retry for transient failures, and surface permanent failures (permissions revoked or unsupported APIs) to the user. A delayed/blocked job must not appear as a success.
+- Daily data coverage is more important than exact execution time. Maintain `lastSuccessfulSyncDay` and completed local-date coverage; on worker execution, app foreground, or manual sync, detect and **backfill missed days** idempotently. If multiple days were missed, process bounded batches and record incomplete coverage.
+- Re-read at least recent two days to reconcile delayed Samsung Health to Health Connect writes. Upsert deterministic Drive filenames for the same dates; do not duplicate rows/files. Keep original event instants, report by `Asia/Seoul` local date.
+- Prefer Health Connect Aggregate API for supported daily summary metrics; do not read or upload continuous raw heart-rate samples unless required for workout sessions or explicit analysis requests.
+- Batch collection, CSV generation, and Drive upload into one scheduled job; skip unchanged files when feasible. The device should sleep between jobs.
+- The app UI must distinguish `lastAttemptAt`, `lastSuccessAt`, `dataThroughDate`, queued/blocked status, and explicit sync errors. Do not call a job successful when Health Connect or Drive transfer was incomplete.
+- Before calling V1 done, test on Galaxy S23 Ultra with screen off/Doze, limited connectivity, low battery, reboot, late Samsung Health arrival, and recovery after missing at least one calendar day. Capture battery usage metrics. **Do not claim a specific percentage battery cost without measurement.**
+- No `AlarmManager.setExact` or exact-alarm special permissions for normal daily synchronization. Those are for genuinely time-critical user-facing alarms, not our batch data-export use case.
+
 ## V2 — Incremental sync
 - [ ] Implement Health Connect Changes API with per-type token/state as appropriate.
 - [ ] Handle insert/update/deletion and token expiry; full rescan fallback.
