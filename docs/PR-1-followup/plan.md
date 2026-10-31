@@ -2,7 +2,7 @@
 plan_id: PR-1-followup
 title: PR1 review corrections
 kind: single
-status: done
+status: in_progress
 author: Codex
 created: 2026-10-31
 target: nyeonu/health-app
@@ -29,7 +29,12 @@ tasks:
     title: Validation handoff and CI evidence
     depends_on: [T1, T2, T3]
     status: done
-    tier: standard
+    tier: standard  - id: T5
+    title: User-requested application namespace migration
+    depends_on: [T1, T2, T3, T4]
+    status: in_progress
+    tier: light
+
 ---
 # PR1 review corrections
 ## 1. 선택한 방식과 이유
@@ -57,6 +62,7 @@ OkHttp.enqueue and cancellation are verified with a local TLS server, no Android
 | Record the user's installed/launched app, HC availability and 5/5 grants as user-reported partial evidence; OAuth/real upload/content gates remain open and actual APK signing/Cloud setup checks are explicit. | Validation evidence separates local TLS tests user reports and pending account provider checks (①/document/static) | T4 |
 | V1 design includes shared read/normalize/CSV stages, StorageDestination with Drive API/SAF destinations, independent per-destination outcomes/retries and later both-mode semantics; SAF folder/update/persisted-grant capabilities remain unsupported until device/provider verification. | SAF design covers all seven requested device scenarios with pending results and independent sink status (①/design review) | T3 |
 | Provide SAF local folder/create/update/persist/reboot/revocation/offline/provider and V1 background/catch-up test plans, all actual results pending; do not make SAF a P0 merge gate. | Same seven-scenario design checklist (①/design review) | T3,T4 |
+| Rename applicationId, namespace, Kotlin packages/directories/imports/tests and current documentation to com.ny.my.health (core com.ny.my.health.core); preserve all P0 behavior. Explain separate-app install/re-consent and new package plus actual APK SHA-1 OAuth registration; previous drive.file visibility is not guaranteed and old files must not be automatically deleted/migrated. | Existing27 tests under new packages plus cleanAPK/manifest/namespace assertions and migration guide review (①/build/integration/static) | T5 |
 ## 4. 작업
 ### T1: PATCH-capable transport and local TLS tests
 
@@ -154,6 +160,35 @@ T1, T2, T3 완료 후 시작.
   ```
 - **주의사항**: Workdir /workspace/health-app, branch feat/p0-android-poc. English code/docs per AGENTS; Korean user UI. No commits by executors. Only listed paths. Network tool calls need with_additional_permissions network.enabled=true; helper /tmp/run-health-gradle.py preserves proxy/CA, selects JDK21/SDK36 and gradle cache. Read official library APIs before implementing; initial syntax/wiring corrections within named files/dependencies allowed, not versions/security/contracts. Post-verification failure => report blocked with exact evidence; no hidden repair loops. Preserve existing18 core tests and user CI commits. No actual health/account use.
 
+### T5: User-requested application namespace migration
+
+T1, T2, T3, T4 완료 후 시작. New user instruction: https://github.com/nyeonu/health-app/pull/1#issuecomment-6538195319. This is an atomic, mechanically specified package/path migration; no behavioral implementation judgment or new library is delegated.
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `android/app/build.gradle.kts` | 수정 | applicationId/namespace exactnewvalue |
+  | `android/app/src/main/java/` | 이동/수정 | oldsource tree to com/ny/my/health, declarations/imports |
+  | `android/app/src/test/java/` | 이동/수정 | transporttest package/imports |
+  | `android/core/src/main/kotlin/` | 이동/수정 | com/ny/my/health/core declarations/imports |
+  | `android/core/src/test/kotlin/` | 이동/수정 | matching coretests, no expectation changes |
+  | `README.md` | 수정 | newpackage/config/migration |
+  | `docs/` | 수정 | tracked Markdown exactpackage/path refs and targeted validationmigration guide |
+
+- **인터페이스**: Existing types/methods unchanged; package prefix becomes com.ny.my.health and core suffix .core.
+- **결정 로직**: Exact replacement of prior package prefix and matching directory prefix across tracked Kotlin/Gradle/Markdown; preserve Github owner/repo strings and all source logic/tests. Existing Manifest relative Activity names resolve under newnamespace. No permissions/scope additions. Update old test/source qualifiednames in durable reports for navigability; label historicalcommit evidence as historical if needed.
+- **작성할 테스트**:
+  - "Clean build preserves all27 tests under the new application and core namespace" — reuse existingtests unchanged; fullcleanAPK/lint.
+  - "New manifest and APK identify com.ny.my.health and migration guide separates old client access" — mergedmanifest+aaptpackage+actualAPKcertificate, doc assertions.
+- **완료 기준**: No unintended oldpackage/path references in tracked Kotlin/Gradle/Markdown; 21core+6app tests, cleanAPK/lint pass; migrationguideaccurate.
+- **검증 방법**:
+  ```bash
+  python3 /tmp/run-health-gradle.py :core:clean :app:clean :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+  git diff --check d008d6f
+  ```
+- **주의사항**: Workdir/branch unchanged. No commits. Englishcode/docs,KoreanUI. Mechanicalmapping may touchmany files because namespaces/imports/dirs must remainatomic; do not refactor classes/logic/tests. Onlypackage+path text replaces, plus a concise migration section in validation.md/README. Android application identity is new: priorappnotin-placeupdate; newinstallandHealthConnect/Googleconsent required, oldOAuthclientnotautomatic. Register com.ny.my.health + actualinstalledAPKcertSHA1; do not hardcodecert/usercredentials. PriorDrivefile/folder scopevisibility unknown, manualprivateinspection/cleanuponly, no auto migration/deletion. No SAF/WorkManager implementation. PreserveCIworkflow setup/tests/artifacts. Network tools require additional permission; managedhelperJDK21/SDK36. Actualdevice/accounttests notavailable, documentpending. Postverifyfailurestop/report, nohiddenrepairloop or testweakening.
+
 ## 5. 전체 검증
 Run :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug. Count JUnit XML failures/errors/skips, compare all new names to mapping. Confirm actual wire PATCH/TLS/no automatic retries/cancellation, static production URL/TLS invariants and no secret/value logging. Audit new runtime Maven graph via OSV; retain Guava residual triage if unchanged. Independent fresh-context spec conformance, then code/security review. git diff --check, preserve remote changes, push same PR branch, keep draft and update the PR description with sanitized responses and actual results/limits. No merge.
 ## 6. 위험과 롤백
@@ -178,3 +213,5 @@ Transport implementation/dependency can be reverted in isolation, but do not sil
 
 
 Current combined verification: 21 core +6 app local TLS tests, zero failure/error/skip; APK and lint PASS in1m1s (58tasks20executed38cache). Lint0errors11warnings;117runtime Maven coordinates queriedOSV: unchangedGuava3matches, no newOkHttp/Okio match. Source account/device remains pending.
+
+Additional user authorization received during final PR recheck: comment6538195319 explicitly requests package migration in this P0 PR; no V1 implementation. T5 is a new independent user requirement, not a reset of T1/T4 recovery budgets.

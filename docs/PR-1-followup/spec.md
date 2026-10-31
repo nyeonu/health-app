@@ -1,8 +1,8 @@
 ---
-status: implemented
+status: approved
 approved_by: user
 approved_at: 2026-10-31
-source: PR1 user review PRR_kwDOCMRxVs8AAAABVPe6yQ and comments 6537911289,6537976514
+source: PR1 user review PRR_kwDOCMRxVs8AAAABVPe6yQ and comments 6537911289,6537976514,6538195319
 ---
 # PR 1 follow-up specification
 ## 1. Overview
@@ -22,5 +22,6 @@ Preserve DriveTransport.execute, drive.file only, HTTPS host/path allowlist, Aut
 - Record the user's installed/launched app, HC availability and 5/5 grants as user-reported partial evidence; OAuth/real upload/content gates remain open and actual APK signing/Cloud setup checks are explicit.
 - V1 design includes shared read/normalize/CSV stages, StorageDestination with Drive API/SAF destinations, independent per-destination outcomes/retries and later both-mode semantics; SAF folder/update/persisted-grant capabilities remain unsupported until device/provider verification.
 - Provide SAF local folder/create/update/persist/reboot/revocation/offline/provider and V1 background/catch-up test plans, all actual results pending; do not make SAF a P0 merge gate.
+- Rename applicationId, namespace, Kotlin packages/directories/imports/tests and current documentation to com.ny.my.health (core com.ny.my.health.core); preserve all P0 behavior. Explain separate-app install/re-consent and new package plus actual APK SHA-1 OAuth registration; previous drive.file visibility is not guaranteed and old files must not be automatically deleted/migrated.
 ## 6. Constraints
 Never print token/account/health payloads, weaken TLS/security or claim local fake-server tests validate Google accounts. Preserve remote CI commits df57843/d008d6f. Tests and build evidence must describe their level and limitations.
