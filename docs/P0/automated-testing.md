@@ -29,4 +29,7 @@ This file separates repeatable automated evidence from tests requiring a real Ga
 
 ## Result log
 
-- 2026-10-31: Instrumentation test source and CI job added. **Execution result pending** until the new workflow finishes. Distinguish compile failure, emulator setup failure and test assertion failure.
+- 2026-10-31: Initial emulator run [41211720307](https://github.com/nyeonu/health-app/actions/runs/41211720307) **failed at AndroidTest Kotlin compilation**, not at runtime: invalid Compose imports/collection helper. Corrected in source commit `fc0d420`.
+- 2026-11-01 KST: Re-run [41212355650](https://github.com/nyeonu/health-app/actions/runs/41212355650) **PASSED** on Android 15 (API 35) emulator: 3 instrumented tests executed, 0 skipped, 0 failed, `:app:connectedDebugAndroidTest` and Gradle completed successfully. Artifacts: `android-emulator-test-reports`.
+- 2026-11-01 KST: [41212355674](https://github.com/nyeonu/health-app/actions/runs/41212355674) **PASSED** regular JVM tests, Debug APK assembly and lint on the same source. This does not imply actual Samsung Health/Google OAuth/Drive integration was exercised by CI.
+
