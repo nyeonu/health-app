@@ -52,6 +52,7 @@ The future MCP server does **not** directly access Android Health Connect. Mobil
 - [Implementation plan and acceptance criteria](docs/implementation-plan.md)
 - [Architecture and trust boundaries](docs/architecture.md)
 - [CSV data contract](docs/data-contract.md)
+- [V1 storage destination design and pending Galaxy SAF checklist](docs/V1/storage-destinations.md)
 - [First Codex assignment](docs/codex-first-task.md)
 
 ## Security
@@ -63,3 +64,5 @@ The future MCP server does **not** directly access Android Health Connect. Mobil
 The `android/` project contains a Compose foreground-only manual sync app and a pure JVM `core` module. The app exports yesterday in `Asia/Seoul`, reads only granted categories, and requires private-folder opt-in, Google authorization and an explicit upload action. Tokens and last-success state are memory-only. No backend, scheduling or incremental sync is implemented.
 
 See [P0 build, OAuth setup and device validation](docs/P0/validation.md) before installing or using real data. Build from `android/` with a full JDK 17+ (verified with JDK 21), Android SDK 36 and `./gradlew :core:test :app:assembleDebug :app:lintDebug`. SDK-free core tests: `./gradlew -PcoreOnly :core:test`. Do not advance to V1 until the remaining P0 gates are verified.
+
+V1 storage design adds a future choice of SAF local/provider folder or Drive API over the same CSV pipeline, with later both-mode independent status/retry. SAF requires Android system consent but no app Google OAuth/Cloud setup; provider folder/write/persisted-access capabilities remain unsupported until device verification. The [seven-scenario Galaxy checklist](docs/V1/storage-destinations.md#galaxy-s23-ultra-poc--seven-requested-scenarios) is entirely pending. SAF and WorkManager are not implemented and SAF is not a P0 merge gate.

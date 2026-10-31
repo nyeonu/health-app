@@ -45,6 +45,13 @@ Status: **P0 implemented; automated verification passed; physical-device/cloud/c
 Automated evidence on 2026-10-31: `:core:test :app:assembleDebug :app:lintDebug` passed; lint has 0 errors and 8 warnings. This proves neither device reads nor OAuth, real uploads or ChatGPT content access. Synthetic CSV tests pass; the authorized real-record CSV gate above remains open. Dependency audit found three Guava advisory matches requiring review before production; see the validation handoff.
 
 ## V1 — Android MVP
+
+Storage choice/coexistence is [documented as V1 design with seven pending Galaxy scenarios](V1/storage-destinations.md). It does not implement SAF or change P0 gates. Capability defaults remain unsupported/unverified until each device/provider is tested; SAF uses system consent without app Google OAuth setup, while Drive API retains its OAuth requirements.
+
+- [ ] Implement the shared `StorageDestination.upsert(CsvFile)` boundary with Drive API and SAF destinations only in V1, after P0 gates.
+- [ ] Validate SAF local-folder create/update, Drive tree support, persisted grants/reboot, same-date overwrite, and permission/provider failures on Galaxy; all actual results pending.
+- [ ] Persist per-date/per-destination coverage and per-file/revision confirmation; keep healthy results and retry only failed/pending sinks. Later both mode succeeds only when all intended sinks confirm.
+- [ ] Verify restored SAF URI access in WorkManager and missed-day recovery as V1 tests, not P0 merge gates.
 - [ ] User-triggered manual synchronization.
 - [ ] Once-daily WorkManager scheduling subject to Android restrictions and background-read permissions/feature checks.
 - [ ] Daily snapshot exports; re-sync recent 2 days to account for delayed source sync, avoid duplicates.
@@ -52,7 +59,7 @@ Automated evidence on 2026-10-31: `:core:test :app:assembleDebug :app:lintDebug`
 - [ ] Retry/backoff and idempotent Drive upsert; network and permission denial handling.
 - [ ] No false promise of exact-time execution; handle missed days.
 - [ ] Persist per-local-day sync coverage; detect and queue missing dates on periodic worker run, app launch, and manual sync.
-- [ ] Backfill missed dates in bounded batches, keeping failed/incomplete dates pending until their Drive upload succeeds.
+- [ ] Backfill missed dates in bounded batches, keeping failed/incomplete dates pending until every intended destination confirms its files.
 - [ ] Repeating sync for an already-exported date updates the same private Drive file without duplicates.
 - [ ] Surface overdue/stale data explicitly (last attempted, last successful, covered-through date) rather than displaying a misleading success.
 
@@ -64,7 +71,7 @@ Automated evidence on 2026-10-31: `:core:test :app:assembleDebug :app:lintDebug`
 | No network for 2 days; reconnect later | Next allowed run or foreground/manual trigger detects and backfills both missed dates. |
 | Phone turned off for a day, then restarted | WorkManager's persisted scheduling resumes when permitted; missed date is backfilled. |
 | App force-stopped | No guarantee of background execution until Android permits it again; app reopening initiates coverage check. |
-| Duplicate worker execution / retry | Drive upsert is idempotent and date coverage advances only after confirmed upload. |
+| Duplicate worker execution / retry | Each selected destination upsert is idempotent; only failed/pending sinks retry, and date coverage advances only after all intended destinations confirm. |
 | Samsung Health record arrives late | Refresh recent dates and update existing day file as needed. |
 | Device battery low | Automatic sync defers per constraints; manual request reports any blocker clearly. |
 
