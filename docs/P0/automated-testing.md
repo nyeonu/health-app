@@ -16,6 +16,7 @@ This file separates repeatable automated evidence from tests requiring a real Ga
 | No Health Connect grants and user opts into Drive | `HealthAppInstrumentedTest.grantingDriveOptInWithoutHealthPermissionsDoesNotStartUpload` | Provider-specific consent UI or post-grant reads |
 | Activity background → resume | `HealthAppInstrumentedTest.backgroundAndReturnDoNotFabricateSuccessfulSynchronization` | In-flight network/upload cancellation in an Activity with real OAuth |
 | Zero/partial grants | `SyncCoordinatorTest` fake HealthReader permission-partition tests | Revoking individual Health Connect permissions mid-read on Samsung device |
+| Raw reader query bounds, overnight/multi-day sessions, half-open heart-rate samples, terminal/cyclic tokens and limits | Ten `HealthConnectReaderTest` JVM cases exercise the actual reader with real SDK request/record objects and a start-time-selecting SDK double | Real Galaxy provider selection/history enforcement, IPC serialization, quota and permission revocation |
 | Error, cancellation, partial upload | `SyncCoordinatorTest` and `GoogleDriveTransportTest` | Real Drive provider failure or physical network-off toggle |
 | Repeat uploads, HTTP PATCH, 401/503, no implicit write replay | `GoogleDriveTransportTest` local TLS tests | Actual Google account policy, network, remote Drive API behavior |
 
@@ -28,6 +29,8 @@ This file separates repeatable automated evidence from tests requiring a real Ga
 - Do not copy personal measurements, auth tokens, logcat containing account details, or screenshots of health information into public GitHub Actions artifacts.
 
 ## Result log
+
+- P0 reader correction candidate, based on merged PR #3 (`178ee3f`): 27 core + 16 app JVM tests = **43**, zero failures/errors/skips; debug APK and lint pass. The new reader suite has ten tests. Before the query/token correction, its initial eight tests failed five cases against the old reader logic with a constructor-only test seam; the corrected logic passes. [Correction and limitations](reader-boundary-fix.md). This does not add a physical-device pass or a new emulator result.
 
 - 2026-10-31: Initial emulator run [41211720307](https://github.com/nyeonu/health-app/actions/runs/41211720307) **failed at AndroidTest Kotlin compilation**, not at runtime: invalid Compose imports/collection helper. Corrected in source commit `fc0d420`.
 - 2026-11-01 KST: Re-run [41212355650](https://github.com/nyeonu/health-app/actions/runs/41212355650) **PASSED** on Android 15 (API 35) emulator: 3 instrumented tests executed, 0 skipped, 0 failed, `:app:connectedDebugAndroidTest` and Gradle completed successfully. Artifacts: `android-emulator-test-reports`.

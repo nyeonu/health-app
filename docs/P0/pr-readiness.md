@@ -6,6 +6,8 @@ The user reports the fixed-signature APK installs, authorizes and completes fore
 
 ## Current evidence
 
+**Subsequent status:** [PR #3](https://github.com/nyeonu/health-app/pull/3) was merged as `178ee3f` after the owner-reviewed head's JVM/build/lint and three emulator checks passed. Its Guava correction is now in master. The owner's next reader findings are addressed by the [interval/pagination correction candidate](reader-boundary-fix.md): 43 JVM tests, including actual reader request regressions. That candidate is not merged or physically validated by this statement; all device-only gates remain open.
+
 | Area | Evidence / status |
 | --- | --- |
 | Core and transport verification | 27 core + 6 local TLS app JVM tests, APK/lint pass; additionally 3 Android 15 emulator instrumentation tests passed (0 failed/skipped), [run 41212355650](https://github.com/nyeonu/health-app/actions/runs/41212355650). See [automated test matrix](automated-testing.md) |
