@@ -1,7 +1,7 @@
 # ADR-003: Use com.ny.my.health as the Android application identity
 
 ## Status
-Proposed
+Accepted
 
 ## Date
 2026-10-31

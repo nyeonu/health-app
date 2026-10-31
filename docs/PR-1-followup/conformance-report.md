@@ -1,9 +1,13 @@
 # Independent specification conformance
 
 - Specification: `docs/PR-1-followup/spec.md`
-- Source commit: `fea005808cc386fea659587e16c2fea641adf9e5`
+- Source commit: `60ccbb5989a546b23ba2c699c1133c2a6eb79e50`
 - Verdict: **PASS** for the requested implementation and documentation scope.
 - Fresh-context verifier did not read the plan or execution report and did not modify files.
+
+## Current identity validation
+
+The additional user request6538195319 was independently checked against the updated specification. ApplicationId/namespace/APK are com.ny.my.health; core is com.ny.my.health.core. All18Kotlin sources/tests and app Gradle match the previous source after exact package/path replacement, with no logic/expectation changes. aapt and mergedManifest confirm launcher, privacy/rationale and protected permission-usage alias under the new namespace. Current XML class prefixes are new and all27tests pass. A fullclean build executed59tasks in1m24s with lint0errors11warnings and APK34,698,241bytes; no unnecessary second fullbuild claimed. Migrationguide requires newapp/re-consent/newpackage+actualAPKcertificate OAuth registration and makes no priorDrivevisibility/automaticmigration assumption. Earlier userdevice observations do not validate this new identity.
 
 ## Acceptance results
 
@@ -32,6 +36,10 @@ The orchestrator separately matched all nine new actual names to the plan table 
 ## Violations and failures
 
 None found in the current requested scope.
+
+## Additional acceptance: namespace and installation
+
+PASS. No residual previous package/path references in Android/README/docs. Existing CI/source ancestry preserved. New-app device/account/HC/OAuth/Drive behavior remains pending; local artifact checks are not remote CI artifact verification.
 
 ## Remaining uncertainty
 

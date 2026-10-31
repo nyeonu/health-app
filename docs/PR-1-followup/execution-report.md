@@ -4,15 +4,19 @@ Scope: user PR review plus comments 6537911289 and 6537976514. [Specification](s
 
 ## Execution result
 
-- T1–T4: implementation/documentation completed; independent conformance and final quality/security review passed on the corrected source (see linked reports).
+- T1–T5: implementation/documentation completed; independent conformance and final quality/security review passed on the corrected source (see linked reports).
 - T1 replaces URLConnection with OkHttp 5.3.0 while retaining HTTPS allowlist, token validation, no redirects, explicit-only write retry, response/time limits and coroutine cancellation.
 - T2 separates actual consent/task cancellation, numeric Google API status and token/scope/missing-result failures through a closed diagnostic vocabulary; no raw error text reaches UI.
 - T3 adds V1-only SAF/Drive destination design and all seven pending Galaxy scenarios, with independent destination completion/retries and later both-mode full-success semantics.
 - T4 records limited user-reported device observations, beginner Cloud/actual-artifact certificate setup, emulator limitations and new CI app tests/report artifacts; no live Google settings changed.
 
+- T5 applies the user-requested application identity com.ny.my.health / core suffix .core, with source/test directory and documentation alignment only. Separate-install/re-consent/new-OAuth-client and old-file visibility/manual cleanup are documented.
+
 ## Verification
 
-`python3 /tmp/run-health-gradle.py :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:dependencies --configuration debugRuntimeClasspath` succeeded in 12s (58 tasks, 2 executed, 56 cached). 21 core + 6 app = 27 tests; zero failures/errors/skips. Lint: 0 errors, 11 warnings (9 dependency notices, backup rules, missing icon). The helper preserves managed proxy/CA and selects full JDK 21 / SDK 36; not a repository prerequisite.
+Pre-identity-update combined evidence: `python3 /tmp/run-health-gradle.py :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:dependencies --configuration debugRuntimeClasspath` succeeded in 12s (58 tasks, 2 executed, 56 cached). 21 core + 6 app = 27 tests; zero failures/errors/skips. Lint: 0 errors, 11 warnings (9 dependency notices, backup rules, missing icon). The helper preserves managed proxy/CA and selects full JDK 21 / SDK 36; not a repository prerequisite.
+
+Current identity clean build: `:core:clean :app:clean :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` passed in1m24s,59tasks executed,27tests0failure/error/skip,lint0errors11warnings. Root cached verification passed13s. ActualAPK/mergedmanifest identify com.ny.my.health; APK34,698,241bytes. Independent source comparison confirms18Kotlinfiles plus appGradle package mapping only. Test expectations/names remain intact.
 
 Local TLS tests use real OkHttp requests and a local HeldCertificate, not a Google account. Production uses system TLS trust. Old full-JDK URLConnection reproduction produced `ProtocolException: Invalid HTTP method: PATCH` without a network request; do not generalize that result to every Android implementation.
 
@@ -40,6 +44,8 @@ All nine new names below appear in the plan traceability table and were executed
 - T3 1/2: clarify existing CsvFile relativePath/content fields; schema_version is payload and UTF-8 encoding occurs at destination, not new DTO fields.
 - T4 2/2: corrected stale artifact size/ad-hoc per-file literal checking, then refreshed evidence for the new27-test single-attempt regression. No executable tests or expected behavior weakened.
 
+- PLAN 1/2: corrected a missing metadata newline joining T4/T5; independent YAML parse confirms all5task IDs/statusdone. No source/test behavior changed.
+
 ## Brief evidence
 
 - <!-- brief T1 default · 150줄 · 11134자 · 추정 토큰 3711 · Shared design 참조 2(명시 2, 해소 실패 0) · 변경 파일 3 · 테스트 5 · 작업 블록 24줄 · Shared design 6줄 · Goal 3줄 -->
@@ -59,3 +65,5 @@ T1 TransportStack is an intentional fully collected bullet reference, not a miss
 ## Next step
 
 Independent [conformance](conformance-report.md) and [quality/security review](review-report.md) passed on the corrected source. Next use the documented Cloud setup and synthetic device procedure. Do not merge or advance to V1 from these automated results alone.
+
+Final independent namespace conformance and quality/security reviews PASS/APPROVE against source60ccbb5. New-package install/device/account/Drive/ChatGPT and SAF provider checks remain pending. Remote CI results are reported separately when observed; local checks do not substitute for a hosted artifact.

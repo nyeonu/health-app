@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 approved_by: user
 approved_at: 2026-10-31
 source: PR1 user review PRR_kwDOCMRxVs8AAAABVPe6yQ and comments 6537911289,6537976514,6538195319

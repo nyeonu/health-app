@@ -29,7 +29,8 @@ tasks:
     title: Validation handoff and CI evidence
     depends_on: [T1, T2, T3]
     status: done
-    tier: standard  - id: T5
+    tier: standard
+  - id: T5
     title: User-requested application namespace migration
     depends_on: [T1, T2, T3, T4]
     status: done
@@ -205,6 +206,8 @@ Transport implementation/dependency can be reverted in isolation, but do not sil
 | T1 | 2/2 | Reviewer real TLS reproduction showed503RetryAfter0 causes TWO POSTs and200 despite retryOnConnectionFailurefalse | Same real request marked isOneShot returns original503 and ONE POST; OkHttp5.3 outerintercept checks body.isOneShot | Mark everyPOST/PATCHbody includingemptybody one-shot; preserveheaders/TLS/cancellation/status/redaction; addrealTLSregression, no dependencychanges | GoogleDriveTransport.kt, GoogleDriveTransportTest.kt | focused6 TLS tests and full27tests/APK/lint PASS; root independently rechecked all27 and APK one-shot class present | pr1_transport |
 
 | T4 | 2/2 | New503 retry regression increases appTLS tests5to6 after code review | CurrentXML21core+6app=27 all0; fullcodebuild37s; APK39545449bytes | Refresh counts/testcoverage/currentcombinedlog evidence only; preserveCloud/SAF/manualgates | validation.md, implementation-plan.md, README.md | diff/factcheck PASS27/0/0/0 | pr1_validation_docs |
+
+| PLAN | 1/2 | Final review found missing newline joining T4 tier and T5 id in YAML | YAML scanner rejected frontmatter; split metadata lines only | Preserve5task IDs/statuses and all implementation; validate with safe_load | plan.md only | YAMLsafe_load PASS5tasks all done | orchestrator metadata correction |
 
 ## 환경 준비 기록
 | 원인·근거 | 준비 조치 | 조치 사용/1 | 확인 명령·결과 | 확인 사용/1 | 다음 조치 |

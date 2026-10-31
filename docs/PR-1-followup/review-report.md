@@ -25,3 +25,7 @@ The V1 SAF design preserves shared data stages, destination/revision outcomes, f
 Actual Google OAuth/private Drive behavior, Health Connect records and Samsung/provider behavior, live UI/lifecycle, ChatGPT actual content access and all SAF scenarios remain unverified. Local TLS does not establish Google integration.
 
 OSV117-runtime-coordinate evidence has the same three Guava matches; no new OkHttp/Okio matches. This is not proof of zero vulnerabilities or complete transitive unreachability. Preserve preproduction reachability/remediation review and2026-11-30 recheck. The stale OWASP password-reference metadata needs maintenance; no password policy was introduced here. No native Android performance/battery improvement was claimed.
+
+## Application identity follow-up
+
+Final review APPROVE for source60ccbb5. All18Kotlinfiles and appGradle preserve logic/assertions under exact package mapping to com.ny.my.health/core; actualAPK/manifest/appactivities/protectedalias align. No stalepackage/path references remain. Separateappinstall/newgrants/actualpackage+certificate registration/previousDrivevisibility limits and manualcleanup withoutauto migration are documented. Independent planYAML parse confirmsT1–T5all done after the metadata newline correction. Current27tests/clean59taskbuild/lint0errors11warnings pass; newdevice/account/hostedartifact behavior remainsunverified at this review.
