@@ -53,7 +53,9 @@ Downloaded CI APKs now require the fixed owner key; PR runs never receive signin
 
 ## V1 — Android MVP
 
-**Current entry check (2026-11-01 KST):** the post-merge [security/dependency review](P0/final-security-review.md) and [resolved-coordinate audit](P0/dependency-audit.json) cover source `6392eb1`. Three Guava advisories remain; compatible remediation or a complete reachability/risk disposition is still required before production. [D01–D09 Galaxy cases and private key-backup confirmation](P0/device-acceptance.md) are all pending. No P0 device checkbox is closed by this review, and no V1 implementation is started by it.
+**Dependency correction candidate:** [Guava remediation and compatibility evidence](P0/guava-remediation.md) replaces the affected `31.1-android` selection with `33.7.2-android`; the [updated audit](P0/guava-remediation-audit.json) returns zero matches for 121 distinct resolved coordinates. This applies to the candidate until merged. Device acceptance and signing-key backup still require actual results; V1 implementation remains unstarted.
+
+**Baseline entry review (2026-11-01 KST):** the post-merge [security/dependency review](P0/final-security-review.md) and [resolved-coordinate audit](P0/dependency-audit.json) cover unpatched source `6392eb1`, where three Guava advisories were identified. The correction candidate above addresses that finding in its checked graph; merge and device results remain separate. [D01–D09 Galaxy cases and private key-backup confirmation](P0/device-acceptance.md) are all pending. No P0 device checkbox is closed by these automated checks, and no V1 implementation is started by them.
 
 Storage choice/coexistence is [documented as V1 design with seven pending Galaxy scenarios](V1/storage-destinations.md). It does not implement SAF or change P0 gates. Capability defaults remain unsupported/unverified until each device/provider is tested; SAF uses system consent without app Google OAuth setup, while Drive API retains its OAuth requirements.
 
