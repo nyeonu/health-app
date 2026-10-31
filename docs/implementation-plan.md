@@ -1,7 +1,7 @@
 # Implementation plan — Health App
 
 Last updated: 2026-10-31 (Asia/Seoul)  
-Status: **Not started**
+Status: **P0 implemented; automated verification passed; physical-device/cloud/content gates pending**
 
 ## Project outcomes
 1. Collect user-authorized Health Connect health records that Samsung Health actually writes on the target Galaxy phone.
@@ -38,8 +38,11 @@ Status: **Not started**
 - [ ] Generate valid UTF-8 CSV (without PII) from authorized records.
 - [ ] Successfully upload and update a private file in Google Drive with user authorization.
 - [ ] Verify ChatGPT's actual access to data contents, not merely file visibility (manual validation).
-- [ ] Unit tests for DTO mapping, CSV quoting, missing values, date boundaries pass.
-- [ ] Record real device and cloud validation instructions/results.
+- [x] Unit tests for DTO mapping, CSV quoting, missing values, date boundaries pass (17 core JVM tests, 0 failures/errors/skips; 2026-10-31).
+- [x] Write real device and cloud validation instructions ([P0 validation](P0/validation.md)).
+- [ ] Record real device and cloud results; none have been executed.
+
+Automated evidence on 2026-10-31: `:core:test :app:assembleDebug :app:lintDebug` passed; lint has 0 errors and 8 warnings. This proves neither device reads nor OAuth, real uploads or ChatGPT content access. Synthetic CSV tests pass; the authorized real-record CSV gate above remains open. Dependency audit found three Guava advisory matches requiring review before production; see the validation handoff.
 
 ## V1 — Android MVP
 - [ ] User-triggered manual synchronization.

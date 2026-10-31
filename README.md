@@ -9,7 +9,7 @@ Read authorized health records from Android Health Connect (including data synch
 **Repository:** `nyeonu/health-app`  
 **Primary device:** Galaxy S23 Ultra (Android 16)  
 **Time zone for daily reporting:** Asia/Seoul  
-**Status:** Planning and proof-of-concept; no application has been implemented yet.
+**Status:** P0 Android application implemented; JVM tests, debug APK build and lint pass. Physical-device Health Connect, Google OAuth/private Drive upload and ChatGPT file-content access remain unverified. P0 exit gates remain open.
 
 ## Delivery phases
 
@@ -60,4 +60,6 @@ The future MCP server does **not** directly access Android Health Connect. Mobil
 
 ## Implementation
 
-Start with P0 only. Do not build the MCP server or production background synchronization until the end-to-end data path is demonstrated. See `docs/codex-first-task.md`.
+The `android/` project contains a Compose foreground-only manual sync app and a pure JVM `core` module. The app exports yesterday in `Asia/Seoul`, reads only granted categories, and requires private-folder opt-in, Google authorization and an explicit upload action. Tokens and last-success state are memory-only. No backend, scheduling or incremental sync is implemented.
+
+See [P0 build, OAuth setup and device validation](docs/P0/validation.md) before installing or using real data. Build from `android/` with a full JDK 17+ (verified with JDK 21), Android SDK 36 and `./gradlew :core:test :app:assembleDebug :app:lintDebug`. SDK-free core tests: `./gradlew -PcoreOnly :core:test`. Do not advance to V1 until the remaining P0 gates are verified.
