@@ -48,6 +48,22 @@ Status: **Not started**
 - [ ] Clear status UI: last attempt, last success, rows, pending, failure reasons.
 - [ ] Retry/backoff and idempotent Drive upsert; network and permission denial handling.
 - [ ] No false promise of exact-time execution; handle missed days.
+- [ ] Persist per-local-day sync coverage; detect and queue missing dates on periodic worker run, app launch, and manual sync.
+- [ ] Backfill missed dates in bounded batches, keeping failed/incomplete dates pending until their Drive upload succeeds.
+- [ ] Repeating sync for an already-exported date updates the same private Drive file without duplicates.
+- [ ] Surface overdue/stale data explicitly (last attempted, last successful, covered-through date) rather than displaying a misleading success.
+
+### V1 background scheduling acceptance scenarios
+| Scenario | Expected behavior |
+| --- | --- |
+| Device active and connected | Worker may run near its eligible period; no exact-time assertion. |
+| Doze, power saving, or constrained network | Worker may be delayed; data remains visibly stale until verified sync. |
+| No network for 2 days; reconnect later | Next allowed run or foreground/manual trigger detects and backfills both missed dates. |
+| Phone turned off for a day, then restarted | WorkManager's persisted scheduling resumes when permitted; missed date is backfilled. |
+| App force-stopped | No guarantee of background execution until Android permits it again; app reopening initiates coverage check. |
+| Duplicate worker execution / retry | Drive upsert is idempotent and date coverage advances only after confirmed upload. |
+| Samsung Health record arrives late | Refresh recent dates and update existing day file as needed. |
+| Device battery low | Automatic sync defers per constraints; manual request reports any blocker clearly. |
 
 
 ## Battery optimization and timing semantics (approved for V1)
