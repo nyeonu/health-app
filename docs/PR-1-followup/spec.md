@@ -1,5 +1,5 @@
 ---
-status: approved
+status: implemented
 approved_by: user
 approved_at: 2026-10-31
 source: PR1 user review PRR_kwDOCMRxVs8AAAABVPe6yQ and comments 6537911289,6537976514
@@ -24,4 +24,3 @@ Preserve DriveTransport.execute, drive.file only, HTTPS host/path allowlist, Aut
 - Provide SAF local folder/create/update/persist/reboot/revocation/offline/provider and V1 background/catch-up test plans, all actual results pending; do not make SAF a P0 merge gate.
 ## 6. Constraints
 Never print token/account/health payloads, weaken TLS/security or claim local fake-server tests validate Google accounts. Preserve remote CI commits df57843/d008d6f. Tests and build evidence must describe their level and limitations.
-

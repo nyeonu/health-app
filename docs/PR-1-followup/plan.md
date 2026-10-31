@@ -2,33 +2,33 @@
 plan_id: PR-1-followup
 title: PR1 review corrections
 kind: single
-status: approved
+status: done
 author: Codex
 created: 2026-10-31
 target: nyeonu/health-app
 spec: spec.md
-spec_rev: pending-index-commit
+spec_rev: 084e50b7254e7ed9871448258ba561264a69a1d7
 approval_basis: User requested handling all PR comments; comments explicitly request client replacement diagnostics and V1 design without SAF implementation.
 tasks:
   - id: T1
     title: PATCH-capable transport and local TLS tests
     depends_on: []
-    status: pending
+    status: done
     tier: standard
   - id: T2
     title: Safe OAuth diagnostics
     depends_on: []
-    status: pending
+    status: done
     tier: standard
   - id: T3
     title: V1 SAF design and device checklist
     depends_on: []
-    status: pending
+    status: done
     tier: standard
   - id: T4
     title: Validation handoff and CI evidence
     depends_on: [T1, T2, T3]
-    status: pending
+    status: done
     tier: standard
 ---
 # PR1 review corrections
@@ -52,7 +52,7 @@ OkHttp.enqueue and cancellation are verified with a local TLS server, no Android
 ## 3. 추적성
 | 스펙 기준 | 테스트 이름 (출처/층) | 충족 위치 |
 |---|---|---|
-| PATCH is sent by a supported HTTP client and local transport tests prove create then update the same file without duplicates, failure/retry/revoked authorization, bounded/redacted errors, no redirects, allowlisting and cancellation. | Local TLS create then PATCH updates the same Drive file without duplicates; Revoked authorization fails safely and a later explicit retry updates without duplicates; Redirects and disallowed endpoints never receive authorization; Transport failures and oversized responses expose no sensitive body or cause; Cancellation cancels the in flight HTTP call without reporting success (①③④⑤/local TLS integration, not Google account) | T1 |
+| PATCH is sent by a supported HTTP client and local transport tests prove create then update the same file without duplicates, failure/retry/revoked authorization, bounded/redacted errors, no redirects, allowlisting and cancellation. | Local TLS create then PATCH updates the same Drive file without duplicates; Revoked authorization fails safely and a later explicit retry updates without duplicates; Redirects and disallowed endpoints never receive authorization; Transport failures and oversized responses expose no sensitive body or cause; Cancellation cancels the in flight HTTP call without reporting success; Server retry after zero never replays POST or PATCH without an explicit new attempt (①③④⑤/local TLS integration, not Google account) | T1 |
 | OAuth cancellation, Google API numeric status, missing access token and missing drive.file scope produce distinct safe diagnostics without tokens, accounts or exception text. | Cancelled consent and Google API status produce distinct redacted diagnostics; Missing token invalid token and missing Drive scope are distinguished; OAuth diagnostics never expose token scope lists or exception details (①②③/unit), app callback compile/static wiring | T2 |
 | Record the user's installed/launched app, HC availability and 5/5 grants as user-reported partial evidence; OAuth/real upload/content gates remain open and actual APK signing/Cloud setup checks are explicit. | Validation evidence separates local TLS tests user reports and pending account provider checks (①/document/static) | T4 |
 | V1 design includes shared read/normalize/CSV stages, StorageDestination with Drive API/SAF destinations, independent per-destination outcomes/retries and later both-mode semantics; SAF folder/update/persisted-grant capabilities remain unsupported until device/provider verification. | SAF design covers all seven requested device scenarios with pending results and independent sink status (①/design review) | T3 |
@@ -76,6 +76,7 @@ OkHttp.enqueue and cancellation are verified with a local TLS server, no Android
   - "Redirects and disallowed endpoints never receive authorization" — new criteria-based check.
   - "Transport failures and oversized responses expose no sensitive body or cause" — new criteria-based check.
   - "Cancellation cancels the in flight HTTP call without reporting success" — new criteria-based check.
+  - "Server retry after zero never replays POST or PATCH without an explicit new attempt" — real TLS503RetryAfter0, POST/PATCH includingemptybodies, exactlyonewrite+503redacted, laterexplicitcall200.
 - **완료 기준**: Tests/checks above pass; device/account limitations explicitly pending.
 - **검증 방법**:
   ```bash
@@ -154,14 +155,26 @@ T1, T2, T3 완료 후 시작.
 - **주의사항**: Workdir /workspace/health-app, branch feat/p0-android-poc. English code/docs per AGENTS; Korean user UI. No commits by executors. Only listed paths. Network tool calls need with_additional_permissions network.enabled=true; helper /tmp/run-health-gradle.py preserves proxy/CA, selects JDK21/SDK36 and gradle cache. Read official library APIs before implementing; initial syntax/wiring corrections within named files/dependencies allowed, not versions/security/contracts. Post-verification failure => report blocked with exact evidence; no hidden repair loops. Preserve existing18 core tests and user CI commits. No actual health/account use.
 
 ## 5. 전체 검증
-Run :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug. Count JUnit XML failures/errors/skips, compare all new names to mapping. Confirm actual wire PATCH/TLS/no automatic retries/cancellation, static production URL/TLS invariants and no secret/value logging. Audit new runtime Maven graph via OSV; retain Guava residual triage if unchanged. Independent fresh-context spec conformance, then code/security review. git diff --check, preserve remote changes, push same PR branch, keep draft and post sanitized response to user comments with actual results/limits. No merge.
+Run :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug. Count JUnit XML failures/errors/skips, compare all new names to mapping. Confirm actual wire PATCH/TLS/no automatic retries/cancellation, static production URL/TLS invariants and no secret/value logging. Audit new runtime Maven graph via OSV; retain Guava residual triage if unchanged. Independent fresh-context spec conformance, then code/security review. git diff --check, preserve remote changes, push same PR branch, keep draft and update the PR description with sanitized responses and actual results/limits. No merge.
 ## 6. 위험과 롤백
 Transport implementation/dependency can be reverted in isolation, but do not silently return to a transport with unverified PATCH support. New TLS tests are synthetic; no Google settings changed. Docs clarify previous P0 review assumptions as historical/superseded. SAF is future design, no new runtime URI grant.
 ## 복구 기록
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T1 | 1/2 | Real TLS oversized-body test failed assertNull(cause); coroutine recovery attached a sanitized IOException | Fixed-message exception type must retain null cause across coroutine stack recovery | Replace generic transport IO failures with private fixed-message IOException subtype whose cause stays null; no raw cause/message attached; tests unchanged | GoogleDriveTransport.kt only | focused5 TLS transport tests PASS, independently21core+6appXML0failure/error/skip | pr1_transport |
+
+| T3 | 1/2 | Design wording could imply new CsvFile fields despite unchanged contract | Current CsvFile has relativePath/content only | Clarify schema_version in CSV payload and UTF8 encoding at sink boundary; no runtime DTO change | docs/V1/storage-destinations.md | diff check PASS | pr1_saf_design |
+
+| T4 | 1/2 | Old32MB artifact note stale after OkHttp; ad-hoc doc check incorrectly demanded same words in every file | Current APKstat39545449bytes; requirement is coherent evidence across docs, not duplicated literal strings | Correct APKsize in validation.md; check concrete guide/status facts there and cross-doc consistency | docs/P0/validation.md only; no source/tests change | diff check and evidence fact check PASS | pr1_validation_docs |
+
+| T1 | 2/2 | Reviewer real TLS reproduction showed503RetryAfter0 causes TWO POSTs and200 despite retryOnConnectionFailurefalse | Same real request marked isOneShot returns original503 and ONE POST; OkHttp5.3 outerintercept checks body.isOneShot | Mark everyPOST/PATCHbody includingemptybody one-shot; preserveheaders/TLS/cancellation/status/redaction; addrealTLSregression, no dependencychanges | GoogleDriveTransport.kt, GoogleDriveTransportTest.kt | focused6 TLS tests and full27tests/APK/lint PASS; root independently rechecked all27 and APK one-shot class present | pr1_transport |
+
+| T4 | 2/2 | New503 retry regression increases appTLS tests5to6 after code review | CurrentXML21core+6app=27 all0; fullcodebuild37s; APK39545449bytes | Refresh counts/testcoverage/currentcombinedlog evidence only; preserveCloud/SAF/manualgates | validation.md, implementation-plan.md, README.md | diff/factcheck PASS27/0/0/0 | pr1_validation_docs |
+
 ## 환경 준비 기록
 | 원인·근거 | 준비 조치 | 조치 사용/1 | 확인 명령·결과 | 확인 사용/1 | 다음 조치 |
 |---|---|---|---|---|---|
 | No /dev/kvm, emulator binary or installed image | No emulator claim; use JVM local TLS tests | 1/1 | inspect tools path and SDK image directories | 1/1 | device/UI/provider tests pending |
 
+
+Current combined verification: 21 core +6 app local TLS tests, zero failure/error/skip; APK and lint PASS in1m1s (58tasks20executed38cache). Lint0errors11warnings;117runtime Maven coordinates queriedOSV: unchangedGuava3matches, no newOkHttp/Okio match. Source account/device remains pending.
