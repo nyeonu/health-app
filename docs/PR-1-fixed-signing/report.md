@@ -35,3 +35,9 @@ The user reported a successful sync with two confirmed files after the root meta
 - https://developer.android.com/studio/publish/app-signing
 - https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets
 - https://docs.github.com/en/codespaces/developing-in-a-codespace/creating-a-codespace-for-a-repository
+
+## Owner-secret hosted verification
+
+After the user corrected the Base64 paste, [run 41183096679](https://github.com/nyeonu/health-app/actions/runs/41183096679), job `124494851482`, completed successfully for source `59bf62ef909318f89d68214d219ddb6bb973719a`. Tests/general build, key preparation, fixed-key build, distributed certificate verification, APK publication and key cleanup all succeeded. Earlier attempts failed only at Base64 decoding; no private value was inspected or shared.
+
+[Artifact 13036249453](https://github.com/nyeonu/health-app/actions/runs/41183096679/artifacts/13036249453) was downloaded and independently verified. ZIP SHA-256 matched GitHub metadata (`ef51047c4a11389b772dc286d69048b899d7abe2e043eb32b5714401e573290a`); `apksigner verify --print-certs` matched the public SHA-1 in the included signing.txt, and `aapt dump badging` confirmed `com.ny.my.health`. The public fingerprint is included in the user handoff. No owner key or password was downloaded; only the signed public APK artifact was inspected. This establishes successful hosted fixed signing, not that two separate hosted runs have the same certificate. Reuse depends on keeping the same Secret key. Private backup, first fixed-certificate OAuth registration/reinstall and device upload under this certificate remain user-controlled pending steps.

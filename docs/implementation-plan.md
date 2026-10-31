@@ -125,3 +125,5 @@ Latest P0 follow-up: [safe sync diagnostic reporting](PR-1-sync-diagnostics/repo
 P0 runtime correction: the user supplied `DRIVE_ROOT_LOOKUP:HTTP_404`. [Root metadata dependency removed](PR-1-drive-root/report.md), with root-query membership and post-create confirmation before health writes; 33 JVM tests, APK build and lint pass. Private account upload remains pending, so no P0 exit checkbox is closed by this correction.
 
 User-reported follow-up: successful foreground sync with two confirmed files after the root correction; independent contents/private-location/same-day update/ChatGPT gates remain pending. [Fixed CI signing setup](P0/fixed-signing.md) supports owner-managed key reuse and stops random-certificate APK publication. Actual key generation/backup/Secrets registration and hosted signing remain user-controlled pending steps.
+
+Hosted fixed signing now passed using owner-provided Repository Secrets after correcting Base64 input: run 41183096679 / artifact 13036249453. Distributed APK package and certificate were verified against signing.txt. Owner backup and fixed-certificate OAuth/device migration remain pending.
