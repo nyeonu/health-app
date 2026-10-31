@@ -1,7 +1,7 @@
 # Implementation plan — Health App
 
 Last updated: 2026-10-31 (Asia/Seoul)  
-Status: **P0 implemented; automated verification passed; partial device observations user-reported; real-record/cloud/content gates pending; PR 1 draft**
+Status: **P0 implemented; 33 automated tests/build/lint and hosted fixed signing passed; user reports two successful uploads from the fixed-signature APK; private-file/update/content/permission gates pending; PR 1 draft**
 
 ## Project outcomes
 1. Collect user-authorized Health Connect health records that Samsung Health actually writes on the target Galaxy phone.
@@ -38,11 +38,13 @@ Status: **P0 implemented; automated verification passed; partial device observat
 - [ ] Generate valid UTF-8 CSV (without PII) from authorized records.
 - [ ] Successfully upload and update a private file in Google Drive with user authorization.
 - [ ] Verify ChatGPT's actual access to data contents, not merely file visibility (manual validation).
-- [x] Unit tests for DTO mapping, CSV quoting, missing values, date boundaries pass (21 core JVM tests: original 18 + 3 OAuth diagnostic tests; 0 failures/errors/skips; 2026-10-31).
+- [x] Unit tests for DTO mapping, CSV quoting, missing values and date boundaries pass, with uploader/diagnostic/transport regressions: 27 core + 6 local TLS app tests = 33; 0 failures/errors/skips (2026-10-31).
 - [x] Write real device and cloud validation instructions ([P0 validation](P0/validation.md)).
-- [ ] Complete real device and cloud results: partial user-reported observations recorded; generic OAuth failure, zero uploads and no successful sync. Root cause and Cloud setup unknown; actual records, real Drive and ChatGPT content checks remain pending.
+- [ ] Complete real device and cloud results: user now reports two confirmed uploads and a successful sync from the fixed-signature APK after OAuth/Health Connect approval. The user has not yet inspected CSV contents or repeated a date to check remote no-duplicate updates. Private-file inspection, permission edge cases and ChatGPT content checks remain pending.
 
-Automated evidence on 2026-10-31: `:core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` passed (combined run also resolved `debugRuntimeClasspath`); 21 core + 6 local TLS app tests = 27, with 0 failures/errors/skips; lint has 0 errors and 11 warnings. This proves neither device reads nor OAuth, real uploads or ChatGPT content access. Synthetic CSV tests pass; the authorized real-record CSV gate above remains open. The updated 117-coordinate runtime OSV query returned the same three Guava advisory matches, with no new OkHttp/Okio matches; preproduction review and the 2026-11-30 recheck remain due (see the validation handoff). The follow-up uses OkHttp with one-shot POST/PATCH bodies: the local HTTP 503/`Retry-After: 0` regression proves exactly one send and a redacted 503 result until a later explicit call; historical P0 verification reports are snapshots superseded by this evidence. No emulator/UI or Google Cloud account access was performed. Privately check the actual installed APK signing SHA-1, Android OAuth package/client, test audience/user and enabled Drive API using the [beginner handoff](P0/validation.md#google-project-configuration-beginner-handoff-pending-user-controlled-setup); never commit credentials or signing keys. CI-generated debug keys may differ by build. Report only the updated fixed diagnostic category/numeric status, never raw account/token/error data.
+Automated evidence on 2026-10-31: `:core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` passed with 27 core + 6 real-client local TLS app tests = 33 (0 failures/errors/skips), lint 0 errors/11 existing warnings. Hosted source `59bf62e` passed PR checks and the owner-secret push build (run 41183096679); the distributed APK package/certificate matched signing.txt. App-screen success on the fixed-signature APK is now user-reported. This does not prove CSV contents, independent private sharing inspection, same-day remote update or full permission-edge behavior. The runtime OSV audit of 117 coordinates retains three Guava advisory matches and the preproduction review/2026-11-30 recheck; no dependency changes were introduced in subsequent runtime/signing corrections. See [latest readiness evidence and remaining checks](P0/pr-readiness.md).
+
+Downloaded CI APKs now require the fixed owner key; PR runs never receive signing secrets, absent secrets skip publication, invalid signing never falls back to a random downloadable key. Keep the same key to retain the certificate; never commit credentials or signing keys. The independent earlier code review remains documented in PR-1-followup; final merge readiness depends on the remaining checks below, not an app success message alone.
 
 ## V1 — Android MVP
 
