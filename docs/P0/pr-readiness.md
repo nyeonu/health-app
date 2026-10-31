@@ -1,6 +1,6 @@
-# PR 1 readiness
+# P0 PR #1 — merged status and residual acceptance
 
-Status: **Draft — core P0 live data path verified, but safety/device edge-case acceptance checks remain open.** No merge or ready-for-review transition has been performed.
+Status (2026-11-01 KST): **Merged into `master` by repository owner**, PR #1 `closed / merged=true / draft=false`; merge commit `9a787901d0e8066b311d75e112c82a1cd84f3fa6`. Core P0 live data path verified; device-only edge cases and final security review remain post-merge follow-ups.
 
 The user reports the fixed-signature APK installs, authorizes and completes foreground synchronization. In the authorized ChatGPT Google Drive connection on 2026-10-31, the assistant additionally **retrieved both private CSV bodies and their permission metadata**. The files include a valid daily-summary row and Samsung Health-origin heart-rate samples; unpopulated fields remain blank, not zero. This is observed remote content evidence, not merely the app's success message. Five allowed categories do not imply five populated datasets. No screenshot, health measurements, personal account information, file IDs, private timestamps, key material or credentials are committed here.
 
@@ -18,7 +18,7 @@ The user reports the fixed-signature APK installs, authorizes and completes fore
 | ChatGPT actual file-content access | **Verified** after connector reconnection: both raw CSV bodies fetched and parsed via the authenticated Google Drive connector. Content verified, not only names/metadata. No data disclosed in public PR |
 | Key backup | User-controlled; not confirmed |
 
-The prior independent source review covers source 60ccbb5 and earlier. Subsequent root handling, diagnostics and fixed-signing changes have implementation self-review and executable/hosted evidence in their own reports. This readiness check inspected those deltas and existing tests, but is not a new independent full-PR review or a merge approval. Final review remains after acceptance evidence is gathered. No new code changed and no redundant full test run was performed for this documentation update.
+The previous independent source review covers source `60ccbb5` and earlier. Subsequent root, diagnostics and signing changes have their own reports. The repository owner merged PR #1 after reviewing the evidence. This document preserves unresolved verification as post-merge risk, not a claim of a new independent security review or completion of every device scenario.
 
 
 ## Verified remote integration evidence (2026-10-31)
@@ -33,6 +33,12 @@ The prior independent source review covers source 60ccbb5 and earlier. Subsequen
 1. The Samsung Health daily step count was **cross-checked and matched exactly** against the uploaded CSV for the same date. This validates the step count for that date, not all possible upstream records. Verify the intended absence/availability of weight, sleep and exercise records separately.
 2. Run missing device edge cases: permission denial, partial/zero grants, revocation, offline behavior, cancel/background and process restart. Do not expose real measurements in reports.
 3. Previous/current Drive revisions have been compared; race conditions and partial-failure recovery remain separate tests using synthetic data.
-4. Review still-open dependency advisories and refresh final code/security review, then reassess readiness under the existing draft restriction. Keep P0 scope; SAF and WorkManager remain V1.
+4. Review still-open dependency advisories and refresh the code/security review as post-merge hardening work. Keep P0 scope; SAF and WorkManager remain V1.
 
-The explicit existing review requests draft/no merge until real device/Drive/ChatGPT checks: https://github.com/nyeonu/health-app/pull/1#pullrequestreview-5720488649 . Roadmap gate source: ../implementation-plan.md (P0). This record does not silently waive those conditions.
+Historical review initially requested Draft/no merge pending real device/Drive/ChatGPT tests: https://github.com/nyeonu/health-app/pull/1#pullrequestreview-5720488649 . Private Drive content, privacy, same-file revisions and source steps were subsequently verified, and the repository owner has merged the PR. Remaining device exception and security checks remain recorded as post-merge work. Roadmap: [implementation plan](../implementation-plan.md).
+
+
+## Merge event
+- [PR #1](https://github.com/nyeonu/health-app/pull/1) merged 2026-11-01 00:45:43 KST; GitHub reports `draft=false`.
+- The previous Draft blocker is no longer an open workflow status. No further attempt to mark the merged PR ready for review is required or appropriate.
+- Acceptance restrictions remaining above are follow-up test gaps, not blockers preventing an already-completed merge.
