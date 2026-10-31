@@ -8,11 +8,11 @@ Last verified: 2026-10-31. **Automated verification passed; user-reported instal
 | --- | --- |
 | Core JVM tests | 21 tests (original 18 preserved + 3 OAuth diagnostics), 0 failures, 0 errors, 0 skipped; five XML suites under `android/core/build/test-results/test/` |
 | App JVM transport tests | 6 tests, 0 failures, 0 errors, 0 skipped; one XML suite under `android/app/build/test-results/testDebugUnitTest/`; real OkHttp with synthetic local TLS server |
-| Debug APK | `:app:assembleDebug` passed; `android/app/build/outputs/apk/debug/app-debug.apk`, 39,545,449 bytes (approximately 40 MB decimal) |
+| Debug APK | `:app:assembleDebug` passed; `android/app/build/outputs/apk/debug/app-debug.apk`, 34,698,241 bytes (approximately 35 MB decimal) |
 | Android lint | `:app:lintDebug` passed; 0 errors, 11 warnings |
-| Latest combined verification | `python3 /tmp/run-health-gradle.py :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:dependencies --configuration debugRuntimeClasspath` → `BUILD SUCCESSFUL in 12s` (58 actionable tasks: 2 executed, 56 up-to-date; preceding full code verification passed in 37s) |
+| Latest combined verification | `python3 /tmp/run-health-gradle.py :core:clean :app:clean :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` → `BUILD SUCCESSFUL in 1m 24s` (59 actionable tasks: 59 executed; new application identity) |
 
-The verification environment used full JDK 21.0.13, Gradle 8.13 and Android SDK 36. The `/tmp` helper/logs are local session evidence, not repository prerequisites: the helper supplied process-local Java/proxy/trust configuration. The result is recorded in `/tmp/health-followup-validation.log`; durable commands are below. XML tests use synthetic values only. Core tests cover normalization and authorized-category filtering, KST boundaries, CSV quoting/missing values/stable ordering, private Drive target validation and deterministic upsert, redacted failures, partial upload and cancellation. The regression `Consecutive manual attempts choose yesterday across KST midnight` confirms that each manual attempt selects fresh yesterday at invocation, including successive attempts across KST midnight. They do not exercise the Android framework, real Health Connect pagination, OAuth or Google Drive.
+The verification environment used full JDK 21.0.13, Gradle 8.13 and Android SDK 36. The `/tmp` helper/logs are local session evidence, not repository prerequisites: the helper supplied process-local Java/proxy/trust configuration. The clean identity-migration result is recorded in `/tmp/health-t5-validation.log`; earlier follow-up evidence remains in `/tmp/health-followup-validation.log`. Durable commands are below. XML tests use synthetic values only. Core tests cover normalization and authorized-category filtering, KST boundaries, CSV quoting/missing values/stable ordering, private Drive target validation and deterministic upsert, redacted failures, partial upload and cancellation. The regression `Consecutive manual attempts choose yesterday across KST midnight` confirms that each manual attempt selects fresh yesterday at invocation, including successive attempts across KST midnight. They do not exercise the Android framework, real Health Connect pagination, OAuth or Google Drive.
 
 Lint report: `android/app/build/reports/lint-results-debug.txt` (HTML sibling available). Nine warnings announce newer dependency versions (including test-only libraries); `DataExtractionRules` requests Android 12+ transfer rules (`allowBackup=false` is already set; P0 does not persist health data/tokens); `MissingApplicationIcon` requests an explicit launcher icon. These remain open production follow-ups, not suppressed findings.
 
@@ -51,10 +51,18 @@ From `android/`:
 ./gradlew :app:signingReport
 adb devices
 adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell am start -n dev.nyeonu.healthapp/.MainActivity
+adb shell am start -n com.ny.my.health/.MainActivity
 ```
 
 For JVM-only verification without an SDK: `./gradlew -PcoreOnly :core:test` (full JDK still required). In the managed verification environment only, `GRADLE_USER_HOME=/workspace/tooling/gradle-home` and `ANDROID_HOME=/workspace/tooling/android-sdk` were used. Do not publish device serials, signing material or account details from local command output.
+
+### Application identity migration
+
+The application namespace and application ID are now `com.ny.my.health`; the core package is `com.ny.my.health.core`. Package/path references in historical plans and reports point to the current source tree for navigation; their earlier commit/build evidence remains historical. The clean build preserved all 27 existing test names and assertions (21 core + 6 app, no failures/errors/skips). The merged manifest resolves both application activities and the permission-usage alias/target under the new namespace; `aapt dump badging` confirms the built APK package. `apksigner verify --print-certs` verified the actual debug APK certificate; its fingerprint is deliberately not stored here. This local artifact does not establish the certificate of a separate installed or CI APK.
+
+This is a different Android app, not an in-place update of the previous app. Install the new APK as a new app; if removing the previous app, consider its local state first. Request Health Connect read grants and Google authorization again. Register a new Android OAuth package/certificate pair using `com.ny.my.health` and the **actual installed APK's SHA-1**, following the private certificate instructions below. The previous OAuth client does not apply automatically, and a local build certificate may differ from a CI artifact. Do not hardcode fingerprints or account/client identifiers.
+
+Previously created Drive folders/files may not be visible under the new client's `drive.file` authorization; visibility is not guaranteed even when names match. There is no automatic migration or deletion. Privately inspect ownership, access and contents in Drive, and manually clean up previous exports only after deciding what to retain. Do not publish health data or file/account identifiers. New-package install, launch, Health Connect grants, OAuth and Drive behavior remain pending actual device/account verification; earlier user observations do not prove them for this identity.
 
 ## Stack and official setup references
 
@@ -81,7 +89,7 @@ These steps are checks to perform privately in your own browser, not a diagnosis
    ```
 
    Read the **Signer #1 certificate SHA-1 digest** privately. For your own local build, `./gradlew :app:signingReport` from `android/` also lists the local variant certificate; it proves a match only if that key signed the installed APK. Do not substitute a SHA-256 digest.
-7. Open **Google Auth Platform → Clients → Create client → Android**. Enter package **`dev.nyeonu.healthapp`** and the actual APK signing certificate **SHA-1**, then create/save. Confirm the package/certificate pair matches that artifact. This authorization flow needs no web client secret embedded in the APK, downloaded credential JSON or hardcoded client secret.
+7. Open **Google Auth Platform → Clients → Create client → Android**. Enter package **`com.ny.my.health`** and the actual APK signing certificate **SHA-1**, then create/save. Confirm the package/certificate pair matches that artifact. This authorization flow needs no web client secret embedded in the APK, downloaded credential JSON or hardcoded client secret.
 8. Install that matching APK on the phone with compatible Google Play services. Open the app, verify Health Connect grants and private-folder opt-in, then choose **Sync now** and authorize with the same test-user account. **Continue upload** is a separate explicit action; use the synthetic checklist below before any real-record validation. Cancellation must report no success. Saving Cloud settings and compiling the APK do not prove authorization or upload.
 
 GitHub Actions may generate a fresh debug keystore on each runner/build, so its certificate may differ from your local build and later artifacts. Register the actual artifact's matching SHA-1 when needed. Updates installed over an existing app require the same signing key; a differently signed APK may require a separately considered reinstall and reset of local app state. Stable signing would need separately managed signing outside this PR. Never commit/upload signing keys, hardcode a fingerprint, automatically overwrite Cloud settings or share credentials. No account details, token, client secret or signing material needs to be sent to the assistant.

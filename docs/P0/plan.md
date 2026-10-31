@@ -66,7 +66,7 @@ Use the user's existing P0 instructions as the approved source specification. Th
 ## 2. 공통 설계
 
 ### 변경 파일
-All paths below are new unless explicitly marked modified in the task. Package: dev.nyeonu.healthapp; core package: dev.nyeonu.healthapp.core.
+All paths below are new unless explicitly marked modified in the task. Package: com.ny.my.health; core package: com.ny.my.health.core.
 ### 인터페이스
 ```kotlin
 // DataType — granted data categories
@@ -206,10 +206,10 @@ T2 완료 후 시작.
 
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
-  | `android/core/src/main/kotlin/dev/nyeonu/healthapp/core/Model.kt` | 신규 | Authorized snapshot domain and normalization |
-  | `android/core/src/main/kotlin/dev/nyeonu/healthapp/core/Ports.kt` | 신규 | Authorized snapshot domain and normalization |
-  | `android/core/src/main/kotlin/dev/nyeonu/healthapp/core/Normalization.kt` | 신규 | Authorized snapshot domain and normalization |
-  | `android/core/src/test/kotlin/dev/nyeonu/healthapp/core/NormalizationTest.kt` | 신규 | Authorized snapshot domain and normalization |
+  | `android/core/src/main/kotlin/com/ny/my/health/core/Model.kt` | 신규 | Authorized snapshot domain and normalization |
+  | `android/core/src/main/kotlin/com/ny/my/health/core/Ports.kt` | 신규 | Authorized snapshot domain and normalization |
+  | `android/core/src/main/kotlin/com/ny/my/health/core/Normalization.kt` | 신규 | Authorized snapshot domain and normalization |
+  | `android/core/src/test/kotlin/com/ny/my/health/core/NormalizationTest.kt` | 신규 | Authorized snapshot domain and normalization |
 
 - **인터페이스**: 2절 `DataType` 참조; 2절 `WeightMeasurement` 참조; 2절 `HeartRateSample` 참조; 2절 `SleepSession` 참조; 2절 `ExerciseSession` 참조; 2절 `HealthSnapshot` 참조; 2절 `NormalizedDay` 참조; 2절 `HealthReader` 참조; 2절 `Normalizer` 참조; 2절 `CsvFile` 참조; 2절 `CsvExporter` 참조; 2절 `DriveUploader` 참조; 2절 `SyncResult` 참조; 2절 `DayWindow` 참조; 2절 `DefaultNormalizer` 참조
 - **결정 로직**:
@@ -236,10 +236,10 @@ T3 완료 후 시작.
 
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
-  | `android/core/src/main/kotlin/dev/nyeonu/healthapp/core/VersionedCsvExporter.kt` | 신규 | Manual CSV synchronization |
-  | `android/core/src/main/kotlin/dev/nyeonu/healthapp/core/SyncCoordinator.kt` | 신규 | Manual CSV synchronization |
-  | `android/core/src/test/kotlin/dev/nyeonu/healthapp/core/CsvExporterTest.kt` | 신규 | Manual CSV synchronization |
-  | `android/core/src/test/kotlin/dev/nyeonu/healthapp/core/SyncCoordinatorTest.kt` | 신규 | Manual CSV synchronization |
+  | `android/core/src/main/kotlin/com/ny/my/health/core/VersionedCsvExporter.kt` | 신규 | Manual CSV synchronization |
+  | `android/core/src/main/kotlin/com/ny/my/health/core/SyncCoordinator.kt` | 신규 | Manual CSV synchronization |
+  | `android/core/src/test/kotlin/com/ny/my/health/core/CsvExporterTest.kt` | 신규 | Manual CSV synchronization |
+  | `android/core/src/test/kotlin/com/ny/my/health/core/SyncCoordinatorTest.kt` | 신규 | Manual CSV synchronization |
 
 - **인터페이스**: 2절 `CsvFile` 참조; 2절 `NormalizedDay` 참조; 2절 `CsvExporter` 참조; 2절 `VersionedCsvExporter` 참조; 2절 `SyncCoordinator` 참조; 2절 `SyncResult` 참조; 2절 `HealthReader` 참조; 2절 `Normalizer` 참조; 2절 `DriveUploader` 참조
 - **결정 로직**:
@@ -271,7 +271,7 @@ T3 완료 후 시작.
 
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
-  | `android/app/src/main/java/dev/nyeonu/healthapp/HealthConnectReader.kt` | 신규 | Foreground Health Connect adapter |
+  | `android/app/src/main/java/com/ny/my/health/HealthConnectReader.kt` | 신규 | Foreground Health Connect adapter |
 
 - **인터페이스**: 2절 `HealthConnectReader` 참조; 2절 `DayWindow` 참조; 2절 `HealthSnapshot` 참조; 2절 `DataType` 참조; 2절 `WeightMeasurement` 참조; 2절 `HeartRateSample` 참조; 2절 `SleepSession` 참조; 2절 `ExerciseSession` 참조
 - **결정 로직**:
@@ -295,9 +295,9 @@ T4 완료 후 시작.
 
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
-  | `android/core/src/main/kotlin/dev/nyeonu/healthapp/core/PrivateDriveUploader.kt` | 신규 | Private Drive idempotent upload |
-  | `android/core/src/test/kotlin/dev/nyeonu/healthapp/core/PrivateDriveUploaderTest.kt` | 신규 | Private Drive idempotent upload |
-  | `android/app/src/main/java/dev/nyeonu/healthapp/GoogleDriveTransport.kt` | 신규 | Private Drive idempotent upload |
+  | `android/core/src/main/kotlin/com/ny/my/health/core/PrivateDriveUploader.kt` | 신규 | Private Drive idempotent upload |
+  | `android/core/src/test/kotlin/com/ny/my/health/core/PrivateDriveUploaderTest.kt` | 신규 | Private Drive idempotent upload |
+  | `android/app/src/main/java/com/ny/my/health/GoogleDriveTransport.kt` | 신규 | Private Drive idempotent upload |
 
 - **인터페이스**: 2절 `PrivateDriveUploader` 참조; 2절 `DriveTransport` 참조; 2절 `DriveResponse` 참조; 2절 `DriveUploader` 참조; 2절 `CsvFile` 참조; 2절 `GoogleDriveTransport` 참조
 - **결정 로직**:
@@ -326,7 +326,7 @@ T2 완료 후 시작.
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
   | `android/app/src/main/AndroidManifest.xml` | 신규 | Health permission entry points |
-  | `android/app/src/main/java/dev/nyeonu/healthapp/PrivacyActivity.kt` | 신규 | Health permission entry points |
+  | `android/app/src/main/java/com/ny/my/health/PrivacyActivity.kt` | 신규 | Health permission entry points |
   | `android/app/src/main/res/values/strings.xml` | 신규 | Health permission entry points |
 
 - **인터페이스**: No shared type changes.
@@ -351,8 +351,8 @@ T4, T5, T6, T7 완료 후 시작.
 
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
-  | `android/app/src/main/java/dev/nyeonu/healthapp/MainActivity.kt` | 신규 | Compose manual consent and sync screen |
-  | `android/app/src/main/java/dev/nyeonu/healthapp/SyncViewModel.kt` | 신규 | Compose manual consent and sync screen |
+  | `android/app/src/main/java/com/ny/my/health/MainActivity.kt` | 신규 | Compose manual consent and sync screen |
+  | `android/app/src/main/java/com/ny/my/health/SyncViewModel.kt` | 신규 | Compose manual consent and sync screen |
 
 - **인터페이스**: 2절 `HealthConnectReader` 참조; 2절 `GoogleDriveTransport` 참조; 2절 `PrivateDriveUploader` 참조; 2절 `SyncCoordinator` 참조; 2절 `DayWindow` 참조; 2절 `DefaultNormalizer` 참조; 2절 `VersionedCsvExporter` 참조; 2절 `SyncResult` 참조
 - **결정 로직**:

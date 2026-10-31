@@ -2,12 +2,12 @@
 plan_id: PR-1-followup
 title: PR1 review corrections
 kind: single
-status: in_progress
+status: done
 author: Codex
 created: 2026-10-31
 target: nyeonu/health-app
 spec: spec.md
-spec_rev: 084e50b7254e7ed9871448258ba561264a69a1d7
+spec_rev: fd413c52c3f03ea13847aee4f3ebe229584c9604
 approval_basis: User requested handling all PR comments; comments explicitly request client replacement diagnostics and V1 design without SAF implementation.
 tasks:
   - id: T1
@@ -32,7 +32,7 @@ tasks:
     tier: standard  - id: T5
     title: User-requested application namespace migration
     depends_on: [T1, T2, T3, T4]
-    status: in_progress
+    status: done
     tier: light
 
 ---
@@ -71,8 +71,8 @@ OkHttp.enqueue and cancellation are verified with a local TLS server, no Android
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
   | `android/app/build.gradle.kts` | 수정 | PATCH-capable transport and local TLS tests |
-  | `android/app/src/main/java/dev/nyeonu/healthapp/GoogleDriveTransport.kt` | 수정 | PATCH-capable transport and local TLS tests |
-  | `android/app/src/test/java/dev/nyeonu/healthapp/GoogleDriveTransportTest.kt` | 신규 | PATCH-capable transport and local TLS tests |
+  | `android/app/src/main/java/com/ny/my/health/GoogleDriveTransport.kt` | 수정 | PATCH-capable transport and local TLS tests |
+  | `android/app/src/test/java/com/ny/my/health/GoogleDriveTransportTest.kt` | 신규 | PATCH-capable transport and local TLS tests |
 
 - **인터페이스**: 2절 `GoogleDriveTransport` 참조; 2절 `TransportStack` 참조
 - **결정 로직**: Replace HttpsURLConnection with OkHttp5.3.0 while keeping production GoogleDriveTransport(accessToken) and core DriveTransport unchanged. Add app test JUnit4.13.2 + mockwebserver5.3.0 + okhttp-tls5.3.0. Pure JVM app-unit tests need SDK but no device. Use actual local TLS server/real OkHttp calls; inject an internal test client/application interceptor to route already-validated Google URLs to local TLS server. Test client trusts its own HeldCertificate only; production uses system TLS and never enables test host/cleartext/trust bypass. Production restrict URI before adding Authorization, redirects includingSSL false, retryOnConnectionFailure false/authenticatorNONE, connect15s/read30s/write30s/wholecall60s, 1MiB successful response bound, no HTTP error body consumption/exposure, always close response. Execute asynchronously via suspendCancellableCoroutine with call.cancel on cancellation; cancellation never converts to generic failure or success. Redact IO/parse/provider messages and causes. Header token validation retained. Verify checked-in old JDK PATCH repro if feasible outside repo; no need to assert undocumented Android behavior. Actual Drive account behavior remains pending.
@@ -96,10 +96,10 @@ OkHttp.enqueue and cancellation are verified with a local TLS server, no Android
 
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
-  | `android/core/src/main/kotlin/dev/nyeonu/healthapp/core/AuthorizationDiagnostics.kt` | 신규 | Safe OAuth diagnostics |
-  | `android/core/src/test/kotlin/dev/nyeonu/healthapp/core/AuthorizationDiagnosticsTest.kt` | 신규 | Safe OAuth diagnostics |
-  | `android/app/src/main/java/dev/nyeonu/healthapp/MainActivity.kt` | 수정 | Safe OAuth diagnostics |
-  | `android/app/src/main/java/dev/nyeonu/healthapp/SyncViewModel.kt` | 수정 | Safe OAuth diagnostics |
+  | `android/core/src/main/kotlin/com/ny/my/health/core/AuthorizationDiagnostics.kt` | 신규 | Safe OAuth diagnostics |
+  | `android/core/src/test/kotlin/com/ny/my/health/core/AuthorizationDiagnosticsTest.kt` | 신규 | Safe OAuth diagnostics |
+  | `android/app/src/main/java/com/ny/my/health/MainActivity.kt` | 수정 | Safe OAuth diagnostics |
+  | `android/app/src/main/java/com/ny/my/health/SyncViewModel.kt` | 수정 | Safe OAuth diagnostics |
 
 - **인터페이스**: 2절 `AuthorizationDiagnostics` 참조
 - **결정 로직**: Introduce SDK-free pure diagnostic classification/messages in core, wire actual GIS callbacks in Activity and ViewModel. Distinguish Activity RESULT_CANCELED and task cancellation, ApiException.statusCode (numeric only, no .message/statusMessage/Throwable text), missing access token, invalid token and missing drive.file scope; handle missing intent/result/resolution and foreground departure as safe fixed categories rather than misleading OAuth cancellation. Health permission launcher failure must not be labelled Google API failure. Preserve same OAuth scope/consent flow, foreground continuation, token memory clearing, busy safeguards, pendingConsent/readyToUpload and no success on any failed authorization. Existing begin/continue date fix retained. No logging of tokens/accounts/CSV; diagnosis must not accept raw exception text. Status10 suggests checking package/certificate/test user config, not assert a proven cause. Pure classifier should be actually used by callback/authorization-result paths, not disconnected test-only helper.
@@ -215,3 +215,5 @@ Transport implementation/dependency can be reverted in isolation, but do not sil
 Current combined verification: 21 core +6 app local TLS tests, zero failure/error/skip; APK and lint PASS in1m1s (58tasks20executed38cache). Lint0errors11warnings;117runtime Maven coordinates queriedOSV: unchangedGuava3matches, no newOkHttp/Okio match. Source account/device remains pending.
 
 Additional user authorization received during final PR recheck: comment6538195319 explicitly requests package migration in this P0 PR; no V1 implementation. T5 is a new independent user requirement, not a reset of T1/T4 recovery budgets.
+
+T5 verified clean59tasks1m24s,27tests0failure/error/skip,lint0errors11warnings; aapt/mergedmanifestcom.ny.my.health, source-only exactmapping independently confirmed. Actualnew-identitydevice/accountchecks pending.

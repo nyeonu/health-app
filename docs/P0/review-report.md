@@ -14,7 +14,7 @@
 
 ## Suggestion
 
-- `android/app/src/main/java/dev/nyeonu/healthapp/HealthConnectReader.kt:61`: 심박 sample budget을 페이지 수집 도중 계산하면 초과 입력을 더 일찍 거부할 수 있다. 현재는 page/record 상한 아래에서 모두 수집한 뒤 nested samples를 센다. 실제 메모리 장애를 측정하거나 재현하지 않았으므로 P0 차단 문제로 판정하지 않았다. 대량 입력/실기기 테스트와 함께 후속 개선한다.
+- `android/app/src/main/java/com/ny/my/health/HealthConnectReader.kt:61`: 심박 sample budget을 페이지 수집 도중 계산하면 초과 입력을 더 일찍 거부할 수 있다. 현재는 page/record 상한 아래에서 모두 수집한 뒤 nested samples를 센다. 실제 메모리 장애를 측정하거나 재현하지 않았으므로 P0 차단 문제로 판정하지 않았다. 대량 입력/실기기 테스트와 함께 후속 개선한다.
 
 ## 검증 확인
 

@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "dev.nyeonu.healthapp"
+    namespace = "com.ny.my.health"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "dev.nyeonu.healthapp"
+        applicationId = "com.ny.my.health"
         minSdk = 28
         targetSdk = 36
         versionCode = 1

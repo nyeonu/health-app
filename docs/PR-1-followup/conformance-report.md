@@ -17,7 +17,7 @@
 
 ## Executed evidence
 
-Initial independent execution covered 21 core + 5 app tests. After final quality review found a server-directed write replay path, the corrected current source was independently revalidated with `:app:testDebugUnitTest --tests dev.nyeonu.healthapp.GoogleDriveTransportTest --rerun-tasks`: **31s, 26 tasks executed, 6 TLS tests, zero failures/errors/skips**. Core/OAuth and SAF source remained unchanged and their earlier independent evidence was verified against the diff. Root full verification separately confirms all 27 tests, APK and lint pass. Assertions and current XML were read, not just names.
+Initial independent execution covered 21 core + 5 app tests. After final quality review found a server-directed write replay path, the corrected current source was independently revalidated with `:app:testDebugUnitTest --tests com.ny.my.health.GoogleDriveTransportTest --rerun-tasks`: **31s, 26 tasks executed, 6 TLS tests, zero failures/errors/skips**. Core/OAuth and SAF source remained unchanged and their earlier independent evidence was verified against the diff. Root full verification separately confirms all 27 tests, APK and lint pass. Assertions and current XML were read, not just names.
 
 Separate `:app:assembleDebug :app:lintDebug` succeeded with 1 task executed / 49 cached; Lint has 0 errors / 11 warnings. This is not described as a new full APK rebuild. All production source is compiled. Original CI commits `df57843` and `d008d6f` are ancestors; SDK setup and APK artifacts preserved, app tests/report path appended.
 
