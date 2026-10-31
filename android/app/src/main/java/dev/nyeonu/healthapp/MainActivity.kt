@@ -27,7 +27,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
+import dev.nyeonu.healthapp.core.AuthorizationDiagnostics.Failure
 import dev.nyeonu.healthapp.core.DayWindow
 
 class MainActivity : ComponentActivity() {
@@ -41,14 +43,16 @@ class MainActivity : ComponentActivity() {
     private val googleConsent = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult(),
     ) { result ->
-        if (result.resultCode != RESULT_OK || result.data == null) {
-            model.consentFailed()
-        } else {
-            try {
+        when {
+            result.resultCode == RESULT_CANCELED -> model.authorizationFailed(Failure.CONSENT_CANCELED)
+            result.resultCode != RESULT_OK -> model.authorizationFailed(Failure.UNEXPECTED_RESULT)
+            result.data == null -> model.authorizationFailed(Failure.MISSING_INTENT)
+            else -> try {
                 val authorization = authorizationClient.getAuthorizationResultFromIntent(result.data)
-                model.authorizationReturned(authorization.accessToken, authorization.grantedScopes)
-            } catch (_: Exception) {
-                model.consentFailed()
+                if (authorization == null) model.authorizationFailed(Failure.MISSING_RESULT)
+                else model.authorizationReturned(authorization.accessToken, authorization.grantedScopes)
+            } catch (failure: Exception) {
+                reportGoogleFailure(failure)
             }
         }
     }
@@ -82,7 +86,7 @@ class MainActivity : ComponentActivity() {
                                     try {
                                         healthConsent.launch(HealthConnectReader.permissions)
                                     } catch (_: Exception) {
-                                        model.consentFailed()
+                                        model.healthConsentLaunchFailed()
                                     }
                                 }
                             },
@@ -143,27 +147,35 @@ class MainActivity : ComponentActivity() {
                 .build()
             authorizationClient.authorize(request)
                 .addOnSuccessListener { result ->
-                    if (result.hasResolution()) {
+                    if (result == null) {
+                        model.authorizationFailed(Failure.MISSING_RESULT)
+                    } else if (result.hasResolution()) {
                         // Never launch stale external consent after this activity leaves the foreground.
                         if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                            model.consentFailed()
+                            model.authorizationFailed(Failure.FOREGROUND_DEPARTURE)
                         } else {
                             try {
                                 val pendingIntent = result.pendingIntent
-                                if (pendingIntent == null) model.consentFailed()
+                                if (pendingIntent == null) model.authorizationFailed(Failure.MISSING_RESOLUTION)
                                 else googleConsent.launch(IntentSenderRequest.Builder(pendingIntent).build())
                             } catch (_: Exception) {
-                                model.consentFailed()
+                                model.authorizationFailed(Failure.RESOLUTION_LAUNCH_FAILED)
                             }
                         }
                     } else {
                         model.authorizationReturned(result.accessToken, result.grantedScopes)
                     }
                 }
-                .addOnFailureListener { model.consentFailed() }
-                .addOnCanceledListener { model.consentFailed() }
-        } catch (_: Exception) {
-            model.consentFailed()
+                .addOnFailureListener { failure -> reportGoogleFailure(failure) }
+                .addOnCanceledListener { model.authorizationFailed(Failure.TASK_CANCELED) }
+        } catch (failure: Exception) {
+            reportGoogleFailure(failure)
         }
+    }
+
+    private fun reportGoogleFailure(failure: Exception) {
+        // SDK exception text can contain private details. Only the numeric status crosses this boundary.
+        if (failure is ApiException) model.authorizationFailed(Failure.GOOGLE_API, failure.statusCode)
+        else model.authorizationFailed(Failure.UNKNOWN)
     }
 }

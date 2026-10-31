@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.health.connect.client.HealthConnectClient
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.nyeonu.healthapp.core.AuthorizationDiagnostics
+import dev.nyeonu.healthapp.core.AuthorizationDiagnostics.Failure
 import dev.nyeonu.healthapp.core.DataType
 import dev.nyeonu.healthapp.core.DayWindow
 import dev.nyeonu.healthapp.core.DefaultNormalizer
@@ -136,8 +138,9 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     internal fun authorizationReturned(token: String?, scopes: List<String>) {
         if (!mutableState.value.pendingConsent) return
-        if (token.isNullOrEmpty() || token.any { it.code !in 33..126 } || DRIVE_SCOPE !in scopes) {
-            consentFailed()
+        val failure = AuthorizationDiagnostics.resultFailure(token, DRIVE_SCOPE in scopes)
+        if (failure != null) {
+            authorizationFailed(failure)
             return
         }
         accessToken = token
@@ -147,11 +150,19 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    internal fun consentFailed() {
+    internal fun healthConsentLaunchFailed() {
         accessToken = null
         mutableState.value = mutableState.value.copy(
             pendingConsent = false, readyToUpload = false,
-            message = "동의가 취소되었거나 권한을 확인하지 못했습니다. 성공한 동기화가 아닙니다.",
+            message = "HEALTH_CONSENT_LAUNCH_FAILED: Health Connect 권한 화면을 열지 못했습니다. 다시 시도해 주세요.",
+        )
+    }
+
+    internal fun authorizationFailed(failure: Failure, statusCode: Int? = null) {
+        accessToken = null
+        mutableState.value = mutableState.value.copy(
+            pendingConsent = false, readyToUpload = false,
+            message = AuthorizationDiagnostics.message(failure, statusCode),
         )
     }
 
