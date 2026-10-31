@@ -41,3 +41,9 @@ private/
 # OS
 .DS_Store
 Thumbs.db
+
+# Agent execution and local tooling
+docs/*/briefs/
+.tooling/
+android-sdk/
+*.tmp
