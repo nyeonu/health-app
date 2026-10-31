@@ -12,6 +12,7 @@ import com.ny.my.health.core.DefaultNormalizer
 import com.ny.my.health.core.HealthReader
 import com.ny.my.health.core.PrivateDriveUploader
 import com.ny.my.health.core.SyncCoordinator
+import com.ny.my.health.core.SyncDiagnostics
 import com.ny.my.health.core.SyncStatus
 import com.ny.my.health.core.VersionedCsvExporter
 import java.time.Clock
@@ -200,9 +201,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                     SyncStatus.SUCCESS -> "허용된 ${coverage.size}/5개 항목 범위의 내보내기 업로드 확인됨. 비어 있거나 미허용인 데이터는 포함하지 않습니다."
                     SyncStatus.EMPTY -> "EMPTY: 허용된 범위에서 내보낼 기록이 없습니다. 업로드 성공이 아닙니다."
                     SyncStatus.PERMISSION_REQUIRED -> "PERMISSION_REQUIRED: 읽기 권한이 없습니다."
-                    SyncStatus.FAILED -> if (result.uploadedFiles > 0) {
-                        "부분 업로드 후 실패: ${result.uploadedFiles}개 파일만 확인됨. 전체 작업은 성공하지 않았습니다."
-                    } else "실패: 읽기 또는 업로드를 완료하지 못했습니다. 권한과 연결을 확인해 주세요."
+                    SyncStatus.FAILED -> SyncDiagnostics.failureMessage(result)
                 }
                 val previous = mutableState.value
                 mutableState.value = previous.copy(

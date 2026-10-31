@@ -117,6 +117,47 @@ class PrivateDriveUploaderTest {
     }
 
     @Test
+    fun `HTTP failures identify the exact Drive operation without exposing provider data or retrying`() = runBlocking {
+        val responses = listOf(myDrive(), listed(), response(root), listed(), response(dataset), listed(), response(remote))
+        val stages = listOf(DriveOperation.ROOT_LOOKUP, DriveOperation.APP_FOLDER_LOOKUP, DriveOperation.APP_FOLDER_CREATE,
+            DriveOperation.DATASET_FOLDER_LOOKUP, DriveOperation.DATASET_FOLDER_CREATE, DriveOperation.FILE_LOOKUP, DriveOperation.FILE_CREATE)
+        for ((index, stage) in stages.withIndex()) {
+            val fake = Fake(*(responses.take(index) + DriveResponse(403, "sensitive-provider-body")).toTypedArray())
+            val error = rejected(fake) as DriveUploadException
+            assertEquals(DriveFailureDetails(stage, DriveFailureKind.HTTP, 403), error.details)
+            assertEquals(index + 1, fake.calls.size)
+            assertFalse(error.toString().contains("sensitive-provider-body"))
+            assertNull(error.cause)
+        }
+        val fake = Fake(myDrive(), listed(root), listed(dataset), listed(remote), DriveResponse(401, "sensitive-provider-body"))
+        assertEquals(DriveFailureDetails(DriveOperation.FILE_UPDATE, DriveFailureKind.HTTP, 401), (rejected(fake) as DriveUploadException).details)
+        assertEquals(5, fake.calls.size)
+    }
+
+    @Test
+    fun `Network invalid response and rejected private target have distinct safe diagnostics`() = runBlocking {
+        val transport = object : DriveTransport {
+            override suspend fun execute(method: String, url: String, contentType: String?, body: ByteArray?): DriveResponse {
+                throw java.io.IOException("sensitive-token-url", IllegalStateException("sensitive-cause"))
+            }
+        }
+        val network = runCatching { PrivateDriveUploader(transport).upsert(file) }.exceptionOrNull() as DriveUploadException
+        assertEquals(DriveFailureDetails(DriveOperation.ROOT_LOOKUP, DriveFailureKind.NETWORK), network.details)
+        assertNull(network.cause)
+        assertFalse(network.toString().contains("sensitive"))
+        val malformed = rejected(Fake(DriveResponse(200, "sensitive-invalid-json"))) as DriveUploadException
+        assertEquals(DriveFailureDetails(DriveOperation.ROOT_LOOKUP, DriveFailureKind.RESPONSE_INVALID), malformed.details)
+        val shared = JsonObject(root + ("shared" to JsonPrimitive(true)))
+        val unsafe = rejected(Fake(myDrive(), listed(shared))) as DriveUploadException
+        assertEquals(DriveFailureDetails(DriveOperation.APP_FOLDER_LOOKUP, DriveFailureKind.TARGET_REJECTED), unsafe.details)
+        val cancelled = kotlinx.coroutines.CancellationException("synthetic")
+        val cancelledTransport = object : DriveTransport {
+            override suspend fun execute(method: String, url: String, contentType: String?, body: ByteArray?): DriveResponse = throw cancelled
+        }
+        assertSame(cancelled, runCatching { PrivateDriveUploader(cancelledTransport).upsert(file) }.exceptionOrNull())
+    }
+
+    @Test
     fun `Invalid export paths are rejected before network access`() {
         for (path in listOf("../2026-10-30.csv", "daily/2026-02-30.csv", "daily/2026-1-01.csv", "unknown/2026-10-30.csv", "/daily/2026-10-30.csv", "daily/2026-10-30.csv?x=1", "daily/2026-10-30.csv/extra")) {
             val fake = Fake()

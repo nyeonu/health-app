@@ -60,6 +60,7 @@ data class SyncResult(
     val status: SyncStatus,
     val uploadedFiles: Int = 0,
     val errorCode: String? = null,
+    val driveFailure: DriveFailureDetails? = null,
 )
 
 enum class SyncStatus { SUCCESS, EMPTY, PERMISSION_REQUIRED, FAILED }

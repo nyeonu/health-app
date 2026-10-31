@@ -119,3 +119,5 @@ Storage choice/coexistence is [documented as V1 design with seven pending Galaxy
 
 ## Phase reporting template
 For each phase record: implemented files, tests and results, manual/device verification, remaining blockers, and the next smallest task.
+
+Latest P0 follow-up: [safe sync diagnostic reporting](PR-1-sync-diagnostics/report.md) passes 31 JVM tests, APK build and lint. User-reported read coverage advanced to all five types, with a subsequent generic failure and zero confirmed uploads. Root cause, private Drive create/update and ChatGPT content-access gates remain open.

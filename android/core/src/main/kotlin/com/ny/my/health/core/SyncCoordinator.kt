@@ -45,6 +45,8 @@ class SyncCoordinator(
             return SyncResult(SyncStatus.SUCCESS, uploadedFiles)
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (safe: DriveUploadException) {
+            return SyncResult(SyncStatus.FAILED, uploadedFiles, errorCode, safe.details)
         } catch (_: Exception) {
             return SyncResult(SyncStatus.FAILED, uploadedFiles, errorCode)
         }

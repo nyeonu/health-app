@@ -1,8 +1,10 @@
 package com.ny.my.health.core
 
+import java.io.IOException
 import java.net.URLEncoder
 import java.time.LocalDate
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
@@ -29,33 +31,35 @@ class PrivateDriveUploader(private val transport: DriveTransport) : DriveUploade
         require(runCatching { LocalDate.parse(name.removeSuffix(".csv")) }.isSuccess) { "Invalid export date" }
         val bytes = file.content.toByteArray(Charsets.UTF_8)
         require(bytes.size <= 5_000_000) { "Export exceeds simple upload limit" }
-        val myDrive = id(request("GET", "$base/root?fields=id"))
-        val root = folder("HealthApp", myDrive)
-        val parent = folder(dataset, root)
-        val existing = find(name, parent, "text/csv")
-        if (existing != null) {
+        val myDrive = operation(DriveOperation.ROOT_LOOKUP) { id(request(DriveOperation.ROOT_LOOKUP, "GET", "$base/root?fields=id")) }
+        val root = folder("HealthApp", myDrive, DriveOperation.APP_FOLDER_LOOKUP, DriveOperation.APP_FOLDER_CREATE)
+        val parent = folder(dataset, root, DriveOperation.DATASET_FOLDER_LOOKUP, DriveOperation.DATASET_FOLDER_CREATE)
+        val existing = operation(DriveOperation.FILE_LOOKUP) { find(DriveOperation.FILE_LOOKUP, name, parent, "text/csv") }
+        if (existing != null) operation(DriveOperation.FILE_UPDATE) {
             val remoteId = id(existing)
-            val confirmed = request("PATCH", "$upload/$remoteId?uploadType=media&fields=${encode(fields)}", "text/csv; charset=UTF-8", bytes)
+            val confirmed = request(DriveOperation.FILE_UPDATE, "PATCH", "$upload/$remoteId?uploadType=media&fields=${encode(fields)}", "text/csv; charset=UTF-8", bytes)
             validate(confirmed, name, parent, "text/csv")
             check(id(confirmed) == remoteId) { "Unconfirmed Drive update" }
             remoteId
-        } else {
+        } else operation(DriveOperation.FILE_CREATE) {
             // One multipart create, never a retried POST or a separate empty CSV create.
             val boundary = "healthapp-${UUID.randomUUID()}"
             val prefix = "--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata(name, parent, "text/csv")}\r\n--$boundary\r\nContent-Type: text/csv; charset=UTF-8\r\n\r\n"
             val body = prefix.toByteArray(Charsets.UTF_8) + bytes + "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
-            val confirmed = request("POST", "$upload?uploadType=multipart&ignoreDefaultVisibility=true&fields=${encode(fields)}", "multipart/related; boundary=$boundary", body)
+            val confirmed = request(DriveOperation.FILE_CREATE, "POST", "$upload?uploadType=multipart&ignoreDefaultVisibility=true&fields=${encode(fields)}", "multipart/related; boundary=$boundary", body)
             validate(confirmed, name, parent, "text/csv")
             id(confirmed)
         }
     }
 
-    private suspend fun folder(name: String, parent: String): String {
-        val found = find(name, parent, folderMime)
+    private suspend fun folder(name: String, parent: String, lookup: DriveOperation, create: DriveOperation): String {
+        val found = operation(lookup) { find(lookup, name, parent, folderMime) }
         if (found != null) return id(found)
-        val created = request("POST", "$base?ignoreDefaultVisibility=true&fields=${encode(fields)}", "application/json; charset=UTF-8", metadata(name, parent, folderMime).toString().toByteArray(Charsets.UTF_8))
-        validate(created, name, parent, folderMime)
-        return id(created)
+        return operation(create) {
+            val created = request(create, "POST", "$base?ignoreDefaultVisibility=true&fields=${encode(fields)}", "application/json; charset=UTF-8", metadata(name, parent, folderMime).toString().toByteArray(Charsets.UTF_8))
+            validate(created, name, parent, folderMime)
+            id(created)
+        }
     }
 
     private fun metadata(name: String, parent: String, mime: String) = buildJsonObject {
@@ -65,7 +69,7 @@ class PrivateDriveUploader(private val transport: DriveTransport) : DriveUploade
         putJsonObject("appProperties") { put("healthApp", "p0-v1") }
     }
 
-    private suspend fun find(name: String, parent: String, mime: String): JsonObject? {
+    private suspend fun find(operation: DriveOperation, name: String, parent: String, mime: String): JsonObject? {
         // name and parent are allowlisted before interpolation; URI encoding is separate.
         val q = "'$parent' in parents and name = '$name' and trashed = false and appProperties has { key='healthApp' and value='p0-v1' }"
         var page: String? = null
@@ -73,7 +77,7 @@ class PrivateDriveUploader(private val transport: DriveTransport) : DriveUploade
         val seen = mutableSetOf<String>()
         do {
             val url = "$base?corpora=user&spaces=drive&q=${encode(q)}&fields=${encode("nextPageToken,incompleteSearch,files($fields)")}&pageSize=100" + (page?.let { "&pageToken=${encode(it)}" } ?: "")
-            val result = request("GET", url)
+            val result = request(operation, "GET", url)
             check(result["incompleteSearch"] == null || result["incompleteSearch"] == JsonPrimitive(false)) { "Incomplete Drive lookup" }
             val entries = result["files"] as? JsonArray ?: error("Malformed Drive lookup")
             for (entry in entries) {
@@ -109,12 +113,25 @@ class PrivateDriveUploader(private val transport: DriveTransport) : DriveUploade
         return id
     }
 
-    private suspend fun request(method: String, url: String, type: String? = null, bytes: ByteArray? = null): JsonObject {
+    private suspend fun request(operation: DriveOperation, method: String, url: String, type: String? = null, bytes: ByteArray? = null): JsonObject {
         val response = transport.execute(method, url, type, bytes)
-        check(response.status in 200..299) { "Drive request failed (HTTP ${response.status})" }
+        if (response.status !in 200..299) throw DriveUploadException(DriveFailureDetails(operation, DriveFailureKind.HTTP, response.status.takeIf { it in 100..599 }))
         // Never attach an API body, CSV, or parser exception to an outward failure.
         return runCatching { Json.parseToJsonElement(response.body) as? JsonObject }.getOrNull()
-            ?: error("Malformed Drive response")
+            ?: throw DriveUploadException(DriveFailureDetails(operation, DriveFailureKind.RESPONSE_INVALID))
+    }
+
+    private suspend fun <T> operation(operation: DriveOperation, block: suspend () -> T): T = try {
+        block()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (safe: DriveUploadException) {
+        throw safe
+    } catch (_: IOException) {
+        throw DriveUploadException(DriveFailureDetails(operation, DriveFailureKind.NETWORK))
+    } catch (_: Exception) {
+        // No provider metadata, file content, IDs or exception causes cross this boundary.
+        throw DriveUploadException(DriveFailureDetails(operation, DriveFailureKind.TARGET_REJECTED))
     }
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
