@@ -54,7 +54,7 @@ schema_version,record_id,source_package,start_time,end_time,duration_min
 ```
 Sleep stages are not exported in P0. Sleep and exercise `duration_min` are elapsed time between the **full original** start/end instants, expressed in minutes; sessions overlapping the day are included without clipping. A session spanning midnight can therefore occur in adjacent date exports. Do not sum these files as daily totals or deduplicate by date alone; retain `(source_package, record_id)` and original bounds.
 
-Heart-rate samples are filtered to the selected day and preserve their parent record identity. P0 reads this bounded recent day on explicit foreground request; it does not implement continuous raw heart-rate collection. Details sort deterministically by event time/bounds, source, record ID and measurement/type as needed. All timestamps serialize as UTC `Z`; the summary identifies the reporting zone.
+Heart-rate samples are filtered to the selected day and preserve their parent record identity. P0 exports this bounded recent day on explicit foreground request; it does not implement continuous raw heart-rate collection. To find overlapping intervals that started earlier, raw sleep/exercise/heart-rate lookup scans authorized record starts before day-end under the existing page/sample bounds, then filters the output to this contract. It does not assume a maximum session length or request additional history permission. Large authorized history can cause an explicit limit failure even when the exported day would be small; see the [reader correction and validation limits](P0/reader-boundary-fix.md). Details sort deterministically by event time/bounds, source, record ID and measurement/type as needed. All timestamps serialize as UTC `Z`; the summary identifies the reporting zone.
 
 ## Idempotency and update semantics
 - Day-scoped file paths are deterministic; re-export replaces the target day's file rather than creating repeated copies.
@@ -64,7 +64,7 @@ Heart-rate samples are filtered to the selected day and preserve their parent re
 - Future incremental sync requires deletion handling, token-expiry recovery, and changes to past-day records.
 
 ## P0 limits and partial outcomes
-- Reads are bounded to 100 pages of up to 1,000 records per paginated type and 100,000 heart-rate samples. Limit exhaustion fails explicitly; data is not silently truncated.
+- Reads are bounded to 100 pages of up to 1,000 records per paginated type and 100,000 inspected heart-rate samples. The heart-rate running total is checked when each page arrives, before requesting another page; only target-day domain samples are retained across pages. A single SDK response is already allocated before this check, so this is not an absolute heap-byte bound. Limit exhaustion fails explicitly; data is not silently truncated. See [per-page budget evidence](P0/reader-sample-budget-fix.md).
 - Each encoded CSV must be at most 5,000,000 bytes for the simple upload path. Oversized exports fail.
 - Multi-file upload is not transactional: failure/cancellation may leave earlier confirmed files or an indeterminate in-flight remote write. A failed job does not advance last-success state. No automatic POST retry is performed; manually retry and verify remote state.
 - Same-instance operations are serialized. Cross-instance concurrent creation and a sharing change racing privacy checks remain limitations; device/account checks must verify actual IDs and privacy.

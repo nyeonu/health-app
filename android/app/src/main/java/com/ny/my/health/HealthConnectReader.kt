@@ -20,14 +20,21 @@ import com.ny.my.health.core.HealthSnapshot
 import com.ny.my.health.core.HeartRateSample
 import com.ny.my.health.core.SleepSession
 import com.ny.my.health.core.WeightMeasurement
+import java.time.Instant
 import java.time.LocalDate
 import kotlin.reflect.KClass
 
-/** Foreground-only, one-day reader. The P0 caller requests yesterday in Asia/Seoul. */
-class HealthConnectReader(context: Context) : HealthReader {
-    private val context = context.applicationContext
+/** Foreground-only daily export; interval lookup also covers earlier authorized record starts. */
+class HealthConnectReader internal constructor(
+    private val clientProvider: () -> HealthConnectClient,
+    private val sdkStatus: () -> Int,
+) : HealthReader {
+    constructor(context: Context) : this(
+        context.applicationContext.let { app -> { HealthConnectClient.getOrCreate(app) } },
+        context.applicationContext.let { app -> { HealthConnectClient.getSdkStatus(app) } },
+    )
 
-    fun availability(): Int = HealthConnectClient.getSdkStatus(context)
+    fun availability(): Int = sdkStatus()
 
     suspend fun grantedPermissions(): Set<String> = availableClient()
         .permissionController.getGrantedPermissions()
@@ -40,6 +47,11 @@ class HealthConnectReader(context: Context) : HealthReader {
         val start = DayWindow.start(date)
         val end = DayWindow.end(date)
         val window = TimeRangeFilter.between(start, end)
+        // Raw interval queries can select by start time. Search authorized history before
+        // day-end, then filter overlaps: no fixed lookback can cover arbitrary session lengths.
+        // Provider history permissions still apply; page/sample limits fail rather than truncate.
+        val intervalWindow = TimeRangeFilter.before(end)
+        fun overlaps(from: Instant, until: Instant) = from < end && until > start
 
         // Health Connect resolves provider priority; raw StepsRecord sums can double count.
         val steps = if (DataType.STEPS in grantedTypes) {
@@ -60,35 +72,42 @@ class HealthConnectReader(context: Context) : HealthReader {
         val heartRateSamples = if (DataType.HEART_RATE in grantedTypes) {
             val samples = mutableListOf<HeartRateSample>()
             var sampleCount = 0L
-            readAll(client, HeartRateRecord::class, window).forEach { record ->
-                sampleCount += record.samples.size
+            readPages(client, HeartRateRecord::class, intervalWindow) { page ->
+                // Check the received page before processing it or requesting another one.
+                sampleCount += page.sumOf { it.samples.size.toLong() }
                 check(sampleCount <= MAX_HEART_RATE_SAMPLES) { "Health Connect sample limit exceeded" }
-                record.samples.filter { it.time >= start && it.time < end }.forEach { sample ->
-                    samples += HeartRateSample(
-                        record.metadata.id, record.metadata.dataOrigin.packageName,
-                        sample.time, sample.beatsPerMinute,
-                    )
+                page.forEach { record ->
+                    record.samples.forEach { sample ->
+                        if (sample.time >= start && sample.time < end) {
+                            samples += HeartRateSample(
+                                record.metadata.id, record.metadata.dataOrigin.packageName,
+                                sample.time, sample.beatsPerMinute,
+                            )
+                        }
+                    }
                 }
             }
             samples
         } else emptyList()
 
         val sleepSessions = if (DataType.SLEEP in grantedTypes) {
-            readAll(client, SleepSessionRecord::class, window).map { record ->
-                SleepSession(
-                    record.metadata.id, record.metadata.dataOrigin.packageName,
-                    record.startTime, record.endTime,
-                )
-            }
+            readAll(client, SleepSessionRecord::class, intervalWindow)
+                .filter { overlaps(it.startTime, it.endTime) }.map { record ->
+                    SleepSession(
+                        record.metadata.id, record.metadata.dataOrigin.packageName,
+                        record.startTime, record.endTime,
+                    )
+                }
         } else emptyList()
 
         val exerciseSessions = if (DataType.EXERCISE in grantedTypes) {
-            readAll(client, ExerciseSessionRecord::class, window).map { record ->
-                ExerciseSession(
-                    record.metadata.id, record.metadata.dataOrigin.packageName,
-                    record.startTime, record.endTime, record.exerciseType,
-                )
-            }
+            readAll(client, ExerciseSessionRecord::class, intervalWindow)
+                .filter { overlaps(it.startTime, it.endTime) }.map { record ->
+                    ExerciseSession(
+                        record.metadata.id, record.metadata.dataOrigin.packageName,
+                        record.startTime, record.endTime, record.exerciseType,
+                    )
+                }
         } else emptyList()
 
         // Empty grants remain explicit so the coordinator reports PERMISSION_REQUIRED, not EMPTY.
@@ -100,7 +119,7 @@ class HealthConnectReader(context: Context) : HealthReader {
 
     private fun availableClient(): HealthConnectClient {
         check(availability() == HealthConnectClient.SDK_AVAILABLE) { "Health Connect unavailable" }
-        return HealthConnectClient.getOrCreate(context)
+        return clientProvider()
     }
 
     private suspend fun <T : Record> readAll(
@@ -109,6 +128,16 @@ class HealthConnectReader(context: Context) : HealthReader {
         window: TimeRangeFilter,
     ): List<T> {
         val records = mutableListOf<T>()
+        readPages(client, recordType, window) { records += it }
+        return records
+    }
+
+    private suspend fun <T : Record> readPages(
+        client: HealthConnectClient,
+        recordType: KClass<T>,
+        window: TimeRangeFilter,
+        consume: (List<T>) -> Unit,
+    ) {
         val seenTokens = mutableSetOf<String>()
         var token: String? = null
         repeat(MAX_PAGES) {
@@ -121,8 +150,9 @@ class HealthConnectReader(context: Context) : HealthReader {
                 ),
             )
             check(response.records.size <= PAGE_SIZE) { "Health Connect page size exceeded" }
-            records += response.records
-            val next = response.pageToken ?: return records
+            consume(response.records)
+            val next = response.pageToken
+            if (next.isNullOrEmpty()) return
             check(seenTokens.add(next)) { "Health Connect repeated page token" }
             token = next
         }
