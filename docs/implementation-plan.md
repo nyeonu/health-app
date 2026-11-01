@@ -53,7 +53,7 @@ Downloaded CI APKs now require the fixed owner key; PR runs never receive signin
 
 ## V1 — Android MVP
 
-**Preparation only:** [V1 foundation specification](V1/spec.md) proposes durable manual sync history as the first slice. It is `draft`, introduces no application changes, and does not waive P0 gates or approve scheduling/backfill/SAF implementation. PR automation reviews code/document changes; requirement and execution-plan approvals remain explicit workflow states.
+**Specification approved (2026-11-01 KST):** [V1 foundation specification](V1/spec.md) approves durable manual sync history as the first slice. **Next: prepare and review a bounded execution plan.** This approval introduces no application changes, does not waive unresolved P0 acceptance gates, and does not authorize implementation, scheduling/backfill/SAF, or automatic execution. The execution plan requires separate approval before implementation.
 
 **Current security follow-up:** [review of merged source `7478113`](P0/current-security-disposition.md) records the addressed historical Guava finding, fresh unchanged 121-coordinate OSV graph with zero matches and an 81-commit secret scan with no leaks found. Device gates remain open. Earlier review/checklist paragraphs below retain historical observations; their pending wording must not override the current acceptance table.
 
