@@ -1,8 +1,9 @@
 ---
 spec_id: V1
 title: V1 foundation — durable manual sync history
-status: draft
+status: approved
 created: 2026-11-01
+approved: 2026-11-01
 ---
 
 # V1 foundation — durable manual sync history
@@ -24,7 +25,7 @@ created: 2026-11-01
 - Keep earlier success when a later attempt fails, is empty, loses permission or is interrupted; show limited authorized coverage without calling it a complete five-category day.
 - Restructure the existing Compose screen into a status-first home with expandable details/settings; define explicit local-history deletion and recovery states.
 
-This is preparatory specification work. Implementation entry requires explicit P0 gate disposition and approval of this specification and its later execution plan. It does not declare P0 complete. The first slice is not completion of the full [V1 roadmap](../implementation-plan.md).
+This specification is approved for the bounded first V1 slice. Preparing its execution plan may proceed; implementation entry still requires explicit P0 gate disposition and separate execution-plan approval. It does not declare P0 complete. The first slice is not completion of the full [V1 roadmap](../implementation-plan.md).
 
 ### 제외
 
@@ -42,9 +43,9 @@ This is preparatory specification work. Implementation entry requires explicit P
 | Verified | `SyncUiState` and token live only in ViewModel memory; `lastAttempt` currently starts before Google authorization completes. | `android/app/src/main/java/com/ny/my/health/SyncViewModel.kt`. |
 | Verified | The coordinator exposes date-based execution and confirmed-file count, returning SUCCESS, EMPTY, PERMISSION_REQUIRED or FAILED; cancellation propagates. | `android/core/src/main/kotlin/com/ny/my/health/core/SyncCoordinator.kt` and `Model.kt`. |
 | Verified | App-private backup and cleartext are disabled; no existing durable sync-history store or automatic scheduler is present. | App manifest and app/core sources. |
-| Proposed design | One Material 3 home screen, expandable details/settings, and deletion only when no authorization/execution/history operation is active. | Proposed in this draft; visual approval remains pending. |
+| Proposed design | One Material 3 home screen, expandable details/settings, and deletion only when no authorization/execution/history operation is active. | Approved as specification-level design direction; visual mockups remain pending. |
 | Verified | The existing screen uses Material 3, a scrolling Column, text, buttons and a checkbox; detailed status and local forget share that screen. | `android/app/src/main/java/com/ny/my/health/MainActivity.kt`, inspected during this review. |
-| Proposed scope | Durable manual history is the first slice of V1; scheduling, backfill and SAF follow separately. | Existing roadmap requires durable status; owner approval of this draft confirms slice order. |
+| Proposed scope | Durable manual history is the first slice of V1; scheduling, backfill and SAF follow separately. | Existing roadmap requires durable status; owner approval of this specification confirms slice order. |
 | Risk | History cannot establish which Google account currently owns a remote export or whether every source record existed. | Do not persist account identities in this slice or use history to skip writes; UI must state its limited historical meaning. |
 | Breaking condition | Adding automatic execution, durable consent/tokens, account-bound coverage or another destination invalidates this slice's consent/identity assumptions. | Requires a separate approved specification before implementation. |
 | Verified | Prerequisite environment: JUnit 4/core coroutine tests, app local-TLS JVM tests, Compose instrumentation tests and SDK 36/JDK 21 tooling exist. | Existing test sources, Gradle files, `/workspace/tooling/run-health-command.py`. |
@@ -77,7 +78,7 @@ Restoration performs no health read or remote write. Only an actually started ex
 
 ### 화면 디자인 초안
 
-This is a proposed layout and copy contract, not an implemented screen or approved visual mockup. Reuse Compose Material 3 components; no new chart, navigation framework or design dependency is required by this specification.
+This is the approved specification-level layout and copy contract, not an implemented screen or finalized visual mockup. Reuse Compose Material 3 components; no new chart, navigation framework or design dependency is required by this specification.
 
 | 위에서 아래 순서 | 내용과 예시 |
 | --- | --- |
@@ -173,12 +174,12 @@ Recovery reads local history only. “다시 불러오기” retries local stora
 - New app-private metadata is sensitive. Keep it out of public Git/logs, preserve backup exclusion, and introduce no new external service, permission or persistent credential.
 - Except for explicitly confirmed successful local deletion, no local history loss may silently erase an earlier persisted success, and no history success can imply remote transactionality, account identity, every source category or current freshness.
 - Validate delete failure, process loss before/after empty-state commit, stale completion, corrupt/unsupported formats and recovery-write failure with synthetic fixtures and actual store reopen tests. Mocked method-call assertions alone do not establish durability. UI evidence must use synthetic dates/counts and exclude personal data.
-- Required owner decisions: approval of this bounded slice and disposition of pending P0 gates before implementation; review any later scope, schema or dependency additions through the applicable workflow.
+- Owner approval of this bounded slice is recorded; disposition of pending P0 gates and approval of the execution plan remain required before implementation. Review any later scope, schema or dependency additions through the applicable workflow.
 
 ## 7. 미해결 사항
 
 - P0 source-session bound comparison, separate recoverable signing-key backup, D03/D04 isolated revocation setup/disposition and D09 dialog-cancellation observation retain their actual statuses in [device acceptance](../P0/device-acceptance.md); automatic PR review does not close them.
-- Proposed screen arrangement, wording, idle-only deletion and failure-recovery policy require owner review; exact spacing/color tokens and synthetic visual samples are implementation deliverables, not completed designs.
-- Owner approval of this first-slice scope is pending. The specification remains `draft`; automated code-review success or merging documentation is not specification approval.
-- Persistence technology and detailed task breakdown are intentionally undecided until specification approval; neither a plan nor implementation tasks are included here.
+- The owner approved the proposed screen arrangement, wording, idle-only deletion and failure-recovery policy at specification level. Exact spacing/color tokens and synthetic visual samples remain implementation deliverables, not completed designs.
+- Owner approved this first-slice scope on 2026-11-01 KST; the specification is `approved`. This explicit owner decision, not automated code-review success or the act of merging documentation, constitutes specification approval. The execution plan needs separate approval.
+- Persistence technology and detailed task breakdown are to be decided in the next execution-plan step; this specification does not yet include a plan or implementation tasks.
 - WorkManager/background authorization, account-bound per-day coverage, bounded backfill and SAF capability/privacy decisions remain separate V1 follow-up work under [storage design](storage-destinations.md) and the roadmap.
