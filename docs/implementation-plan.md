@@ -53,6 +53,8 @@ Downloaded CI APKs now require the fixed owner key; PR runs never receive signin
 
 ## V1 — Android MVP
 
+**Preparation only:** [V1 foundation specification](V1/spec.md) proposes durable manual sync history as the first slice. It is `draft`, introduces no application changes, and does not waive P0 gates or approve scheduling/backfill/SAF implementation. PR automation reviews code/document changes; requirement and execution-plan approvals remain explicit workflow states.
+
 **Current security follow-up:** [review of merged source `7478113`](P0/current-security-disposition.md) records the addressed historical Guava finding, fresh unchanged 121-coordinate OSV graph with zero matches and an 81-commit secret scan with no leaks found. Device gates remain open. Earlier review/checklist paragraphs below retain historical observations; their pending wording must not override the current acceptance table.
 
 **Current P0 acceptance stage:** PR #4's corrected head `fd48be0` received [owner approval](https://github.com/nyeonu/health-app/pull/4#issuecomment-6551010783) after 47 JVM + 3 emulator tests and APK/lint CI passed, then merged as `d33edae`. The prior `192ab46` review hold is superseded by that re-review. Next is fixed-signature Galaxy acceptance, including the [per-page budget's remaining volume/SDK-response limits](P0/reader-sample-budget-fix.md), [D01–D09 and key backup](P0/device-acceptance.md). No device checkbox or V1 entry is closed by the merge.
