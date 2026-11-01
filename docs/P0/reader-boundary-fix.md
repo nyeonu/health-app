@@ -4,7 +4,7 @@ Scope: the two existing reader defects identified in the owner's [PR #3 review c
 
 Verified implementation/test source commit: `b19fb036cdfb789d945053d9080d8389a5d1436e`.
 
-**Owner review correction:** [REQUEST CHANGES at `192ab46`](https://github.com/nyeonu/health-app/pull/4#issuecomment-6550528982) identified that the sample cap was checked only after all raw heart-rate pages had accumulated. The initial same-session approval below is superseded. The [page-by-page sample-budget correction and new evidence](reader-sample-budget-fix.md) address that finding in the same PR. Merge remains pending re-review; the original 43-test result alone is insufficient.
+**Owner review correction:** [REQUEST CHANGES at `192ab46`](https://github.com/nyeonu/health-app/pull/4#issuecomment-6550528982) identified that the sample cap was checked only after all raw heart-rate pages had accumulated. The initial same-session approval below is superseded. The [page-by-page sample-budget correction and new evidence](reader-sample-budget-fix.md) address that finding. The owner subsequently approved `fd48be0` and PR #4 merged as `d33edae`; that later re-review and 47-test/three-emulator evidence, rather than the original 43-test result, are the merge basis. The remaining sections preserve the earlier implementation snapshot.
 
 ## Required behavior and correction
 

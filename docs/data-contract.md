@@ -1,6 +1,6 @@
 # Data contract (draft v0.1)
 
-Status: **P0 v0.1 implemented and synthetic JVM-tested; actual Samsung Health records and account integration remain pending.**
+Status: **P0 v0.1 implemented and JVM-tested. Earlier live evidence confirms Samsung Health step-count agreement, daily/heart-rate CSV bodies, private Drive updates and authenticated ChatGPT file-body access; see [current acceptance evidence](P0/pr-readiness.md).** This does not prove complete weight/sleep/exercise coverage or device permission/offline/interruption behavior. The merged reader correction still requires fixed-signature Galaxy validation; those gates remain pending.
 
 ## General rules
 - UTF-8 CSV, RFC 4180-style quoting, header row required, comma delimiter.
