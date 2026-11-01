@@ -9,7 +9,7 @@ Read authorized health records from Android Health Connect (including data synch
 **Repository:** `nyeonu/health-app`  
 **Primary device:** Galaxy S23 Ultra (Android 16)  
 **Time zone for daily reporting:** Asia/Seoul  
-**Status (2026-11-01 KST):** **P0 merged into `master`** via [PR #1](https://github.com/nyeonu/health-app/pull/1) (merged 2026-11-01 00:45 KST, Draft = false). 33 JVM tests and 3 Android emulator tests passed; APK build and lint passed. The Galaxy reported successful Health Connect/Drive sync. The connected Drive CSV bodies, owner-only permissions, two same-ID revisions and source Samsung Health step-count match were independently verified. Device-only permission revocation, offline/in-flight cancellation and final dependency/security follow-up remain open; merge does **not** mean those checks passed.
+**Status (2026-11-01 KST):** **P0 and its Guava/reader corrections are merged into `master`** via [PR #1](https://github.com/nyeonu/health-app/pull/1), [PR #3](https://github.com/nyeonu/health-app/pull/3) and [PR #4](https://github.com/nyeonu/health-app/pull/4). The latest reviewed head passed 47 JVM tests, 3 Android emulator tests, APK build and lint. Earlier Galaxy sync, private Drive CSV bodies/owner-only sharing/same-ID updates, ChatGPT file-body access and Samsung Health step-count agreement are recorded. The corrected reader still requires fixed-signature Galaxy validation, including overnight records, permission/offline/interruption cases and key backup. Merge does **not** close those gates; see [current readiness](docs/P0/pr-readiness.md).
 
 ## Delivery phases
 
