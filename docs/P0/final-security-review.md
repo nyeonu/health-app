@@ -1,5 +1,7 @@
 # P0 post-merge security and dependency review
 
+**Historical report for unpatched source:** the [current security disposition](current-security-disposition.md) records the merged Guava correction, reviewed reader delta and fresh current-graph audit. The Important dependency finding below describes `6392eb1`, not current master. Device acceptance remains separate and incomplete.
+
 Reviewed source: `6392eb114f74e7306e3b2931457f05fb02b9dffb` (`master` fetched 2026-10-31 UTC / 2026-11-01 KST).
 
 **Verdict: REQUEST CHANGES for production readiness.** The source review and dependency audit were performed, but dependency disposition and physical-device acceptance remain open. This does not reverse PR #1's completed merge. No new application exploit was reproduced; this is not a zero-vulnerability or production approval statement. This review did not change application behavior, dependencies, signing configuration or phase scope.
