@@ -36,6 +36,7 @@ Status: **P0 merged to `master` in PR #1 on 2026-11-01 00:45 KST (Draft = false)
 
 **Exit gates (not assumed passed)**
 - [ ] Fully validate permission behavior on target Galaxy phone: installation/foreground sync and D01 zero-grant refusal are user/UI verified. D01 shows 0/5, PERMISSION_REQUIRED, 0 uploads/no success. Partial grants, active revocation and other permission edge cases remain pending; this does not close the full gate.
+- [ ] Close partial-grant content evidence: D02 UI behavior passed (1/5, STEPS-only coverage, one confirmed uploaded file/success), but actual new CSV columns and blank denied fields remain unverified. Full permission acceptance also requires the remaining revocation/exception cases.
 - [x] Read supported live Health Connect records: Samsung Health-origin data appeared in the authorized Drive CSV output, and the user-provided Samsung Health daily-activity screen **independently matched the exported daily step count for the same local date**. Other data types still require source coverage checks.
 - [x] Verify exported CSV content and schema through the authenticated Drive connector: daily summary and sample rows parsed; intentionally missing fields remain blank; no direct personal identifiers exported.
 - [x] Verify private Google Drive upload/update: owner-only, non-shared folder and CSV metadata; same file identities with later modification timestamps and no duplicate day files in target folders.
