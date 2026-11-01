@@ -2,7 +2,8 @@
 plan_id: V1
 title: Durable manual history and status-first home
 kind: single
-status: draft
+status: approved
+approved: 2026-11-01
 author: Codex
 created: 2026-11-01
 target: nyeonu/health-app/android
@@ -56,7 +57,7 @@ Keep persistence adapters in app, and value/codec/recovery decisions in core. Re
 
 **ADR candidate:** persisted format/version policy and SQLite transaction boundary. After plan approval, record a Proposed ADR with adr-writer; do not mark this design Accepted until conformance verification passes.
 
-**Entry gate:** the owner approved the specification and permits this planning work. Execution-plan approval is separate. Before T1 implementation, obtain explicit P0 disposition covering unresolved original-session comparison, recoverable signing-key backup, isolated revocation gaps and dialog cancellation. Planning and automated review do not waive these items. No P0 result is promoted here.
+**Entry gate:** the owner explicitly approved this execution plan and requested workflow execution. The approval is recorded; implementation has not started. Before T1 implementation, obtain explicit P0 disposition covering unresolved original-session comparison, recoverable signing-key backup, isolated revocation gaps and dialog cancellation. A bundled clarification is pending. Planning and automated review do not waive these items. No P0 result is promoted here.
 
 ## 2. 공통 설계
 
@@ -452,3 +453,4 @@ Checkpoint after T7: spec-only independent conformance check, code review and se
 
 | 원인·근거 | 준비 조치 | 조치 사용/1 | 확인 명령·결과 | 확인 사용/1 | 다음 조치 |
 |---|---|---|---|---|---|
+| Existing JDK/SDK/proxy configuration required for baseline compilation | Used existing `/workspace/tooling/run-health-command.py`; no tool version or project configuration changed | 1/1 | `./gradlew --offline --no-daemon :core:compileKotlin :app:compileDebugKotlin` via wrapper: BUILD SUCCESSFUL, 18 tasks up-to-date | 1/1 | Baseline compile only; no new implementation or runtime test claimed. P0 disposition response pending before T1. |
