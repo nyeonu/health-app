@@ -1,5 +1,7 @@
 # P0 live Drive verification after offline recovery
 
+**Historical inspection:** the [later re-upload verification](latest-upload-verification.md) newly observes sleep data and a real earlier-start sleep interval. Earlier statements below about no sleep/cross-day data describe this initial recovery snapshot, not the latest folder state. D02/D05 recovery evidence remains valid for its observed scenario.
+
 The user reported a successful explicit online retry following the recorded offline `UPLOAD_FAILED:DRIVE_APP_FOLDER_LOOKUP:NETWORK` failure and requested actual Drive-content verification. The authenticated Google Drive connector was used read-only to discover the app folder, list dataset children, fetch metadata, retrieve complete raw CSV bodies and inspect the daily file's previous revision. No Drive file, sharing state or revision was modified.
 
 This report stores only contract checks and redacted outcomes. It contains no health measurements, sample counts, account/file/record identifiers, private URLs, CSV bodies, content fingerprints or private timestamps. No screenshot or live CSV was written into the repository.
