@@ -1,7 +1,7 @@
 # Implementation plan — Health App
 
 Last updated: 2026-11-01 (Asia/Seoul)  
-Status: **P0 merged to `master` in PR #1 on 2026-11-01 00:45 KST (Draft = false). 33 JVM + 3 Android 15 emulator tests, APK build and lint passed; private Drive CSV contents, owner-only metadata, same-file updates and source step count verified. Device-only revocation/offline/in-flight interruption and security/dependency follow-ups remain tracked post-merge.**
+Status: **P0 implementation, Guava/reader corrections and evidence consolidation merged through PR #5 (`7478113`). Corrected-head CI passed 47 JVM + 3 emulator tests, APK and lint; these were not rerun for documentation-only PR #5. Current remote evidence includes four CSV datasets and an earlier-start overnight sleep session. D01/D02/D05/D07 and D06 interruption/retry pass observed scenarios; D09 authorization recovery passes by user report, with dialog cancellation unobserved. The owner confirms no reporting-day HC weight record. D00/D08 source comparison remains partial, D03 unobserved, D04 pending, and separate recoverable key backup unconfirmed (GitHub Secrets configured). [Current acceptance](P0/device-acceptance.md) is authoritative. V1 remains unstarted.**
 
 ## Project outcomes
 1. Collect user-authorized Health Connect health records that Samsung Health actually writes on the target Galaxy phone.
@@ -52,6 +52,8 @@ Downloaded CI APKs now require the fixed owner key; PR runs never receive signin
 **Live P0 verification update (2026-10-31):** After Google Drive reconnection, the assistant independently retrieved both CSV file bodies from the connected private Drive, validated schema/date/source structure and blank missing fields, and checked that the root/files remain owner-only and unshared. Both files have stable identities with creation preceding later modification and no duplicate within their target dataset folder. The user additionally supplied a Samsung Health daily activity screenshot for the same local date: **the daily step count matched the uploaded CSV exactly**. The screenshot's activity time, energy and distance are distinct measures not implemented in P0 CSV; their absence is not a transport failure. Do not infer completeness for weight/sleep/exercise records or that permission-denial, offline and lifecycle edge cases passed. No private health values, user/account identifiers, or resource URLs are committed. Details: [PR readiness](P0/pr-readiness.md).
 
 ## V1 — Android MVP
+
+**Current security follow-up:** [review of merged source `7478113`](P0/current-security-disposition.md) records the addressed historical Guava finding, fresh unchanged 121-coordinate OSV graph with zero matches and an 81-commit secret scan with no leaks found. Device gates remain open. Earlier review/checklist paragraphs below retain historical observations; their pending wording must not override the current acceptance table.
 
 **Current P0 acceptance stage:** PR #4's corrected head `fd48be0` received [owner approval](https://github.com/nyeonu/health-app/pull/4#issuecomment-6551010783) after 47 JVM + 3 emulator tests and APK/lint CI passed, then merged as `d33edae`. The prior `192ab46` review hold is superseded by that re-review. Next is fixed-signature Galaxy acceptance, including the [per-page budget's remaining volume/SDK-response limits](P0/reader-sample-budget-fix.md), [D01–D09 and key backup](P0/device-acceptance.md). No device checkbox or V1 entry is closed by the merge.
 
