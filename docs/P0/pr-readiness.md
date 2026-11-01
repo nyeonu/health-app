@@ -6,6 +6,8 @@ The user reports the fixed-signature APK installs, authorizes and completes fore
 
 ## Current evidence
 
+**D07 force-stop/reopen:** user-provided before/after screens show upload opt-in becoming unchecked, Sync now disabled, attempts/read coverage/success cleared and 0 confirmed files, with HC grants remaining 5/5. Reset UI behavior passes; no automatic attempt is visible. This is not direct token-memory or network inspection and does not revoke system/Google permissions. D07 remains partial until a new explicit manual sync after restart succeeds. No private timestamps or screenshots are stored.
+
 **D06 retry recovery:** after the observed foreground-departure interruption, the user supplied a successful manual retry screen with three confirmed files. Authenticated Drive metadata shows all three existing same-day CSV identities updated after the interruption, with no duplicate and unshared/owner-only permissions. The home-departure/retry variant passes; screen-lock and the exact in-flight write outcome remain unobserved. The user separately requested later speed investigation; [the performance backlog](../backlog/sync-performance.md) is deferred, not a code change.
 
 **D06 app-departure observation:** the user supplied an interrupted-state screen showing foreground departure, 0 confirmed uploads for that attempt and an earlier retained last-success record. This passes the interruption UI behavior, not a new sync success. The separate screen-lock scenario remains pending; retry/same-target results are now recorded above. The original interruption observation alone did not establish recovery; the interruption phase and any in-flight remote write outcome are not established. No private timestamps or screenshot are committed.
