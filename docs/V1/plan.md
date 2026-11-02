@@ -13,7 +13,7 @@ tasks:
   - id: T1
     title: Establish real SQLite reopen test harness
     depends_on: []
-    status: in_progress
+    status: done
     tier: standard
   - id: T2
     title: Define bounded history transitions
@@ -23,17 +23,17 @@ tasks:
   - id: T3
     title: Commit history atomically
     depends_on: [T2]
-    status: in_progress
+    status: done
     tier: standard
   - id: T4
     title: Serialize history session recovery
     depends_on: [T3]
-    status: pending
+    status: done
     tier: standard
   - id: T5
     title: Connect manual execution to durable history
     depends_on: [T4]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T6
     title: Render status-first home and deletion recovery
@@ -77,7 +77,7 @@ Paths below are relative to `android/`. Existing directories and modified files 
 | `app/src/test/java/com/ny/my/health/HistorySessionTest.kt` | New | Deterministic effects, races, store error cases | T4, T5 |
 | `app/src/main/java/com/ny/my/health/SyncViewModel.kt` | Edit | Connect manual lifecycle/authorization to history | T5 |
 | `app/src/main/java/com/ny/my/health/HealthHomeScreen.kt` | New | Stateless screen, details/dialog/failure recovery | T6 |
-| `app/src/main/java/com/ny/my/health/MainActivity.kt` | Edit | Render extracted screen; keep SDK launchers | T6 |
+| `app/src/main/java/com/ny/my/health/MainActivity.kt` | Edit | Await durable authorization gate, then render extracted screen; keep SDK launchers | T5, T6 |
 | `app/src/androidTest/java/com/ny/my/health/HealthHomeScreenInstrumentedTest.kt` | New | Synthetic screen states/screenshots/semantics | T6, T7 |
 | `app/src/androidTest/java/com/ny/my/health/HealthAppInstrumentedTest.kt` | Edit | Retain consent/lifecycle expectations after UI change | T7 |
 | `../docs/V1/device-acceptance.md` | New | Galaxy force-stop/recovery/accessibility evidence template | T7 |
@@ -155,7 +155,7 @@ internal class HistorySession(
     suspend fun keepExistingAfterDeleteFailure()
     suspend fun reload()
 }
-// HistorySessionState — operation gates plus readable committed data
+// Operation gates plus readable committed data (part of HistorySession contract)
 data class HistorySessionState(
     val read: HistoryRead, val operation: HistoryOperation,
     val deleteDialog: Boolean, val deleteFailed: Boolean,
@@ -182,6 +182,7 @@ internal data class HistoryUiActions(
 ### 결정 로직 위치
 
 - `SyncHistory.kt`: companion/top-level pure codec validation, terminal transition and recovery functions. No Android, SQL, HTTP or filesystem imports. Same-file helpers follow existing core Kotlin conventions; do not introduce per-field validators or a mapper/config hierarchy.
+- `HistorySession`: restore is explicit, local-only; no constructor auto-launch. Use provided scope lifetime for admission, never to restore credentials. Eligibility refers to live authorization/execution, not stale persisted phases after a failed terminal write. Confirmed deletion is allowed while idle awaiting upload and must clear prepared work; live authorization/execution and store operations reject deletion. Reject new authorization while prepared continuation exists. Reload is explicit and invalidates credentials/generation, and cannot run alongside live authorization/execution. Reject busy/stale user operations at arrival rather than queuing them to become valid later. A history read/write error blocks new authorization/execution until explicit successful reload/reset. On confirmed deletion invalidate credentials synchronously before the first store suspension. No automatic health/network effects on restore or keep-existing.
 - `HistorySession.kt`: pure eligibility/operation-generation checks remain same-file helpers, separate from suspending store calls. It is the single in-process writer and does not claim cross-process/multi-instance safety.
 - Authorization/execution start methods return acceptance only after commit; the in-memory generation ticket is never serialized. Credential invalidation is a callback invoked before deletion's first suspending operation, including failure paths. Session state includes no credential; a rejected/stale authorization callback must discard its token in ViewModel.
 - On explicit continuation, compute yesterday once, persist that execution date and call existing `SyncCoordinator.sync(date)` with exactly that date. Do not independently recompute the day between metadata and read across midnight.
@@ -390,10 +391,11 @@ T4 완료 후 시작.
   | File | New/edit | Change |
   | --- | --- | --- |
   | `app/src/main/java/com/ny/my/health/SyncViewModel.kt` | Edit | Wire session/store and preserve explicit manual flow |
+  | `app/src/main/java/com/ny/my/health/MainActivity.kt` | Edit | Defer existing SDK launch until durable authorization callback |
   | `app/src/main/java/com/ny/my/health/HistorySession.kt` | Edit | Testable execution/authorization effect boundary |
   | `app/src/test/java/com/ny/my/health/HistorySessionTest.kt` | Edit | Ordered integration of fake read/upload/credential effects |
 
-- **인터페이스**: Shared `HistorySession`; preserve current coordinator and Google SDK integration signatures where possible.
+- **인터페이스**: Shared `HistorySession`; retain Google SDK request/response handling, with `beginAuthorization(onReady: () -> Unit)` for asynchronous durable-start acknowledgment. The Activity callback launches the unchanged AuthorizationClient flow only after commit; no blocking IO on UI thread. Root confirmed the old Boolean handshake cannot provide that boundary.
 - **결정 로직**: History restore never satisfies authorization/upload opt-in; only successful terminal results replace committed success; recoverable local-history error differs from remote outcome.
 - **호출 순서**:
   1. Durable authorization-attempt write → permit SDK launch; failure blocks launch.
@@ -407,7 +409,7 @@ T4 완료 후 시작.
   cd android
   ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug
   ```
-- **주의사항**: Reconfirm installed lifecycle cancellation behavior before implementation. Process death can prevent any final write; recovery must still work. Unknown assumption or incompatible existing API is blocked rather than bypassing foreground checks.
+- **주의사항**: Recovery 2/2 records the existing Activity call-site dependency; change only the handoff until T6 owns visual changes. Reconfirm installed lifecycle cancellation behavior before implementation. Process death can prevent any final write; recovery must still work. Unknown assumption or incompatible existing API is blocked rather than bypassing foreground checks.
 
 Checkpoint after T5: inspect actual ordering tests and credential handling; no visual completion claim before screen and lifecycle checks.
 
@@ -486,6 +488,8 @@ Checkpoint after T7: spec-only independent conformance check, code review and se
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T4 | 2/2 | Executor brief omitted HistorySessionState: assembler split at secondary header comment | Approved plan already defines exact state/enums; no interface redesign needed | Keep state and enums in HistorySession code fragment and resend exact existing shape; clarify explicit restore and live-state admission | plan.md / brief only; implementation absent | Regenerate brief and confirm state fields included before first code verify | v1_t4 / no new persisted fields or scope |
+| T5 | 2/2 | Read-only preflight: MainActivity immediately calls SDK after Boolean beginAuthorization | Existing call site and suspend HistorySession API cannot await durable commit via Boolean | Include minimal Activity handoff edit and callback-based acknowledgment; preserve existing scopes, SDK flow, consent and explicit continuation | Add MainActivity.kt to T5; T6 remains dependent and owns later UI extraction | Compile and ordering tests required at T5; no implementation in this correction | Codex / scope-preserving interface correction |
 | T1 | 2/2 | T3 adapter blocked: helper generic SQLiteException conflates unknown schema and corruption | Source inspected: fixed schema guard and corruption handler erase type distinctions | Use internal UnsupportedHistorySchemaException and platform SQLiteDatabaseCorruptException, preserving no-destructive-fallback and schema v1 | HistoryDatabase.kt plus existing smoke test; preserve T2 and all payload rules | Compile and existing harness; T3 must assert actual reopen statuses | v1_t1 scoped recovery / T3 waits for typed API |
 | T1–T7 | 1/2 each | Initial T1 brief assembled with 0 Shared design references; later task text referred to traceability not included in briefs | Existing policies and test descriptions were already approved but not mechanically delivered | Tag existing DB/codec policies and test lists; add explicit references, preserving approved schema and criteria | plan.md only; implementation absent | Reassemble each task before dispatch; stop on unresolved references | Codex / no code changes in this correction |
 
@@ -501,3 +505,7 @@ Checkpoint after T7: spec-only independent conformance check, code review and se
 - T1 source `5f92bee`: app/androidTest compilation passed locally. Android emulator run [41367673147](https://github.com/nyeonu/health-app/actions/runs/41367673147) succeeded; downloaded XML contains 4 executed tests, including `privateHistoryDatabaseReopensACommittedSyntheticRow`, with 0 failures/errors/skips. JVM/APK/lint run [41367673167](https://github.com/nyeonu/health-app/actions/runs/41367673167) succeeded; fresh artifact XML confirms 47 JVM tests with 0 failures/errors/skips. This is synthetic Android persistence evidence, not physical Galaxy/account validation.
 
 - T2: root reran the exact approved unit command with existing socket/network permission; BUILD SUCCESSFUL, 8 new history tests, 0 failures/errors/skips. The first executor attempt failed before compilation on wildcard-IP socket restrictions, not a code defect; no source repair occurred. Public codec/recovery APIs above are actual implementation facts.
+
+- T1 recovery and T3 source `2b46f34`: root compilation passed. [Emulator run 41373372078](https://github.com/nyeonu/health-app/actions/runs/41373372078) succeeded; downloaded XML confirms 17 tests, 0 failures/errors/skips, including all 3 DB harness and all 11 typed-store cases. [JVM/APK/lint run 41373372032](https://github.com/nyeonu/health-app/actions/runs/41373372032) succeeded. T1 recovery 2/2 is verified, not reset.
+
+- T4: first implementation and root verification passed, actual XML contains 16 tests with 0 failures/errors/skips; root rerun was up-to-date on unchanged code. Tests exercise arrival rejection, generation invalidation, delete/reload failures and guarded starts with deterministic store doubles; actual durability remains separately established by T3.
