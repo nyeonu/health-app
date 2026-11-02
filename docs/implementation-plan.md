@@ -53,6 +53,13 @@ Downloaded CI APKs now require the fixed owner key; PR runs never receive signin
 
 ## V1 — Android MVP
 
+**Execution authorized (2026-11-02):** the owner approved the plan and full workflow, confirms original-source comparison was already performed, and directs that all other unverified P0 cases remain unverified. Proceed with the bounded approved history/UI slice; this is neither P0-completion nor release approval. The plan is in_progress and ADR-004 remains Proposed until conformance.
+
+
+**Execution-plan draft:** [seven-task V1 foundation plan](V1/plan.md) pins the approved specification revision and maps all 39 acceptance criteria to planned tests. The proposed implementation uses platform SQLite, pure Kotlin state/recovery rules and a status-first Compose screen; no application code is changed by the plan. Execution-plan approval and explicit P0 residual-gate disposition remain required before implementation.
+
+**Specification approved (2026-11-01 KST):** [V1 foundation specification](V1/spec.md) approves durable manual sync history as the first slice. **Next: prepare and review a bounded execution plan.** This approval introduces no application changes, does not waive unresolved P0 acceptance gates, and does not authorize implementation, scheduling/backfill/SAF, or automatic execution. The execution plan requires separate approval before implementation.
+
 **Current security follow-up:** [review of merged source `7478113`](P0/current-security-disposition.md) records the addressed historical Guava finding, fresh unchanged 121-coordinate OSV graph with zero matches and an 81-commit secret scan with no leaks found. Device gates remain open. Earlier review/checklist paragraphs below retain historical observations; their pending wording must not override the current acceptance table.
 
 **Current P0 acceptance stage:** PR #4's corrected head `fd48be0` received [owner approval](https://github.com/nyeonu/health-app/pull/4#issuecomment-6551010783) after 47 JVM + 3 emulator tests and APK/lint CI passed, then merged as `d33edae`. The prior `192ab46` review hold is superseded by that re-review. Next is fixed-signature Galaxy acceptance, including the [per-page budget's remaining volume/SDK-response limits](P0/reader-sample-budget-fix.md), [D01–D09 and key backup](P0/device-acceptance.md). No device checkbox or V1 entry is closed by the merge.
