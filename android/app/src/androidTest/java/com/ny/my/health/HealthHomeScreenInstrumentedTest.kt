@@ -1,5 +1,23 @@
 package com.ny.my.health
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
+import androidx.test.platform.io.PlatformTestStorageRegistry
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.StateRestorationTester
@@ -42,6 +60,9 @@ class HealthHomeScreenInstrumentedTest {
     private val success = HistorySuccess(date.minusDays(1), requested.minusSeconds(86400), setOf(DataType.WEIGHT), 7)
     private val calls = mutableListOf<String>()
     private val ui = mutableStateOf(SyncUiState())
+    private val dark = mutableStateOf(false)
+    private val textScale = mutableStateOf(1f)
+    private val fixtureKey = mutableStateOf(0)
 
     private fun session(attempt: HistoryAttempt? = null, previous: HistorySuccess? = success) = HistorySessionState(
         HistoryRead(HistoryReadStatus.READY, SyncHistory(1, attempt, previous)),
@@ -67,7 +88,16 @@ class HealthHomeScreenInstrumentedTest {
             }, confirmDelete = { calls += "confirmDelete" }, retryDelete = { calls += "retryDelete" },
             keepExisting = { calls += "keepExisting" }, reload = { calls += "reload" },
         )
-        restoration.setContent { MaterialTheme { HealthHomeScreen(ui.value, actions) } }
+        restoration.setContent {
+            val density = LocalDensity.current.density
+            CompositionLocalProvider(LocalDensity provides Density(density, textScale.value)) {
+                MaterialTheme(colorScheme = if (dark.value) darkColorScheme() else lightColorScheme()) {
+                    Surface(Modifier.fillMaxSize()) {
+                        key(fixtureKey.value) { HealthHomeScreen(ui.value, actions) }
+                    }
+                }
+            }
+        }
     }
 
     private fun click(text: String) { compose.onNodeWithText(text).performScrollTo().performClick() }
@@ -260,4 +290,72 @@ class HealthHomeScreenInstrumentedTest {
         click("다시 불러오기")
         assertEquals(listOf("reload"), calls)
     }
+
+    /** 실제 TalkBack 서비스 대신 이름·역할·스크롤 도달성을 검사한다. */
+    @Test fun bothThemesAtDoubleTextScaleKeepManualAndRecoveryControlsNamedAndReachable() {
+        render(history = session(previous = null), state = SyncUiState(uploadOptIn = true, readyToUpload = true))
+        for (isDark in listOf(false, true)) {
+            compose.runOnIdle { dark.value = isDark; textScale.value = 2f; fixtureKey.value++ }
+            for (label in listOf("Health Connect 권한 요청", "Google 권한 확인", "업로드 계속", "상세·설정 펼치기")) {
+                compose.onNodeWithText(label).performScrollTo().assertIsDisplayed().assertHasClickAction()
+                    .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            }
+            compose.onNodeWithContentDescription("비공개 Drive 업로드 동의").performScrollTo()
+                .assertIsDisplayed().assertHasClickAction().assertIsOn()
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox))
+            details()
+            for (label in listOf("권한 다시 확인", "다시 불러오기", "로컬 이력 삭제")) {
+                compose.onNodeWithText(label).performScrollTo().assertIsDisplayed().assertHasClickAction()
+                    .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            }
+            click("로컬 이력 삭제")
+            for (label in listOf("취소", "이력 삭제")) {
+                compose.onNodeWithText(label).assertIsDisplayed().assertHasClickAction()
+                    .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            }
+            compose.onNodeWithText("취소").performClick()
+        }
+        assertEquals(listOf("requestDelete", "cancelDelete", "requestDelete", "cancelDelete"), calls)
+    }
+
+    /** 고정 합성 메타데이터만 PNG로 내보내며 앱 저장소나 화면 외부는 수집하지 않는다. */
+    @Test fun syntheticGalleryCapturesSevenStatesInBothThemesAndDoubleTextScale() {
+        render(history = session(previous = null))
+        val fixtures = listOf(
+            Triple("no-history", session(previous = null), SyncUiState()),
+            Triple("success", session(attempt(HistoryPhase.SUCCESS)), SyncUiState()),
+            Triple("authorization", session(attempt(HistoryPhase.AUTHORIZING).copy(startedAt = null, finishedAt = null, confirmedFiles = null)), SyncUiState(pendingConsent = true)),
+            Triple("running", session(attempt(HistoryPhase.RUNNING).copy(finishedAt = null, confirmedFiles = null)), SyncUiState(syncing = true)),
+            Triple("interrupted", session(attempt(HistoryPhase.INTERRUPTED).copy(finishedAt = null, confirmedFiles = null)), SyncUiState()),
+            Triple("read-failure", session(previous = null).copy(read = HistoryRead(HistoryReadStatus.UNAVAILABLE, null), error = HistoryError.READ), SyncUiState()),
+            Triple("delete-failure", session().copy(deleteFailed = true, retainedAfterDeleteFailure = true, error = HistoryError.DELETE), SyncUiState()),
+        )
+        for (isDark in listOf(false, true)) for (scale in listOf(1f, 2f)) for ((name, history, state) in fixtures) {
+            compose.runOnIdle {
+                dark.value = isDark; textScale.value = scale; fixtureKey.value++
+                ui.value = state.copy(date = date, availability = HealthConnectClient.SDK_AVAILABLE, history = history)
+            }
+            compose.waitForIdle()
+            val prefix = "$name-${if (isDark) "dark" else "light"}-${if (scale == 2f) "text2x" else "text1x"}"
+            captureSynthetic("$prefix-top")
+            val action = when (name) {
+                "read-failure" -> "다시 불러오기"
+                "delete-failure" -> "삭제 다시 시도"
+                else -> "상세·설정 펼치기"
+            }
+            compose.onNodeWithText(action).performScrollTo().assertIsDisplayed().assertHasClickAction()
+            captureSynthetic("$prefix-action")
+            if (name == "running") shown("화면을 벗어나면 중단됩니다")
+            if (name == "interrupted") shown("실행 중 종료됨 · 업로드 결과를 확인할 수 없습니다.")
+        }
+        assertEquals(emptyList<String>(), calls)
+    }
+
+    private fun captureSynthetic(name: String) {
+        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+        PlatformTestStorageRegistry.getInstance().openOutputFile("v1-synthetic-ui/$name.png").use { output ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) { "합성 PNG 저장 실패" }
+        }
+    }
+
 }

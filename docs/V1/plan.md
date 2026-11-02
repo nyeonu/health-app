@@ -38,12 +38,12 @@ tasks:
   - id: T6
     title: Render status-first home and deletion recovery
     depends_on: [T5]
-    status: in_progress
+    status: done
     tier: standard
   - id: T7
     title: Validate lifecycle and accessible UI states
     depends_on: [T6]
-    status: pending
+    status: in_progress
     tier: standard
 ---
 
@@ -528,3 +528,5 @@ Checkpoint after T7: spec-only independent conformance check, code review and se
 - T5 owner-authorized memory/status correction completed: 35 core + 49 app = 84 JVM tests, 0 failures/errors/skips, APK assembled. Bundle persistence removed; same-process ViewModel holder correlates SDK result once and is empty in a new process. Production busy/rejected-start guards and transient-status clearing are covered by 5 added regressions (29 total session tests). Committed historical success is retained until the reset commits. The initial correction and disclosed acceptance follow-up each verified once; no hidden count reset.
 
 - T6 expected-copy correction evidence: initial unexecuted tests asserted “실행 시작 시각: 기록 없음” / “종료 시각: 기록 없음” and a shorter delete-failure text. Approved spec explicitly requires absent starts as “미시작”, absent terminal times as “확인 불가”, and “이력 삭제에 실패했습니다. 저장된 이력이 남아 있을 수 있습니다.” with “삭제되지 않은 기존 이력”. Correct assertions to that contract, not to make existing output pass; no safety assertion is removed.
+
+- T6 final source `79ffd0f`: root compilation passed. [Android CI 41434453899](https://github.com/nyeonu/health-app/actions/runs/41434453899) succeeded; downloaded XML confirms 34 tests (17 screen + 3 Activity + 3 DB harness + 11 store), 0 failures/errors/skips. [JVM/APK/lint CI 41434453978](https://github.com/nyeonu/health-app/actions/runs/41434453978) succeeded. T7 remains pending runtime gallery/lifecycle evidence.
