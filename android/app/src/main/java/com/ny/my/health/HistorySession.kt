@@ -7,6 +7,10 @@ import java.util.Collections
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -248,3 +252,48 @@ private fun HistoryRead.frozen(): HistoryRead = copy(history = history?.let { va
     value.copy(attempt = value.attempt?.let { it.copy(coverage = immutableCoverage(it.coverage)) },
         success = value.success?.let { it.copy(coverage = immutableCoverage(it.coverage)) })
 })
+
+/** 실제 화면 모델이 사용하는 외부 효과 경계. 저장 실패 시 읽기와 업로드를 호출하지 않는다. */
+internal class HistoryEffects(private val session: HistorySession) {
+    suspend fun authorize(date: LocalDate, at: Instant, onReady: (Long) -> Unit) {
+        val ticket = session.beginAuthorization(date, at) ?: return
+        onReady(ticket)
+    }
+
+    suspend fun acceptAuthorization(ticket: Long, acceptCredential: () -> Unit): Boolean {
+        if (!session.authorizationReturned(ticket)) return false
+        acceptCredential()
+        return true
+    }
+
+    suspend fun execute(
+        ticket: Long, date: LocalDate, at: Instant, now: () -> Instant,
+        foreground: () -> Boolean,
+        remoteConfirmed: (HistoryExecutionResult) -> Unit,
+        effect: suspend (LocalDate) -> HistoryExecutionResult,
+    ): HistoryExecutionResult? {
+        // 시작 커밋과 종결 커밋은 전경 작업의 취소와 독립적으로 끝낸다.
+        var started = false
+        try {
+            withContext(NonCancellable) { started = session.beginExecution(ticket, date, at) }
+            if (!started) return null
+            currentCoroutineContext().ensureActive()
+            if (!foreground()) throw CancellationException("전경 실행 중단")
+            val outcome = effect(date)
+            remoteConfirmed(outcome)
+            withContext(NonCancellable) {
+                session.finishExecution(ticket, outcome.result, outcome.coverage, now())
+            }
+            return outcome
+        } catch (cancelled: CancellationException) {
+            if (started) withContext(NonCancellable) { session.interruptExecution(ticket, now()) }
+            throw cancelled
+        } catch (_: Exception) {
+            val outcome = HistoryExecutionResult(SyncResult(SyncStatus.FAILED, errorCode = "SYNC_FAILED"), emptySet())
+            if (started) withContext(NonCancellable) { session.finishExecution(ticket, outcome.result, outcome.coverage, now()) }
+            return outcome
+        }
+    }
+}
+
+internal data class HistoryExecutionResult(val result: SyncResult, val coverage: Set<DataType>)

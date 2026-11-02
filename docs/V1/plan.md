@@ -33,7 +33,7 @@ tasks:
   - id: T5
     title: Connect manual execution to durable history
     depends_on: [T4]
-    status: in_progress
+    status: blocked
     tier: standard
   - id: T6
     title: Render status-first home and deletion recovery
@@ -79,9 +79,10 @@ Paths below are relative to `android/`. Existing directories and modified files 
 | `app/src/main/java/com/ny/my/health/HealthHomeScreen.kt` | New | Stateless screen, details/dialog/failure recovery | T6 |
 | `app/src/main/java/com/ny/my/health/MainActivity.kt` | Edit | Await durable authorization gate, then render extracted screen; keep SDK launchers | T5, T6 |
 | `app/src/androidTest/java/com/ny/my/health/HealthHomeScreenInstrumentedTest.kt` | New | Synthetic screen states/screenshots/semantics | T6, T7 |
-| `app/src/androidTest/java/com/ny/my/health/HealthAppInstrumentedTest.kt` | Edit | Retain consent/lifecycle expectations after UI change | T7 |
+| `app/src/androidTest/java/com/ny/my/health/HealthAppInstrumentedTest.kt` | Edit | Update approved UI copy without weakening safety, then extend lifecycle evidence | T6, T7 |
 | `../docs/V1/device-acceptance.md` | New | Galaxy force-stop/recovery/accessibility evidence template | T7 |
 | `../docs/V1/execution-report.md` | New | Actual verification evidence and pending limits | T7 |
+| `../.github/workflows/android-emulator-tests.yml` | Edit | Collect only synthetic PNG evidence in existing report artifact | T7 |
 
 ### 인터페이스
 
@@ -424,6 +425,7 @@ T5 완료 후 시작.
   | `app/src/main/java/com/ny/my/health/HealthHomeScreen.kt` | New | Approved home layout and explicit dialog/error actions |
   | `app/src/main/java/com/ny/my/health/MainActivity.kt` | Edit | Pass state/actions; keep permission/Google launchers |
   | `app/src/androidTest/java/com/ny/my/health/HealthHomeScreenInstrumentedTest.kt` | New | Synthetic state semantics and dialog behaviors |
+  | `app/src/androidTest/java/com/ny/my/health/HealthAppInstrumentedTest.kt` | Edit | Align old P0 captions with approved new copy, retaining all safety assertions |
 
 - **인터페이스**: Shared `HealthHomeScreen`, `HistoryUiActions`.
 - **결정 로직**: Current error and committed success are independent; missing start/finish time is explicit; success card fields originate from the same committed success.
@@ -434,7 +436,7 @@ T5 완료 후 시작.
   cd android
   ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.HealthHomeScreenInstrumentedTest
   ```
-- **주의사항**: Reuse Material 3 and existing scrolling layout; no navigation/chart dependency. Distinguish unavailable actions with text as well as disabled controls; no real health data in captures.
+- **주의사항**: Recovery 2/2: old Activity UI tests still assert P0 captions, so update only obsolete copy/necessary UI navigation in this same slice; retain zero-grant/consent/no-fake-success assertions before full CI. Reuse Material 3 and existing scrolling layout; no navigation/chart dependency. Distinguish unavailable actions with text as well as disabled controls; no real health data in captures.
 
 ### T7: Validate lifecycle and accessible UI states
 
@@ -448,8 +450,9 @@ T6 완료 후 시작.
   | `app/src/androidTest/java/com/ny/my/health/HealthAppInstrumentedTest.kt` | Edit | Preserve first-launch/zero-grant/recreation guarantees |
   | `../docs/V1/device-acceptance.md` | New | Explicit Galaxy/TalkBack/process-death steps |
   | `../docs/V1/execution-report.md` | New | Actual tests, screenshots, pending evidence |
+  | `../.github/workflows/android-emulator-tests.yml` | Edit | Add synthetic PNG-only glob to existing report upload |
 
-- **인터페이스**: Existing instrumentation runner and shared `HealthHomeScreen`.
+- **인터페이스**: Existing instrumentation runner and shared `HealthHomeScreen`; installed androidx.test:monitor 1.7.2 exposes PlatformTestStorageRegistry.getInstance().openOutputFile(name). Confirmed by installed class signatures/bytecode; FileTestStorage uses runner additionalTestOutputDir. Use fixed v1-synthetic-ui/*.png names and synthetic-only screen states; no new dependency. Add android/app/build/outputs/**/v1-synthetic-ui/*.png to existing artifact paths, never upload all outputs/APKs/private app state. Actual AGP collection must be verified by downloading PNGs before claiming visual review.
 - **결정 로직**: None; test actual rendering and evidence boundaries.
 - **작성할 테스트**: 2절 `T7Cases` 참조.  T7 mapped cases; synthetic captures for no-history/success/authorization/running/interrupted/read-failure/delete-failure, light/dark themes and enlarged text. Retain existing consent and zero-grant paths using approved new UI copy.
 - **완료 기준**: Instrumentation results/captures reviewed, Galaxy force-stop and TalkBack results recorded only when actually performed; pending physical checks prevent full conformance PASS.
@@ -458,7 +461,7 @@ T6 완료 후 시작.
   cd android
   ./gradlew :app:connectedDebugAndroidTest
   ```
-- **주의사항**: Emulator recreation is not force-stop proof. Do not skip or weaken old safety assertions to match the new UI; update obsolete wording only against the approved spec.
+- **주의사항**: Recovery 2/2 records the missing host evidence collection path only; no runner/version/permissions/signing change. Emulator recreation is not force-stop proof. Do not skip or weaken old safety assertions to match the new UI; update obsolete wording only against the approved spec.
 
 Checkpoint after T7: spec-only independent conformance check, code review and security/privacy review; unresolved device results remain explicit. Reviewers receive the approved spec and implementation, not this plan as the source of truth.
 
@@ -488,6 +491,9 @@ Checkpoint after T7: spec-only independent conformance check, code review and se
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T5 | Extra repair requested, not run | Tests pass but source violates generation memory-only and pending-permission deletion guard | MainActivity savedInstanceState/onSaveInstanceState and ViewModel action entry points inspected | Proposed: retain correlation in same-process ViewModel memory only; reject busy/stale deletion and rejected reauthorization without stuck pending state; add behavioral regressions | Existing T5 four files only; preserve all earlier tests/working code | Owner authorization pending; then exact T5 suites/APK plus Android recreation checks | v1_t5 paused; dependent T6/T7 pending |
+| T6 | 2/2 | Preflight: existing instrumented tests assert P0 title/captions that approved UI replaces | Existing HealthAppInstrumentedTest inspected | Include minimal old-copy/navigation update in T6 so its CI remains meaningful; T7 stays dependent | Add existing Activity test file, preserve its safety assertions | Full instrumentation after T6 required | Codex / no weaker assertions |
+| T7 | 2/2 | Planned synthetic gallery has no host PNG artifact path | Installed monitor 1.7.2 API and output-dir calculation inspected; current workflow uploads XML/reports only | Use existing platform test output and a synthetic PNG-only upload glob; no new dependency | Add existing emulator workflow as fifth T7 file; preserve runtime and signing settings | Confirm downloaded images exist and inspect before visual-review claim | Codex / evidence collection only |
 | T4 | 2/2 | Executor brief omitted HistorySessionState: assembler split at secondary header comment | Approved plan already defines exact state/enums; no interface redesign needed | Keep state and enums in HistorySession code fragment and resend exact existing shape; clarify explicit restore and live-state admission | plan.md / brief only; implementation absent | Regenerate brief and confirm state fields included before first code verify | v1_t4 / no new persisted fields or scope |
 | T5 | 2/2 | Read-only preflight: MainActivity immediately calls SDK after Boolean beginAuthorization | Existing call site and suspend HistorySession API cannot await durable commit via Boolean | Include minimal Activity handoff edit and callback-based acknowledgment; preserve existing scopes, SDK flow, consent and explicit continuation | Add MainActivity.kt to T5; T6 remains dependent and owns later UI extraction | Compile and ordering tests required at T5; no implementation in this correction | Codex / scope-preserving interface correction |
 | T1 | 2/2 | T3 adapter blocked: helper generic SQLiteException conflates unknown schema and corruption | Source inspected: fixed schema guard and corruption handler erase type distinctions | Use internal UnsupportedHistorySchemaException and platform SQLiteDatabaseCorruptException, preserving no-destructive-fallback and schema v1 | HistoryDatabase.kt plus existing smoke test; preserve T2 and all payload rules | Compile and existing harness; T3 must assert actual reopen statuses | v1_t1 scoped recovery / T3 waits for typed API |
@@ -509,3 +515,5 @@ Checkpoint after T7: spec-only independent conformance check, code review and se
 - T1 recovery and T3 source `2b46f34`: root compilation passed. [Emulator run 41373372078](https://github.com/nyeonu/health-app/actions/runs/41373372078) succeeded; downloaded XML confirms 17 tests, 0 failures/errors/skips, including all 3 DB harness and all 11 typed-store cases. [JVM/APK/lint run 41373372032](https://github.com/nyeonu/health-app/actions/runs/41373372032) succeeded. T1 recovery 2/2 is verified, not reset.
 
 - T4: first implementation and root verification passed, actual XML contains 16 tests with 0 failures/errors/skips; root rerun was up-to-date on unchanged code. Tests exercise arrival rejection, generation invalidation, delete/reload failures and guarded starts with deterministic store doubles; actual durability remains separately established by T3.
+
+- T5 candidate: first implementation and root repeated verification passed, core 35 + app 44 = 79 JVM tests, 0 failures/errors/skips; debug APK assembled. Root review nevertheless blocks completion: Activity serializes the consent generation in savedInstanceState against the memory-only rule; ViewModel history deletion entry points do not reject Health Connect permission/refresh busy states, and rejected reauthorization can retain an old ticket. Candidate files are preserved; T6/T7 have not started. An additional scoped repair was requested because T5 plan-correction budget is already 2/2; no repair has been performed or counted as approved.

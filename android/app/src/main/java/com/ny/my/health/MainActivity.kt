@@ -34,6 +34,7 @@ import com.ny.my.health.core.DayWindow
 
 class MainActivity : ComponentActivity() {
     private lateinit var model: SyncViewModel
+    private var consentTicket: Long? = null
     private val authorizationClient by lazy { Identity.getAuthorizationClient(this) }
 
     private val healthConsent = registerForActivityResult(
@@ -43,16 +44,18 @@ class MainActivity : ComponentActivity() {
     private val googleConsent = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult(),
     ) { result ->
+        val ticket = consentTicket ?: return@registerForActivityResult
+        consentTicket = null
         when {
-            result.resultCode == RESULT_CANCELED -> model.authorizationFailed(Failure.CONSENT_CANCELED)
-            result.resultCode != RESULT_OK -> model.authorizationFailed(Failure.UNEXPECTED_RESULT)
-            result.data == null -> model.authorizationFailed(Failure.MISSING_INTENT)
+            result.resultCode == RESULT_CANCELED -> model.authorizationFailed(ticket, Failure.CONSENT_CANCELED)
+            result.resultCode != RESULT_OK -> model.authorizationFailed(ticket, Failure.UNEXPECTED_RESULT)
+            result.data == null -> model.authorizationFailed(ticket, Failure.MISSING_INTENT)
             else -> try {
                 val authorization = authorizationClient.getAuthorizationResultFromIntent(result.data)
-                if (authorization == null) model.authorizationFailed(Failure.MISSING_RESULT)
-                else model.authorizationReturned(authorization.accessToken, authorization.grantedScopes)
+                if (authorization == null) model.authorizationFailed(ticket, Failure.MISSING_RESULT)
+                else model.authorizationReturned(ticket, authorization.accessToken, authorization.grantedScopes)
             } catch (failure: Exception) {
-                reportGoogleFailure(failure)
+                reportGoogleFailure(ticket, failure)
             }
         }
     }
@@ -60,6 +63,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         model = ViewModelProvider(this)[SyncViewModel::class.java]
+        consentTicket = savedInstanceState?.takeIf { it.containsKey("authorization-generation") }?.getLong("authorization-generation")
         setContent {
             val state by model.state.collectAsState()
             MaterialTheme {
@@ -129,6 +133,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        // 요청 세대만 보관한다. 토큰과 업로드 동의는 저장하지 않는다.
+        consentTicket?.let { outState.putLong("authorization-generation", it) }
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onResume() {
         super.onResume()
         model.resume()
@@ -140,7 +150,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun authorizeDrive() {
-        if (!model.beginAuthorization()) return
+        model.beginAuthorization {
+            val ticket = model.authorizationTicket ?: return@beginAuthorization
+            launchDriveAuthorization(ticket)
+        }
+    }
+
+    private fun launchDriveAuthorization(ticket: Long) {
         try {
             val request = AuthorizationRequest.builder()
                 .setRequestedScopes(listOf(Scope(SyncViewModel.DRIVE_SCOPE)))
@@ -148,34 +164,39 @@ class MainActivity : ComponentActivity() {
             authorizationClient.authorize(request)
                 .addOnSuccessListener { result ->
                     if (result == null) {
-                        model.authorizationFailed(Failure.MISSING_RESULT)
+                        model.authorizationFailed(ticket, Failure.MISSING_RESULT)
                     } else if (result.hasResolution()) {
-                        // Never launch stale external consent after this activity leaves the foreground.
+                        // 이전 세대나 전경을 떠난 화면은 외부 동의를 새로 열지 않는다.
+                        if (ticket != model.authorizationTicket) return@addOnSuccessListener
                         if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                            model.authorizationFailed(Failure.FOREGROUND_DEPARTURE)
+                            model.authorizationFailed(ticket, Failure.FOREGROUND_DEPARTURE)
                         } else {
                             try {
                                 val pendingIntent = result.pendingIntent
-                                if (pendingIntent == null) model.authorizationFailed(Failure.MISSING_RESOLUTION)
-                                else googleConsent.launch(IntentSenderRequest.Builder(pendingIntent).build())
+                                if (pendingIntent == null) model.authorizationFailed(ticket, Failure.MISSING_RESOLUTION)
+                                else {
+                                    consentTicket = ticket
+                                    googleConsent.launch(IntentSenderRequest.Builder(pendingIntent).build())
+                                }
                             } catch (_: Exception) {
-                                model.authorizationFailed(Failure.RESOLUTION_LAUNCH_FAILED)
+                                consentTicket = null
+                                model.authorizationFailed(ticket, Failure.RESOLUTION_LAUNCH_FAILED)
                             }
                         }
                     } else {
-                        model.authorizationReturned(result.accessToken, result.grantedScopes)
+                        model.authorizationReturned(ticket, result.accessToken, result.grantedScopes)
                     }
                 }
-                .addOnFailureListener { failure -> reportGoogleFailure(failure) }
-                .addOnCanceledListener { model.authorizationFailed(Failure.TASK_CANCELED) }
+                .addOnFailureListener { failure -> reportGoogleFailure(ticket, failure) }
+                .addOnCanceledListener { model.authorizationFailed(ticket, Failure.TASK_CANCELED) }
         } catch (failure: Exception) {
-            reportGoogleFailure(failure)
+            reportGoogleFailure(ticket, failure)
         }
     }
 
-    private fun reportGoogleFailure(failure: Exception) {
-        // SDK exception text can contain private details. Only the numeric status crosses this boundary.
-        if (failure is ApiException) model.authorizationFailed(Failure.GOOGLE_API, failure.statusCode)
-        else model.authorizationFailed(Failure.UNKNOWN)
+    private fun reportGoogleFailure(ticket: Long, failure: Exception) {
+        // 공급자 예외 원문은 경계를 넘기지 않고 숫자 상태만 전달한다.
+        if (failure is ApiException) model.authorizationFailed(ticket, Failure.GOOGLE_API, failure.statusCode)
+        else model.authorizationFailed(ticket, Failure.UNKNOWN)
     }
 }

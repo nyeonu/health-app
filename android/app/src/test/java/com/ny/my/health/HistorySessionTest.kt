@@ -9,6 +9,9 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -351,4 +354,201 @@ class HistorySessionTest {
         session.reload()
         assertEquals(1, store.loads)
     }
+
+    @Test
+    fun `승인 시작 저장 실패는 SDK 실행을 막고 취소 결과는 요청 시각만 기록한다`() = runBlocking {
+        val store = store()
+        val session = session(store, this)
+        val effects = HistoryEffects(session)
+        session.restore()
+        var launches = 0
+        store.failWrite = true
+        effects.authorize(date, at) { launches++ }
+        assertEquals(0, launches)
+        store.failWrite = false
+        session.reload()
+        effects.authorize(date, at) { ticket ->
+            assertEquals(HistoryPhase.AUTHORIZING, store.saved.history!!.attempt!!.phase)
+            launches++
+            launch { session.authorizationFailed(ticket, AuthorizationDiagnostics.Failure.CONSENT_CANCELED, at) }
+        }
+        yield()
+        val attempt = store.saved.history!!.attempt!!
+        assertEquals(1, launches)
+        assertEquals(at, attempt.authorizationRequestedAt)
+        assertNull(attempt.startedAt)
+        assertEquals(HistoryPhase.AUTHORIZATION_FAILED, attempt.phase)
+    }
+
+    @Test
+    fun `실행 시작 저장 실패는 실제 효과 경계의 읽기와 업로드를 모두 막는다`() = runBlocking {
+        val store = store()
+        val session = session(store, this)
+        session.restore()
+        val ticket = prepared(session)
+        store.failWrite = true
+        var reads = 0
+        var uploads = 0
+        val outcome = HistoryEffects(session).execute(ticket, date, at, { at }, { true }, { fail("원격 결과 없음") }) {
+            reads++
+            uploads++
+            HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 1), setOf(DataType.STEPS))
+        }
+        assertNull(outcome)
+        assertEquals(0, reads)
+        assertEquals(0, uploads)
+        assertEquals(success, store.saved.history!!.success)
+    }
+
+    @Test
+    fun `계속 대기 저장 이후에만 토큰을 받고 중복 계속은 한 번만 정확한 날짜를 실행한다`() = runBlocking {
+        val store = store()
+        val session = session(store, this)
+        val effects = HistoryEffects(session)
+        session.restore()
+        val ticket = requireNotNull(session.beginAuthorization(date, at))
+        var credentials = 0
+        effects.acceptAuthorization(ticket) {
+            assertEquals(HistoryPhase.AWAITING_UPLOAD, store.saved.history!!.attempt!!.phase)
+            credentials++
+        }
+        assertFalse(effects.acceptAuthorization(ticket) { credentials++ })
+        var reads = 0
+        var uploads = 0
+        repeat(2) {
+            effects.execute(ticket, date, at, { at }, { true }, {}) { selected ->
+                assertEquals(date, selected)
+                assertEquals(HistoryPhase.RUNNING, store.saved.history!!.attempt!!.phase)
+                reads++
+                uploads++
+                HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 1), setOf(DataType.STEPS))
+            }
+        }
+        assertEquals(1, credentials)
+        assertEquals(1, reads)
+        assertEquals(1, uploads)
+        assertEquals(HistoryPhase.SUCCESS, store.saved.history!!.attempt!!.phase)
+    }
+
+    @Test
+    fun `원격 확인 뒤 결과 저장 실패는 일시 증거와 이전 영속 성공을 분리한다`() = runBlocking {
+        val store = store()
+        val session = session(store, this)
+        session.restore()
+        val ticket = prepared(session)
+        var remote: HistoryExecutionResult? = null
+        HistoryEffects(session).execute(ticket, date, at, { at.plusSeconds(60) }, { true }, { remote = it }) {
+            store.failWrite = true
+            HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 2), setOf(DataType.STEPS, DataType.WEIGHT))
+        }
+        assertEquals(SyncStatus.SUCCESS, remote!!.result.status)
+        assertEquals(2, remote!!.result.uploadedFiles)
+        assertEquals(HistoryError.WRITE, session.state.value.error)
+        assertEquals(success, session.state.value.read.history!!.success)
+        assertEquals(success, store.saved.history!!.success)
+        store.failWrite = false
+        val reopened = session(store, this)
+        reopened.restore()
+        assertEquals(success, reopened.state.value.read.history!!.success)
+        assertEquals(HistoryPhase.INTERRUPTED, reopened.state.value.read.history!!.attempt!!.phase)
+    }
+
+    @Test
+    fun `전경 작업 취소는 독립 종결 저장을 끝내고 원격 업로드를 재실행하지 않는다`() = runBlocking {
+        val store = store()
+        val session = session(store, this)
+        session.restore()
+        val ticket = prepared(session)
+        val entered = CompletableDeferred<Unit>()
+        val remoteWait = CompletableDeferred<Unit>()
+        var uploads = 0
+        val execution = launch(start = CoroutineStart.UNDISPATCHED) {
+            HistoryEffects(session).execute(ticket, date, at, { at }, { true }, {}) {
+                uploads++
+                entered.complete(Unit)
+                remoteWait.await()
+                HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 1), setOf(DataType.STEPS))
+            }
+        }
+        entered.await()
+        execution.cancelAndJoin()
+        assertEquals(HistoryPhase.INTERRUPTED, store.saved.history!!.attempt!!.phase)
+        assertEquals(at, store.saved.history!!.attempt!!.finishedAt)
+        assertEquals(1, uploads)
+        assertEquals(success, store.saved.history!!.success)
+    }
+
+    @Test
+    fun `결과 저장 중 전경 취소는 원격 확인과 성공 커밋을 잃지 않는다`() = runBlocking {
+        val store = store()
+        val session = session(store, this)
+        session.restore()
+        val ticket = prepared(session)
+        val gate = CompletableDeferred<Unit>()
+        val execution = launch(start = CoroutineStart.UNDISPATCHED) {
+            HistoryEffects(session).execute(ticket, date, at, { at.plusSeconds(1) }, { true }, {}) {
+                store.gate = gate
+                HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 2), setOf(DataType.STEPS))
+            }
+        }
+        assertEquals(HistoryOperation.WRITING, session.state.value.operation)
+        execution.cancel()
+        assertFalse(execution.isCompleted)
+        gate.complete(Unit)
+        execution.join()
+        assertEquals(HistoryPhase.SUCCESS, store.saved.history!!.attempt!!.phase)
+        assertEquals(2, store.saved.history!!.success!!.confirmedFiles)
+    }
+
+    @Test
+    fun `재열기와 지연 승인 결과는 토큰이나 명시적 계속 및 외부 실행을 복원하지 않는다`() = runBlocking {
+        for (phase in listOf<HistoryPhase?>(null, HistoryPhase.AUTHORIZING, HistoryPhase.AWAITING_UPLOAD)) {
+            val store = store(history(phase))
+            val session = session(store, this)
+            val effects = HistoryEffects(session)
+            session.restore()
+            var credentials = 0
+            var effectsCount = 0
+            assertFalse(effects.acceptAuthorization(1) { credentials++ })
+            assertNull(effects.execute(1, date, at, { at }, { true }, {}) {
+                effectsCount++
+                HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 1), setOf(DataType.STEPS))
+            })
+            assertEquals(0, credentials)
+            assertEquals(0, effectsCount)
+            assertEquals(success, session.state.value.read.history!!.success)
+        }
+        val store = store()
+        val session = session(store, this)
+        session.restore()
+        val stale = prepared(session)
+        session.reload()
+        val current = requireNotNull(session.beginAuthorization(date, at))
+        var credentials = 0
+        assertFalse(HistoryEffects(session).acceptAuthorization(stale) { credentials++ })
+        assertTrue(HistoryEffects(session).acceptAuthorization(current) { credentials++ })
+        assertEquals(1, credentials)
+    }
+
+    @Test
+    fun `준비 뒤 날짜 변경은 실행을 막고 명시적 재승인으로 새 날짜를 선택한다`() = runBlocking {
+        val store = store()
+        val credentials = Credentials()
+        val session = session(store, this, credentials)
+        session.restore()
+        val ticket = prepared(session)
+        val tomorrow = date.plusDays(1)
+        var reads = 0
+        assertNull(HistoryEffects(session).execute(ticket, tomorrow, at, { at }, { true }, {}) {
+            reads++
+            HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 1), setOf(DataType.STEPS))
+        })
+        session.reload()
+        assertFalse(credentials.valid)
+        val fresh = requireNotNull(session.beginAuthorization(tomorrow, at))
+        assertTrue(fresh != ticket)
+        assertEquals(tomorrow, store.saved.history!!.attempt!!.date)
+        assertEquals(0, reads)
+    }
+
 }
