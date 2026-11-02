@@ -13,17 +13,17 @@ tasks:
   - id: T1
     title: Establish real SQLite reopen test harness
     depends_on: []
-    status: in_progress
+    status: done
     tier: standard
   - id: T2
     title: Define bounded history transitions
     depends_on: [T1]
-    status: pending
+    status: done
     tier: standard
   - id: T3
     title: Commit history atomically
     depends_on: [T2]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T4
     title: Serialize history session recovery
@@ -113,6 +113,27 @@ interface HistoryStore {
 ```
 
 ```kotlin
+// SyncHistoryCodec — confirmed T2 API
+object SyncHistoryCodec {
+    const val VERSION = 1
+    const val MAX_BYTES = 16384
+    fun encode(history: SyncHistory): String
+    fun decode(payload: String): HistoryRead
+}
+// SyncHistory.recover — confirmed T2 helper, same core file
+fun SyncHistory.recover(): SyncHistory
+// SyncHistory.complete — confirmed T2 helper, same core file
+fun SyncHistory.complete(attempt: HistoryAttempt): SyncHistory
+// HistoryDatabase — confirmed T1 API, Android app only
+internal class HistoryDatabase(context: Context, databaseName: String = "sync-history.db") {
+    internal val databaseFile: File
+    internal fun openForRead(): SQLiteDatabase?
+    internal fun openForWrite(): SQLiteDatabase
+    internal fun <T> transaction(beforeCommit: () -> Unit = {}, block: (SQLiteDatabase) -> T): T
+}
+```
+
+```kotlin
 // HistorySession — app, plain Kotlin; independent of Android Application and SDK classes
 internal class HistorySession(
     store: HistoryStore, scope: CoroutineScope, invalidateCredentials: () -> Unit,
@@ -165,7 +186,7 @@ internal data class HistoryUiActions(
 - `HealthHomeScreen.kt`: pure display projection combines latest outcome and independently committed success; never derive success count from the latest attempt.
 
 - `HistoryDatabase`: Use app no-backup private storage; internal DB schema version 1, a single row keyed by 1 with payload format version and payload committed together; rollback journal and synchronous FULL. Read must not create a missing DB. Unknown user_version and unavailable/corrupt DB block writes; no destructive corruption handler or fallback. One transaction acknowledges only after successful endTransaction; precommit fault injection is internal to tests. Reset writes a supported empty envelope atomically, never unlinks files.
-- `SyncHistory`: Persist only latest attempt and latest success, format version 1, ISO instants/local dates, known enum coverage/phase, allowlisted errors and nonnegative or unknown counts. Parser cap is 16 KiB UTF-8; reject over-cap, invalid fields, duplicate/unknown categories and unknown enums. Unknown version is UNSUPPORTED, malformed payload CORRUPT; neither means empty. No token/account/file/record identifier or raw measurement.
+- `SyncHistory`: Failure-code allowlist is the existing four coordinator phase codes, SyncDiagnostics safe fallback SYNC_FAILED and exact AuthorizationDiagnostics.Failure enum names; never composed provider diagnostics. Instants are wall-clock values, so validate presence/parseability without imposing monotonic chronology. Codec encode/decode and same-file recover/complete helper names implement the approved state rules. Persist only latest attempt and latest success, format version 1, ISO instants/local dates, known enum coverage/phase, allowlisted errors and nonnegative or unknown counts. Parser cap is 16 KiB UTF-8; reject over-cap, invalid fields, duplicate/unknown categories and unknown enums. Unknown version is UNSUPPORTED, malformed payload CORRUPT; neither means empty. No token/account/file/record identifier or raw measurement.
 
 - `T2Cases`: History codec rejects forbidden fields and oversized or malformed metadata (①/②, JVM); Later non-success outcomes retain independently committed prior success (①/②/④, JVM); Recovery distinguishes abandoned authorization from awaiting-upload interruption (①/②/④, JVM); Running recovery never invents terminal time or confirmed upload count (①/④, JVM); Terminal restoration preserves actual outcome and prior independent success (①/②/④, JVM and SQLite reopen)
 
@@ -309,7 +330,7 @@ T2 완료 후 시작.
   | `app/src/main/java/com/ny/my/health/SqliteHistoryStore.kt` | New | Bound reads/transactional envelope replacement/reset |
   | `app/src/androidTest/java/com/ny/my/health/SqliteHistoryStoreInstrumentedTest.kt` | New | Real rollback, empty commit, old/new reopen |
 
-- **인터페이스**: Shared `HistoryStore`, `SyncHistory` and `HistoryDatabase` from T1.
+- **인터페이스**: Shared `HistoryStore`, `SyncHistory`, `SyncHistoryCodec` and `HistoryDatabase` from T1/T2.
 - **결정 로직**: Absent, unsupported, corrupt and unavailable are distinct results; unknown storage never silently initializes or overwrites history.
 - **호출 순서**:
   1. Validate encoded envelope before starting a write transaction.
@@ -469,4 +490,11 @@ Checkpoint after T7: spec-only independent conformance check, code review and se
 
 | 원인·근거 | 준비 조치 | 조치 사용/1 | 확인 명령·결과 | 확인 사용/1 | 다음 조치 |
 |---|---|---|---|---|---|
-| Existing JDK/SDK/proxy configuration required for baseline compilation | Used existing `/workspace/tooling/run-health-command.py`; no tool version or project configuration changed | 1/1 | `./gradlew --offline --no-daemon :core:compileKotlin :app:compileDebugKotlin` via wrapper: BUILD SUCCESSFUL, 18 tasks up-to-date | 1/1 | Baseline compile only; no new implementation or runtime test claimed. P0 disposition response pending before T1. |
+| Offline Gradle in executor lacked wildcard-IP socket access | Reran identical command with existing additional network/socket permission; no tool/config/version change | 1/1 | T2 exact command passed, 8 tests / 0 failures/errors/skips | 1/1 | Environment issue resolved; T2 done |
+| Existing JDK/SDK/proxy configuration required for baseline compilation | Used existing `/workspace/tooling/run-health-command.py`; no tool version or project configuration changed | 1/1 | `./gradlew --offline --no-daemon :core:compileKotlin :app:compileDebugKotlin` via wrapper: BUILD SUCCESSFUL, 18 tasks up-to-date | 1/1 | Baseline compile only; no new implementation or runtime test claimed. Owner disposition recorded; T1 actual CI subsequently passed. |
+
+## Verified execution checkpoints
+
+- T1 source `5f92bee`: app/androidTest compilation passed locally. Android emulator run [41367673147](https://github.com/nyeonu/health-app/actions/runs/41367673147) succeeded; downloaded XML contains 4 executed tests, including `privateHistoryDatabaseReopensACommittedSyntheticRow`, with 0 failures/errors/skips. JVM/APK/lint run [41367673167](https://github.com/nyeonu/health-app/actions/runs/41367673167) succeeded; fresh artifact XML confirms 47 JVM tests with 0 failures/errors/skips. This is synthetic Android persistence evidence, not physical Galaxy/account validation.
+
+- T2: root reran the exact approved unit command with existing socket/network permission; BUILD SUCCESSFUL, 8 new history tests, 0 failures/errors/skips. The first executor attempt failed before compilation on wildcard-IP socket restrictions, not a code defect; no source repair occurred. Public codec/recovery APIs above are actual implementation facts.
