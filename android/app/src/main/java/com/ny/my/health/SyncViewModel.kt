@@ -50,6 +50,18 @@ internal data class SyncUiState(
     val busy: Boolean get() = refreshing || pendingConsent || syncing || history?.operation?.let { it != HistoryOperation.IDLE } == true
 }
 
+/** 현재 시도의 메모리 표시만 폐기한다. 영속 성공은 저장소 확인 전까지 유지한다. */
+internal fun SyncUiState.invalidateCurrentAttempt(): SyncUiState = copy(
+    uploadOptIn = false,
+    readyToUpload = false,
+    pendingConsent = false,
+    transientRemoteStatus = null,
+    transientConfirmedFiles = null,
+    uploadedFiles = 0,
+    coverage = emptySet(),
+    message = "로컬 동의와 현재 시도 표시를 지웠습니다. 저장된 기록을 확인해 주세요.",
+)
+
 class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private val reader = HealthConnectReader(application)
     private val clock = Clock.systemUTC()
@@ -62,10 +74,12 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private var accessToken: String? = null
     internal var authorizationTicket: Long? = null
         private set
+    private val resolutionTickets = AuthorizationResolutionTickets()
     private val historySession = HistorySession(SqliteHistoryStore(application), viewModelScope) {
         accessToken = null
         authorizationTicket = null
-        mutableState.value = mutableState.value.copy(uploadOptIn = false, readyToUpload = false, pendingConsent = false)
+        resolutionTickets.clear()
+        mutableState.value = mutableState.value.invalidateCurrentAttempt()
     }
     private val effects = HistoryEffects(historySession)
 
@@ -156,7 +170,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     internal fun beginAuthorization(onReady: () -> Unit) {
         val state = mutableState.value
-        if (!foreground || state.busy || !state.uploadOptIn || state.readyToUpload) return
+        if (!foreground || !entryGate().allowsAuthorization(authorizationTicket) || !state.uploadOptIn || state.readyToUpload) return
         if (state.availability != HealthConnectClient.SDK_AVAILABLE || state.grantedCount == 0) {
             mutableState.value = state.copy(message = "PERMISSION_REQUIRED: 사용 가능한 Health Connect 읽기 권한이 필요합니다.")
             return
@@ -168,17 +182,18 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             transientRemoteStatus = null, transientConfirmedFiles = null,
             message = "Google Drive 권한 확인 중…")
         viewModelScope.launch {
-            effects.authorize(date, clock.instant()) { ticket ->
+            val accepted = effects.authorize(date, clock.instant()) { ticket ->
                 authorizationTicket = ticket
                 if (foreground) onReady()
                 else authorizationFailed(ticket, Failure.FOREGROUND_DEPARTURE)
             }
-            if (authorizationTicket == null) mutableState.value = mutableState.value.copy(pendingConsent = false)
+            if (!accepted) mutableState.value = mutableState.value.copy(pendingConsent = false)
         }
     }
 
     internal fun authorizationReturned(ticket: Long, token: String?, scopes: List<String>) {
         if (ticket != authorizationTicket || !mutableState.value.pendingConsent) return
+        resolutionTickets.clear()
         val failure = AuthorizationDiagnostics.resultFailure(token, DRIVE_SCOPE in scopes)
         if (failure != null) {
             authorizationFailed(ticket, failure)
@@ -187,6 +202,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val accepted = effects.acceptAuthorization(ticket) { accessToken = token }
             if (ticket != authorizationTicket) return@launch
+            if (!accepted) authorizationTicket = null
             mutableState.value = mutableState.value.copy(pendingConsent = false, readyToUpload = accepted,
                 message = if (accepted) "Google 권한 확인됨. 아래 ‘업로드 계속’을 눌러 전경에서 읽기와 업로드를 시작하세요."
                     else "로컬 기록 저장을 확인하지 못했습니다. 기록을 다시 읽어 주세요.")
@@ -203,6 +219,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     internal fun authorizationFailed(ticket: Long, failure: Failure, statusCode: Int? = null) {
         if (ticket != authorizationTicket || !mutableState.value.pendingConsent) return
+        resolutionTickets.clear()
         accessToken = null
         mutableState.value = mutableState.value.copy(pendingConsent = false, readyToUpload = false,
             message = AuthorizationDiagnostics.message(failure, statusCode))
@@ -266,11 +283,34 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    internal fun registerAuthorizationResolution(ticket: Long): Boolean {
+        if (ticket != authorizationTicket || !mutableState.value.pendingConsent) return false
+        return resolutionTickets.register(ticket)
+    }
+
+    internal fun consumeAuthorizationResolution(): Long? = resolutionTickets.consume()?.takeIf {
+        it == authorizationTicket && mutableState.value.pendingConsent
+    }
+
+    private fun entryGate(): HistoryEntryGate {
+        val state = mutableState.value
+        return HistoryEntryGate(state.pendingConsent, state.refreshing, state.syncing, historySession.state.value)
+    }
+
     internal fun reloadHistory() { viewModelScope.launch { historySession.reload() } }
-    internal fun requestDeleteHistory() { historySession.requestDelete() }
+    internal fun requestDeleteHistory() {
+        if (!entryGate().allowsDeletion()) return
+        historySession.requestDelete()
+    }
     internal fun cancelDeleteHistory() { historySession.cancelDelete() }
-    internal fun confirmDeleteHistory() { viewModelScope.launch { historySession.confirmDelete() } }
-    internal fun retryDeleteHistory() { viewModelScope.launch { historySession.retryDelete() } }
+    internal fun confirmDeleteHistory() {
+        if (!entryGate().allowsDeletion()) return
+        viewModelScope.launch { if (entryGate().allowsDeletion()) historySession.confirmDelete() }
+    }
+    internal fun retryDeleteHistory() {
+        if (!entryGate().allowsDeletion()) return
+        viewModelScope.launch { if (entryGate().allowsDeletion()) historySession.retryDelete() }
+    }
     internal fun keepExistingHistory() { viewModelScope.launch { historySession.keepExistingAfterDeleteFailure() } }
 
     internal fun forget() { requestDeleteHistory() }

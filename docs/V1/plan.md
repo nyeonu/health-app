@@ -33,12 +33,12 @@ tasks:
   - id: T5
     title: Connect manual execution to durable history
     depends_on: [T4]
-    status: blocked
+    status: done
     tier: standard
   - id: T6
     title: Render status-first home and deletion recovery
     depends_on: [T5]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T7
     title: Validate lifecycle and accessible UI states
@@ -187,6 +187,7 @@ internal data class HistoryUiActions(
 - `HistorySession.kt`: pure eligibility/operation-generation checks remain same-file helpers, separate from suspending store calls. It is the single in-process writer and does not claim cross-process/multi-instance safety.
 - Authorization/execution start methods return acceptance only after commit; the in-memory generation ticket is never serialized. Credential invalidation is a callback invoked before deletion's first suspending operation, including failure paths. Session state includes no credential; a rejected/stale authorization callback must discard its token in ViewModel.
 - On explicit continuation, compute yesterday once, persist that execution date and call existing `SyncCoordinator.sync(date)` with exactly that date. Do not independently recompute the day between metadata and read across midnight.
+- `HealthHomeScreen`: actual T5 model exposes history: HistorySessionState?, transientRemoteStatus: SyncStatus?, transientConfirmedFiles: Int?. Use the committed history.success object for ALL success card fields; latest-attempt or transient counts must not replace its count. Actions: reloadHistory/requestDeleteHistory/cancelDeleteHistory/confirmDeleteHistory/retryDeleteHistory/keepExistingHistory; Activity retains SDK callbacks and only passes these renderer actions. Read the approved section-4 screen/deletion copy excerpt supplied with the brief, not a full plan/spec.
 - `HealthHomeScreen.kt`: pure display projection combines latest outcome and independently committed success; never derive success count from the latest attempt.
 
 - `HistoryDatabase`: Use app no-backup private storage; internal DB schema version 1, a single row keyed by 1 with payload format version and payload committed together; rollback journal and synchronous FULL. Read must not create a missing DB. Unknown user_version and unavailable/corrupt DB block writes; no destructive corruption handler or fallback. One transaction acknowledges only after successful endTransaction; precommit fault injection is internal to tests. Reset writes a supported empty envelope atomically, never unlinks files.
@@ -491,7 +492,7 @@ Checkpoint after T7: spec-only independent conformance check, code review and se
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
-| T5 | Extra repair requested, not run | Tests pass but source violates generation memory-only and pending-permission deletion guard | MainActivity savedInstanceState/onSaveInstanceState and ViewModel action entry points inspected | Proposed: retain correlation in same-process ViewModel memory only; reject busy/stale deletion and rejected reauthorization without stuck pending state; add behavioral regressions | Existing T5 four files only; preserve all earlier tests/working code | Owner authorization pending; then exact T5 suites/APK plus Android recreation checks | v1_t5 paused; dependent T6/T7 pending |
+| T5 | Owner-authorized extra correction (3rd total; budget not reset) | Tests pass but source violates generation memory-only and pending-permission deletion guard | MainActivity savedInstanceState/onSaveInstanceState and ViewModel action entry points inspected | Proposed: retain correlation in same-process ViewModel memory only; reject busy/stale deletion and rejected reauthorization without stuck pending state; add behavioral regressions | Existing T5 four files only; preserve all earlier tests/working code | Owner explicitly approved the additional correction; rerun exact T5 suites/APK and later Android recreation checks | v1_t5 resuming scoped repair; dependent T6/T7 wait for verification |
 | T6 | 2/2 | Preflight: existing instrumented tests assert P0 title/captions that approved UI replaces | Existing HealthAppInstrumentedTest inspected | Include minimal old-copy/navigation update in T6 so its CI remains meaningful; T7 stays dependent | Add existing Activity test file, preserve its safety assertions | Full instrumentation after T6 required | Codex / no weaker assertions |
 | T7 | 2/2 | Planned synthetic gallery has no host PNG artifact path | Installed monitor 1.7.2 API and output-dir calculation inspected; current workflow uploads XML/reports only | Use existing platform test output and a synthetic PNG-only upload glob; no new dependency | Add existing emulator workflow as fifth T7 file; preserve runtime and signing settings | Confirm downloaded images exist and inspect before visual-review claim | Codex / evidence collection only |
 | T4 | 2/2 | Executor brief omitted HistorySessionState: assembler split at secondary header comment | Approved plan already defines exact state/enums; no interface redesign needed | Keep state and enums in HistorySession code fragment and resend exact existing shape; clarify explicit restore and live-state admission | plan.md / brief only; implementation absent | Regenerate brief and confirm state fields included before first code verify | v1_t4 / no new persisted fields or scope |
@@ -517,3 +518,9 @@ Checkpoint after T7: spec-only independent conformance check, code review and se
 - T4: first implementation and root verification passed, actual XML contains 16 tests with 0 failures/errors/skips; root rerun was up-to-date on unchanged code. Tests exercise arrival rejection, generation invalidation, delete/reload failures and guarded starts with deterministic store doubles; actual durability remains separately established by T3.
 
 - T5 candidate: first implementation and root repeated verification passed, core 35 + app 44 = 79 JVM tests, 0 failures/errors/skips; debug APK assembled. Root review nevertheless blocks completion: Activity serializes the consent generation in savedInstanceState against the memory-only rule; ViewModel history deletion entry points do not reject Health Connect permission/refresh busy states, and rejected reauthorization can retain an old ticket. Candidate files are preserved; T6/T7 have not started. An additional scoped repair was requested because T5 plan-correction budget is already 2/2; no repair has been performed or counted as approved.
+
+- Owner authorization (2026-11-02): explicitly approved the additional T5 correction after the two integration issues were disclosed. Existing correction history is retained (third total, not a reset). Remove Bundle generation persistence, preserve correlation only in same-process ViewModel memory, enforce history-action busy guards and clean rejected authorization state; no new scope, dependency or external authorization policy.
+
+- T5 owner-authorized correction validation: first scoped correction passed 35 core + 48 app = 83 JVM tests and APK build, root rerun unchanged/up-to-date. Source inspection confirms no generation Bundle/SavedState restoration and production busy gates. Acceptance follow-up within the same owner-approved memory/status correction clears stale transient confirmation/count/message on invalidation while retaining independently committed history until acknowledgment. This extra scoped pass is recorded, not hidden or treated as a reset of previous corrections; no new feature or permission policy is introduced.
+
+- T5 owner-authorized memory/status correction completed: 35 core + 49 app = 84 JVM tests, 0 failures/errors/skips, APK assembled. Bundle persistence removed; same-process ViewModel holder correlates SDK result once and is empty in a new process. Production busy/rejected-start guards and transient-status clearing are covered by 5 added regressions (29 total session tests). Committed historical success is retained until the reset commits. The initial correction and disclosed acceptance follow-up each verified once; no hidden count reset.

@@ -551,4 +551,125 @@ class HistorySessionTest {
         assertEquals(0, reads)
     }
 
+
+    @Test
+    fun `동일 화면 모델의 재생성은 원래 승인 티켓을 한 번 소비하고 새 프로세스는 번호가 같아도 복원하지 않는다`() = runBlocking {
+        val store = store()
+        val originalSession = session(store, this)
+        originalSession.restore()
+        val originalTicket = requireNotNull(originalSession.beginAuthorization(date, at))
+        val retainedHolder = AuthorizationResolutionTickets()
+        assertTrue(retainedHolder.register(originalTicket))
+        val recreatedActivityHolder = retainedHolder
+        assertEquals(originalTicket, recreatedActivityHolder.consume())
+        assertNull(retainedHolder.consume())
+        val newSession = session(store, this)
+        newSession.restore()
+        val newTicket = requireNotNull(newSession.beginAuthorization(date, at))
+        assertEquals(originalTicket, newTicket)
+        val newProcessHolder = AuthorizationResolutionTickets()
+        assertNull(newProcessHolder.consume())
+        assertEquals(HistoryPhase.AUTHORIZING, newSession.state.value.read.history!!.attempt!!.phase)
+        assertTrue(newProcessHolder.register(newTicket))
+        assertEquals(newTicket, newProcessHolder.consume())
+        assertNull(newProcessHolder.consume())
+    }
+
+    @Test
+    fun `승인 결과 상관관계는 중복 등록을 거부하고 실패나 무효화 뒤 남지 않는다`() {
+        val holder = AuthorizationResolutionTickets()
+        assertTrue(holder.register(10))
+        assertFalse(holder.register(11))
+        assertEquals(10L, holder.consume())
+        assertNull(holder.consume())
+        repeat(2) {
+            assertTrue(holder.register(12))
+            holder.clear()
+            assertNull(holder.consume())
+        }
+    }
+
+    @Test
+    fun `삭제 진입 검사는 권한 대기와 새로고침 및 실행과 저장소 작업 중 오래된 이벤트를 거부한다`() = runBlocking {
+        val store = store()
+        val session = session(store, this)
+        session.restore()
+        val idle = HistoryEntryGate(false, false, false, session.state.value)
+        assertTrue(idle.allowsDeletion())
+        val blocked = listOf(
+            idle.copy(pendingConsent = true),
+            idle.copy(refreshing = true),
+            idle.copy(syncing = true),
+        ) + listOf(HistoryOperation.LOADING, HistoryOperation.WRITING, HistoryOperation.DELETING).map {
+            idle.copy(history = idle.history.copy(operation = it))
+        }
+        for (gate in blocked) {
+            assertFalse(gate.allowsDeletion())
+            assertFalse(gate.allowsAuthorization(null))
+        }
+        assertEquals(0, store.resets)
+        assertEquals(success, store.saved.history!!.success)
+    }
+
+    @Test
+    fun `재승인 진입은 기존 티켓과 기록 오류를 거부하고 거절된 시작은 명시적 실패를 반환한다`() = runBlocking {
+        val store = store()
+        val session = session(store, this)
+        session.restore()
+        val idle = HistoryEntryGate(false, false, false, session.state.value)
+        assertTrue(idle.allowsAuthorization(null))
+        val ticket = prepared(session)
+        assertFalse(idle.allowsAuthorization(ticket))
+        assertFalse(idle.copy(history = idle.history.copy(error = HistoryError.WRITE)).allowsAuthorization(null))
+        assertFalse(idle.copy(history = idle.history.copy(deleteDialog = true)).allowsAuthorization(null))
+        assertFalse(idle.copy(history = idle.history.copy(deleteFailed = true)).allowsAuthorization(null))
+        var sdkLaunches = 0
+        assertFalse(HistoryEffects(session).authorize(date, at) { sdkLaunches++ })
+        assertEquals(0, sdkLaunches)
+        session.reload()
+        store.failWrite = true
+        assertFalse(HistoryEffects(session).authorize(date, at) { sdkLaunches++ })
+        assertEquals(0, sdkLaunches)
+        assertEquals(HistoryError.WRITE, session.state.value.error)
+        assertFalse(HistoryEntryGate(false, false, false, session.state.value).allowsAuthorization(null))
+    }
+
+    @Test
+    fun `로컬 무효화는 현재 원격 상태를 지우고 삭제 커밋 전까지 이전 성공을 보존한다`() = runBlocking {
+        val store = store()
+        var ui = SyncUiState(
+            uploadOptIn = true, readyToUpload = true, pendingConsent = true,
+            transientRemoteStatus = SyncStatus.SUCCESS, transientConfirmedFiles = 2,
+            uploadedFiles = 2, coverage = setOf(DataType.WEIGHT), message = "합성 원격 성공 표시",
+            lastAttempt = at, lastSuccess = success.confirmedAt,
+            lastSuccessDate = success.date, lastSuccessCoverage = success.coverage,
+        )
+        val session = HistorySession(store, this) { ui = ui.invalidateCurrentAttempt() }
+        session.restore()
+        ui = ui.copy(history = session.state.value)
+        assertTrue(session.requestDelete())
+        store.gate = CompletableDeferred()
+        val deletion = async(start = CoroutineStart.UNDISPATCHED) { session.confirmDelete() }
+        assertFalse(deletion.isCompleted)
+        assertFalse(ui.uploadOptIn)
+        assertFalse(ui.readyToUpload)
+        assertFalse(ui.pendingConsent)
+        assertNull(ui.transientRemoteStatus)
+        assertNull(ui.transientConfirmedFiles)
+        assertEquals(0, ui.uploadedFiles)
+        assertTrue(ui.coverage.isEmpty())
+        assertEquals("로컬 동의와 현재 시도 표시를 지웠습니다. 저장된 기록을 확인해 주세요.", ui.message)
+        assertEquals(at, ui.lastAttempt)
+        assertEquals(success.confirmedAt, ui.lastSuccess)
+        assertEquals(success.date, ui.lastSuccessDate)
+        assertEquals(success.coverage, ui.lastSuccessCoverage)
+        assertEquals(success, ui.history!!.read.history!!.success)
+        assertEquals(success, session.state.value.read.history!!.success)
+        assertEquals(success, store.saved.history!!.success)
+        store.gate!!.complete(Unit)
+        deletion.await()
+        assertNull(session.state.value.read.history!!.success)
+        assertNull(store.saved.history!!.success)
+    }
+
 }

@@ -255,9 +255,10 @@ private fun HistoryRead.frozen(): HistoryRead = copy(history = history?.let { va
 
 /** 실제 화면 모델이 사용하는 외부 효과 경계. 저장 실패 시 읽기와 업로드를 호출하지 않는다. */
 internal class HistoryEffects(private val session: HistorySession) {
-    suspend fun authorize(date: LocalDate, at: Instant, onReady: (Long) -> Unit) {
-        val ticket = session.beginAuthorization(date, at) ?: return
+    suspend fun authorize(date: LocalDate, at: Instant, onReady: (Long) -> Unit): Boolean {
+        val ticket = session.beginAuthorization(date, at) ?: return false
         onReady(ticket)
+        return true
     }
 
     suspend fun acceptAuthorization(ticket: Long, acceptCredential: () -> Unit): Boolean {
@@ -297,3 +298,33 @@ internal class HistoryEffects(private val session: HistorySession) {
 }
 
 internal data class HistoryExecutionResult(val result: SyncResult, val coverage: Set<DataType>)
+
+
+/** 외부 동의 결과의 상관관계는 같은 화면 모델의 메모리에만 존재한다. */
+internal class AuthorizationResolutionTickets {
+    private var pending: Long? = null
+
+    fun register(ticket: Long): Boolean {
+        if (pending != null) return false
+        pending = ticket
+        return true
+    }
+
+    fun consume(): Long? = pending.also { pending = null }
+    fun clear() { pending = null }
+}
+
+/** 렌더러의 버튼 상태와 별개로 사용자 이벤트가 도착한 순간 검사한다. */
+internal data class HistoryEntryGate(
+    val pendingConsent: Boolean,
+    val refreshing: Boolean,
+    val syncing: Boolean,
+    val history: HistorySessionState,
+) {
+    fun allowsDeletion(): Boolean = !pendingConsent && !refreshing && !syncing &&
+        history.operation == HistoryOperation.IDLE
+
+    fun allowsAuthorization(existingTicket: Long?): Boolean = allowsDeletion() && existingTicket == null &&
+        history.error == null && !history.deleteFailed && !history.deleteDialog &&
+        history.read.status in setOf(HistoryReadStatus.READY, HistoryReadStatus.ABSENT)
+}

@@ -34,7 +34,6 @@ import com.ny.my.health.core.DayWindow
 
 class MainActivity : ComponentActivity() {
     private lateinit var model: SyncViewModel
-    private var consentTicket: Long? = null
     private val authorizationClient by lazy { Identity.getAuthorizationClient(this) }
 
     private val healthConsent = registerForActivityResult(
@@ -44,8 +43,7 @@ class MainActivity : ComponentActivity() {
     private val googleConsent = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult(),
     ) { result ->
-        val ticket = consentTicket ?: return@registerForActivityResult
-        consentTicket = null
+        val ticket = model.consumeAuthorizationResolution() ?: return@registerForActivityResult
         when {
             result.resultCode == RESULT_CANCELED -> model.authorizationFailed(ticket, Failure.CONSENT_CANCELED)
             result.resultCode != RESULT_OK -> model.authorizationFailed(ticket, Failure.UNEXPECTED_RESULT)
@@ -63,7 +61,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         model = ViewModelProvider(this)[SyncViewModel::class.java]
-        consentTicket = savedInstanceState?.takeIf { it.containsKey("authorization-generation") }?.getLong("authorization-generation")
         setContent {
             val state by model.state.collectAsState()
             MaterialTheme {
@@ -133,12 +130,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onSaveInstanceState(outState: Bundle) {
-        // 요청 세대만 보관한다. 토큰과 업로드 동의는 저장하지 않는다.
-        consentTicket?.let { outState.putLong("authorization-generation", it) }
-        super.onSaveInstanceState(outState)
-    }
-
     override fun onResume() {
         super.onResume()
         model.resume()
@@ -174,12 +165,10 @@ class MainActivity : ComponentActivity() {
                             try {
                                 val pendingIntent = result.pendingIntent
                                 if (pendingIntent == null) model.authorizationFailed(ticket, Failure.MISSING_RESOLUTION)
-                                else {
-                                    consentTicket = ticket
+                                else if (model.registerAuthorizationResolution(ticket)) {
                                     googleConsent.launch(IntentSenderRequest.Builder(pendingIntent).build())
                                 }
                             } catch (_: Exception) {
-                                consentTicket = null
                                 model.authorizationFailed(ticket, Failure.RESOLUTION_LAUNCH_FAILED)
                             }
                         }
