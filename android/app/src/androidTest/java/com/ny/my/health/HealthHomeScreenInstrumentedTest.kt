@@ -40,6 +40,7 @@ import com.ny.my.health.core.HistoryRead
 import com.ny.my.health.core.HistoryReadStatus
 import com.ny.my.health.core.HistorySuccess
 import com.ny.my.health.core.SyncHistory
+import com.ny.my.health.core.SyncHistoryCodec
 import com.ny.my.health.core.SyncStatus
 import java.time.Instant
 import java.time.LocalDate
@@ -73,6 +74,19 @@ class HealthHomeScreenInstrumentedTest {
         date, requested, started, finished, phase, setOf(DataType.STEPS, DataType.SLEEP), 2,
         if (phase == HistoryPhase.FAILED) "UPLOAD_FAILED" else null,
     )
+
+    private fun successfulAttempt() = HistoryAttempt(
+        success.date, success.confirmedAt.minusSeconds(120), success.confirmedAt.minusSeconds(60),
+        success.confirmedAt, HistoryPhase.SUCCESS, success.coverage, success.confirmedFiles, null,
+    )
+
+    private fun assertCodecRoundTripForReadableHistory(history: HistorySessionState) {
+        if (history.read.status in setOf(HistoryReadStatus.READY, HistoryReadStatus.ABSENT)) {
+            val committed = requireNotNull(history.read.history)
+            assertEquals(HistoryRead(HistoryReadStatus.READY, committed),
+                SyncHistoryCodec.decode(SyncHistoryCodec.encode(committed)))
+        }
+    }
 
     private fun render(history: HistorySessionState? = session(attempt()), state: SyncUiState = SyncUiState()) {
         ui.value = state.copy(date = date, availability = HealthConnectClient.SDK_AVAILABLE, history = history)
@@ -242,7 +256,7 @@ class HealthHomeScreenInstrumentedTest {
     }
 
     @Test fun pendingPermissionAndConsentOutrankHistoricalSuccessfulPhase() {
-        render(history = session(attempt(HistoryPhase.SUCCESS)), state = SyncUiState(pendingConsent = true))
+        render(history = session(successfulAttempt()), state = SyncUiState(pendingConsent = true))
         shown("동의 결과 대기 중…")
         compose.onNodeWithText("최근 시도의 업로드가 확인되었습니다.").assertDoesNotExist()
         compose.runOnIdle { ui.value = ui.value.copy(pendingConsent = false, refreshing = true) }
@@ -352,10 +366,12 @@ class HealthHomeScreenInstrumentedTest {
 
     /** 고정 합성 메타데이터만 PNG로 내보내며 앱 저장소나 화면 외부는 수집하지 않는다. */
     @Test fun syntheticGalleryCapturesSevenStatesInBothThemesAndDoubleTextScale() {
-        render(history = session(previous = null))
+        val initial = session(previous = null)
+        assertCodecRoundTripForReadableHistory(initial)
+        render(history = initial)
         val fixtures = listOf(
             Triple("no-history", session(previous = null), SyncUiState()),
-            Triple("success", session(attempt(HistoryPhase.SUCCESS)), SyncUiState()),
+            Triple("success", session(successfulAttempt()), SyncUiState()),
             Triple("authorization", session(attempt(HistoryPhase.AUTHORIZING).copy(startedAt = null, finishedAt = null, confirmedFiles = null)), SyncUiState(pendingConsent = true)),
             Triple("running", session(attempt(HistoryPhase.RUNNING).copy(finishedAt = null, confirmedFiles = null)), SyncUiState(syncing = true)),
             Triple("interrupted", session(attempt(HistoryPhase.INTERRUPTED).copy(finishedAt = null, confirmedFiles = null)), SyncUiState()),
@@ -363,6 +379,7 @@ class HealthHomeScreenInstrumentedTest {
             Triple("delete-failure", session().copy(deleteFailed = true, retainedAfterDeleteFailure = true, error = HistoryError.DELETE), SyncUiState()),
         )
         for (isDark in listOf(false, true)) for (scale in listOf(1f, 2f)) for ((name, history, state) in fixtures) {
+            assertCodecRoundTripForReadableHistory(history)
             compose.runOnIdle {
                 dark.value = isDark; textScale.value = scale; fixtureKey.value++
                 ui.value = state.copy(date = date, availability = HealthConnectClient.SDK_AVAILABLE, history = history)
