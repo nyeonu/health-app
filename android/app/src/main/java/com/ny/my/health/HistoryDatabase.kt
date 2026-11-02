@@ -6,36 +6,47 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteDatabaseCorruptException
 import android.database.sqlite.SQLiteException
 import java.io.File
+import java.nio.file.Files
 
 /** 제공자 오류 문자열을 해석하지 않고 지원하지 않는 버전을 구분한다. */
 internal class UnsupportedHistorySchemaException :
     SQLiteException("지원하지 않는 기록 DB 스키마입니다")
 
 /**
- * 백업 대상에서 제외된 앱 전용 기록 DB. 앱 실행 경로에는 아직 연결하지 않는다.
+ * 백업 대상에서 제외된 앱 전용 기록 DB.
  *
  * 스키마 버전과 페이로드 형식 버전은 별개다. 기존 DB의 알 수 없는 스키마나
- * 손상은 그대로 오류로 반환하며 파일을 삭제하거나 새 DB로 대체하지 않는다.
+ * 손상은 읽기/일반 쓰기에서 오류로 반환한다. 파일 교체는 확인된 reset의 전용 경계다.
  */
-internal class HistoryDatabase(
-    context: Context,
-    databaseName: String = "sync-history.db",
-) {
-    init {
-        require(databaseName.isNotBlank() && File(databaseName).name == databaseName) {
-            "기록 DB에는 파일 이름만 사용할 수 있습니다"
-        }
-    }
+internal class HistoryDatabase internal constructor(internal val databaseFile: File) {
+    constructor(context: Context, databaseName: String = "sync-history.db") :
+        this(databaseFile(context, databaseName))
 
-    internal val databaseFile = File(context.noBackupFilesDir, databaseName)
+    internal val pathLock: Any = synchronized(locks) {
+        locks.getOrPut(databaseFile.canonicalPath) { Any() }
+    }
+    internal val resetDirectory = File(databaseFile.parentFile, "${databaseFile.name}.reset")
+
+    internal fun requireNoPendingReset() {
+        if (resetDirectory.exists()) throw SQLiteException("기록 초기화를 다시 시도해 주세요")
+    }
 
     /** 없는 DB를 읽으면 null이며, 파일이나 스키마를 생성하지 않는다. */
     internal fun openForRead(): SQLiteDatabase? {
+        requireNoPendingReset()
         if (!databaseFile.exists()) return null
-        return open(create = false)
+        return open(create = false, readOnly = true)
     }
 
-    internal fun openForWrite(): SQLiteDatabase = open(create = !databaseFile.exists())
+    /** Only explicit reset validates the newly installed file while its marker still blocks admission. */
+    internal fun openInstalledAfterReset(): SQLiteDatabase = open(create = false, readOnly = true)
+
+    internal fun openForWrite(): SQLiteDatabase {
+        requireNoPendingReset()
+        // 알 수 없는 WAL 스키마를 DELETE 모드로 전환하기 전에 읽기 전용으로 확인한다.
+        if (databaseFile.exists()) open(create = false, readOnly = true).close()
+        return open(create = !databaseFile.exists())
+    }
 
     /**
      * 반환 시점은 endTransaction이 성공한 뒤다. FULL 동기화와 DELETE 저널로
@@ -47,23 +58,25 @@ internal class HistoryDatabase(
     internal fun <T> transaction(
         beforeCommit: () -> Unit = {},
         block: (SQLiteDatabase) -> T,
-    ): T = openForWrite().use { database ->
-        commit(database, beforeCommit, block)
+    ): T = synchronized(pathLock) {
+        openForWrite().use { database -> commit(database, beforeCommit, block) }
     }
 
-    private fun open(create: Boolean): SQLiteDatabase {
-        val flags = SQLiteDatabase.OPEN_READWRITE or
+    private fun open(create: Boolean, readOnly: Boolean = false): SQLiteDatabase {
+        if (Files.isSymbolicLink(databaseFile.toPath()) || (databaseFile.exists() && !databaseFile.isFile)) {
+            throw SQLiteException("기록 DB 파일을 사용할 수 없습니다")
+        }
+        val flags = (if (readOnly) SQLiteDatabase.OPEN_READONLY else SQLiteDatabase.OPEN_READWRITE) or
             SQLiteDatabase.NO_LOCALIZED_COLLATORS or
             if (create) SQLiteDatabase.CREATE_IF_NECESSARY else 0
-        val parameters = SQLiteDatabase.OpenParams.Builder()
+        val builder = SQLiteDatabase.OpenParams.Builder()
             .setOpenFlags(flags)
-            .setJournalMode("DELETE")
-            .setSynchronousMode("FULL")
             // 기본 손상 처리기의 파일 삭제를 금지하고 저장소 오류를 유지한다.
             .setErrorHandler(DatabaseErrorHandler {
                 throw SQLiteDatabaseCorruptException("기록 DB가 손상되었습니다")
             })
-            .build()
+        if (!readOnly) builder.setJournalMode("DELETE").setSynchronousMode("FULL")
+        val parameters = builder.build()
         val database = SQLiteDatabase.openDatabase(databaseFile, parameters)
         try {
             if (create && database.version == 0) {
@@ -85,12 +98,12 @@ internal class HistoryDatabase(
                 "SELECT id, payload_format_version, payload FROM history LIMIT 1",
                 null,
             ).use { it.moveToFirst() }
-            database.rawQuery("PRAGMA journal_mode", null).use {
+            if (!readOnly) database.rawQuery("PRAGMA journal_mode", null).use {
                 if (!it.moveToFirst() || !it.getString(0).equals("delete", ignoreCase = true)) {
                     throw SQLiteException("기록 DB 롤백 저널을 사용할 수 없습니다")
                 }
             }
-            database.rawQuery("PRAGMA synchronous", null).use {
+            if (!readOnly) database.rawQuery("PRAGMA synchronous", null).use {
                 if (!it.moveToFirst() || it.getInt(0) != 2) {
                     throw SQLiteException("기록 DB FULL 동기화를 사용할 수 없습니다")
                 }
@@ -119,6 +132,14 @@ internal class HistoryDatabase(
     }
 
     private companion object {
+        val locks = mutableMapOf<String, Any>()
         const val SCHEMA_VERSION = 1
+
+        fun databaseFile(context: Context, name: String): File {
+            require(name.isNotBlank() && File(name).name == name) {
+                "기록 DB에는 파일 이름만 사용할 수 있습니다"
+            }
+            return File(context.noBackupFilesDir, name)
+        }
     }
 }

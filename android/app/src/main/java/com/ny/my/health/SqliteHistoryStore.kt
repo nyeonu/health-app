@@ -26,7 +26,9 @@ class SqliteHistoryStore internal constructor(
     override suspend fun load(): HistoryRead = withContext(Dispatchers.IO) {
         currentCoroutineContext().ensureActive()
         try {
-            database.openForRead()?.use(::read) ?: HistoryRead(HistoryReadStatus.ABSENT, null)
+            synchronized(database.pathLock) {
+                database.openForRead()?.use(::read) ?: HistoryRead(HistoryReadStatus.ABSENT, null)
+            }
         } catch (_: UnsupportedHistorySchemaException) {
             HistoryRead(HistoryReadStatus.UNSUPPORTED, null)
         } catch (_: SQLiteDatabaseCorruptException) {
@@ -40,7 +42,7 @@ class SqliteHistoryStore internal constructor(
 
     override suspend fun replace(history: SyncHistory) = write(history, explicitReset = false)
 
-    // 명시적 삭제만 지원되는 DB 안의 손상되거나 알 수 없는 봉투를 교체할 수 있다.
+    // 명시적 삭제만 알 수 없는 스키마/손상된 SQLite 파일도 빈 DB로 교체한다.
     override suspend fun reset() = write(SyncHistory(SyncHistoryCodec.VERSION, null, null), explicitReset = true)
 
     private suspend fun write(history: SyncHistory, explicitReset: Boolean) {
@@ -49,23 +51,38 @@ class SqliteHistoryStore internal constructor(
             val coroutine = currentCoroutineContext()
             coroutine.ensureActive()
             try {
-                database.transaction(beforeCommit = {
+                val checkBeforeCommit = {
                     coroutine.ensureActive()
                     beforeCommit()
                     coroutine.ensureActive()
-                }) { db ->
-                    if (!explicitReset) {
-                        check(read(db).status in setOf(HistoryReadStatus.READY, HistoryReadStatus.ABSENT)) {
-                            "기록 저장소를 읽을 수 없습니다"
+                }
+                synchronized(database.pathLock) {
+                    coroutine.ensureActive()
+                    val needsReplacement = explicitReset && (database.resetDirectory.exists() || try {
+                        database.openForRead()?.use { connection ->
+                            connection.rawQuery("PRAGMA integrity_check", null).use { rows ->
+                                if (!rows.moveToFirst() || rows.getString(0) != "ok" || rows.moveToNext()) {
+                                    throw SQLiteDatabaseCorruptException("기록 DB가 손상되었습니다")
+                                }
+                            }
                         }
-                    }
-                    db.compileStatement(
-                        "INSERT OR REPLACE INTO history (id, payload_format_version, payload) VALUES (?, ?, ?)",
-                    ).use { statement ->
-                        statement.bindLong(1, 1L)
-                        statement.bindLong(2, SyncHistoryCodec.VERSION.toLong())
-                        statement.bindString(3, payload)
-                        check(statement.executeInsert() == 1L) { "기록 저장을 확인할 수 없습니다" }
+                        false
+                    } catch (_: SQLiteException) {
+                        true
+                    })
+                    if (needsReplacement) {
+                        HistoryResetRecovery(database).reset(
+                            beforeInstall = checkBeforeCommit,
+                            writeEmpty = { insert(it, payload) },
+                            validateEmpty = { check(read(it) == HistoryRead(HistoryReadStatus.READY, history)) },
+                        )
+                    } else database.transaction(beforeCommit = checkBeforeCommit) { db ->
+                        if (!explicitReset) {
+                            check(read(db).status in setOf(HistoryReadStatus.READY, HistoryReadStatus.ABSENT)) {
+                                "기록 저장소를 읽을 수 없습니다"
+                            }
+                        }
+                        insert(db, payload)
                     }
                 }
             } catch (error: CancellationException) {
@@ -74,6 +91,17 @@ class SqliteHistoryStore internal constructor(
                 // 커밋 응답 오류는 롤백을 뜻하지 않는다. 호출자가 다시 읽어 확정해야 한다.
                 throw IllegalStateException("기록 저장을 확인할 수 없습니다. 다시 읽어 확인해 주세요")
             }
+        }
+    }
+
+    private fun insert(db: SQLiteDatabase, payload: String) {
+        db.compileStatement(
+            "INSERT OR REPLACE INTO history (id, payload_format_version, payload) VALUES (?, ?, ?)",
+        ).use { statement ->
+            statement.bindLong(1, 1L)
+            statement.bindLong(2, SyncHistoryCodec.VERSION.toLong())
+            statement.bindString(3, payload)
+            check(statement.executeInsert() == 1L) { "기록 저장을 확인할 수 없습니다" }
         }
     }
 

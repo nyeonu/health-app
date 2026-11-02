@@ -16,7 +16,13 @@ import com.ny.my.health.core.recover
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
+import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -127,22 +133,224 @@ class SqliteHistoryStoreInstrumentedTest {
     }
 
     @Test
-    fun unsupportedSchemaAndCorruptDatabaseRefuseWritesAndResetWithoutReplacement() = fixture { db ->
+    fun unsupportedSchemaAndCorruptDatabasePreserveReadsAndWritesUntilExplicitReset() = fixture { db ->
         SqliteHistoryStore(db).replace(committed)
-        checkNotNull(db.openForRead()).use { it.version = 2 }
+        db.transaction { it.version = 2 }
         val schemaBytes = db.databaseFile.readBytes()
         assertEquals(HistoryReadStatus.UNSUPPORTED, reopen(db).load().status)
         expectFailure { reopen(db).replace(committed) }
-        expectFailure { reopen(db).reset() }
         assertTrue(schemaBytes.contentEquals(db.databaseFile.readBytes()))
+        reopen(db).reset()
+        assertEquals(empty, reopen(db).load().history)
+        assertFalse(db.resetDirectory.exists())
+        reopen(db).replace(committed)
+        assertEquals(committed, reopen(db).load().history)
         SQLiteDatabase.deleteDatabase(db.databaseFile)
         db.databaseFile.writeText("synthetic corrupt sqlite")
         val corruptBytes = db.databaseFile.readBytes()
         assertEquals(HistoryReadStatus.CORRUPT, reopen(db).load().status)
         expectFailure { reopen(db).replace(committed) }
-        expectFailure { reopen(db).reset() }
         assertTrue(corruptBytes.contentEquals(db.databaseFile.readBytes()))
+        reopen(db).reset()
+        assertEquals(empty, reopen(db).load().history)
+        assertFalse(db.resetDirectory.exists())
+        reopen(db).replace(committed)
+        assertEquals(committed, reopen(db).load().history)
     }
+
+    @Test
+    fun missingHistoryTableRequiresExplicitResetBeforeManualAdmission() = fixture { db ->
+        SqliteHistoryStore(db).replace(committed)
+        db.transaction { it.execSQL("DROP TABLE history") }
+        val bytes = db.databaseFile.readBytes()
+        assertEquals(HistoryReadStatus.UNAVAILABLE, reopen(db).load().status)
+        expectFailure { reopen(db).replace(committed) }
+        assertTrue(bytes.contentEquals(db.databaseFile.readBytes()))
+        val session = HistorySession(reopen(db), kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.currentCoroutineContext())) {}
+        session.restore()
+        assertNull(session.beginAuthorization(date, time))
+        reopen(db).reset()
+        session.reload()
+        assertTrue(session.beginAuthorization(date, time) != null)
+        assertFalse(db.resetDirectory.exists())
+    }
+
+    @Test
+    fun unknownWalSchemaReadsAndOrdinaryWritesDoNotConvertOrOverwriteItsDatabaseFamily() = fixture { db ->
+        SqliteHistoryStore(db).replace(committed)
+        SQLiteDatabase.openDatabase(db.databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { foreign ->
+            assertTrue(foreign.enableWriteAheadLogging())
+            foreign.execSQL("PRAGMA wal_autocheckpoint=0")
+            foreign.version = 99
+            val wal = File(db.databaseFile.path + "-wal")
+            assertTrue(wal.isFile)
+            val mainBytes = db.databaseFile.readBytes()
+            val walBytes = wal.readBytes()
+            assertEquals(HistoryReadStatus.UNSUPPORTED, reopen(db).load().status)
+            expectFailure { reopen(db).replace(committed) }
+            assertTrue(mainBytes.contentEquals(db.databaseFile.readBytes()))
+            assertTrue(walBytes.contentEquals(wal.readBytes()))
+            foreign.rawQuery("PRAGMA journal_mode", null).use { rows ->
+                assertTrue(rows.moveToFirst())
+                assertEquals("wal", rows.getString(0))
+            }
+        }
+        reopen(db).reset()
+        assertEquals(empty, reopen(db).load().history)
+        assertFalse(db.resetDirectory.exists())
+    }
+
+    @Test
+    fun genuineHotRollbackJournalStaysExplicitlyUnavailableUntilConfirmedReset() = fixture { source ->
+        SqliteHistoryStore(source).replace(committed)
+        source.transaction { connection ->
+            connection.execSQL("CREATE TABLE reset_padding (id INTEGER PRIMARY KEY, payload BLOB)")
+            connection.execSQL("INSERT INTO reset_padding VALUES (1, zeroblob(262144))")
+        }
+        val snapshot = HistoryDatabase(context, "history-hot-${UUID.randomUUID()}.db")
+        try {
+            source.openForWrite().use { connection ->
+                connection.execSQL("PRAGMA cache_size=5")
+                connection.execSQL("PRAGMA cache_spill=ON")
+                connection.beginTransaction()
+                try {
+                    // Spill dirty pages to the main file while an actual rollback is still required.
+                    connection.execSQL("UPDATE reset_padding SET payload=zeroblob(1048576)")
+                    val journal = File(source.databaseFile.path + "-journal")
+                    assertTrue(journal.length() > 512)
+                    val magic = ByteArray(8)
+                    journal.inputStream().use { assertEquals(8, it.read(magic)) }
+                    assertTrue(byteArrayOf(0xd9.toByte(), 0xd5.toByte(), 5, 0xf9.toByte(), 0x20, 0xa1.toByte(), 0x63, 0xd7.toByte()).contentEquals(magic))
+                    source.databaseFile.copyTo(snapshot.databaseFile)
+                    journal.copyTo(File(snapshot.databaseFile.path + "-journal"))
+                } finally {
+                    connection.endTransaction() // Roll back source; the independent snapshot retains the hot journal.
+                }
+            }
+            val mainBytes = snapshot.databaseFile.readBytes()
+            val journal = File(snapshot.databaseFile.path + "-journal")
+            val journalBytes = journal.readBytes()
+            assertEquals(HistoryRead(HistoryReadStatus.UNAVAILABLE, null), reopen(snapshot).load())
+            expectFailure { reopen(snapshot).replace(committed) }
+            assertTrue(mainBytes.contentEquals(snapshot.databaseFile.readBytes()))
+            assertTrue(journalBytes.contentEquals(journal.readBytes()))
+            reopen(snapshot).reset()
+            assertEquals(empty, reopen(snapshot).load().history)
+            assertFalse(snapshot.resetDirectory.exists())
+            assertFalse(journal.exists())
+            reopen(snapshot).replace(committed)
+            assertEquals(committed, reopen(snapshot).load().history)
+        } finally {
+            snapshot.resetDirectory.deleteRecursively()
+            SQLiteDatabase.deleteDatabase(snapshot.databaseFile)
+        }
+    }
+
+    @Test
+    fun failedOrCancelledReplacementPreservesOriginalFamilyUntilExplicitRetry() = fixture { db ->
+        for (cancel in listOf(false, true)) {
+            db.databaseFile.writeText("synthetic corrupt sqlite")
+            val family = listOf("", "-journal", "-wal", "-shm").associateWith { suffix ->
+                val file = File(db.databaseFile.path + suffix)
+                if (suffix.isNotEmpty()) file.writeText("synthetic sidecar $suffix")
+                file.readBytes()
+            }
+            val broken = SqliteHistoryStore(db) {
+                if (cancel) throw CancellationException("synthetic cancellation")
+                error("synthetic preinstall failure")
+            }
+            if (cancel) {
+                try { broken.reset(); fail("cancellation must propagate") } catch (_: CancellationException) { }
+            } else expectFailure { broken.reset() }
+            family.forEach { (suffix, bytes) ->
+                assertTrue(bytes.contentEquals(File(db.databaseFile.path + suffix).readBytes()))
+            }
+            assertEquals(HistoryReadStatus.UNAVAILABLE, reopen(db).load().status)
+            expectFailure { reopen(db).replace(committed) }
+            reopen(db).reset()
+            assertEquals(empty, reopen(db).load().history)
+            assertFalse(db.resetDirectory.exists())
+            listOf("-journal", "-wal", "-shm").forEach { assertFalse(File(db.databaseFile.path + it).exists()) }
+        }
+    }
+
+    @Test
+    fun interruptedStagingAndInstalledCleanupFailureRequireRetryAndNeverRestoreForgottenHistory() = fixture { db ->
+        SqliteHistoryStore(db).replace(committed)
+        assertTrue(db.resetDirectory.mkdir())
+        File(db.resetDirectory, "empty.db").writeText("interrupted candidate")
+        assertEquals(HistoryReadStatus.UNAVAILABLE, reopen(db).load().status)
+        expectFailure { reopen(db).replace(committed) }
+        reopen(db).reset()
+        assertEquals(empty, reopen(db).load().history)
+        assertFalse(db.resetDirectory.exists())
+
+        // Process loss after installation but before snapshot cleanup leaves explicit unknown state.
+        reopen(db).replace(committed)
+        val oldBytes = db.databaseFile.readBytes()
+        reopen(db).reset()
+        assertTrue(db.resetDirectory.mkdir())
+        val snapshot = File(db.resetDirectory, "old-0")
+        snapshot.writeBytes(oldBytes)
+        File(db.resetDirectory, "prepared").writeBytes(byteArrayOf())
+        assertEquals(HistoryReadStatus.UNAVAILABLE, reopen(db).load().status)
+        assertTrue(oldBytes.contentEquals(snapshot.readBytes()))
+        expectFailure { reopen(db).replace(committed) }
+        reopen(db).reset()
+        assertEquals(empty, reopen(db).load().history)
+        assertFalse(db.resetDirectory.exists())
+
+        // A real nonempty directory makes post-install unlink fail without a production hook.
+        db.databaseFile.writeText("synthetic corrupt sqlite")
+        val blocked = File(db.resetDirectory, "cleanup-blocker")
+        expectFailure {
+            SqliteHistoryStore(db) {
+                check(blocked.mkdir())
+                File(blocked, "child").writeText("synthetic blocker")
+            }.reset()
+        }
+        assertEquals(HistoryReadStatus.UNAVAILABLE, reopen(db).load().status)
+        // Inspect actual installed DB without ordinary read-time recovery.
+        db.openInstalledAfterReset().use { connection ->
+            connection.rawQuery("SELECT payload FROM history", null).use { rows ->
+                assertTrue(rows.moveToFirst())
+                assertEquals(HistoryRead(HistoryReadStatus.READY, empty), SyncHistoryCodec.decode(rows.getString(0)))
+            }
+        }
+        assertTrue(blocked.deleteRecursively())
+        reopen(db).reset()
+        assertEquals(empty, reopen(db).load().history)
+        assertFalse(db.resetDirectory.exists())
+    }
+
+    @Test
+    fun separateStoreInstancesWaitForReplacementBeforeReadingOrWriting() = fixture { db -> coroutineScope {
+        db.databaseFile.writeText("synthetic corrupt sqlite")
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val readerStarted = CountDownLatch(1)
+        val writerStarted = CountDownLatch(1)
+        val reset = async(Dispatchers.IO) {
+            SqliteHistoryStore(db) {
+                entered.countDown()
+                check(release.await(5, TimeUnit.SECONDS))
+            }.reset()
+        }
+        try {
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            val reader = async(Dispatchers.IO) { readerStarted.countDown(); reopen(db).load() }
+            val writer = async(Dispatchers.IO) { writerStarted.countDown(); reopen(db).replace(empty) }
+            assertTrue(readerStarted.await(5, TimeUnit.SECONDS))
+            assertTrue(writerStarted.await(5, TimeUnit.SECONDS))
+            assertFalse(reader.isCompleted)
+            assertFalse(writer.isCompleted)
+            release.countDown()
+            reset.await()
+            assertEquals(empty, reader.await().history)
+            writer.await()
+            assertEquals(empty, reopen(db).load().history)
+        } finally { release.countDown() }
+    } }
 
     @Test
     fun unavailableDatabaseReadsAndFailedResetLeaveTheStoreUnavailable() = fixture { db ->
@@ -203,6 +411,7 @@ class SqliteHistoryStoreInstrumentedTest {
         try {
             block(db)
         } finally {
+            db.resetDirectory.deleteRecursively()
             // 합성 테스트 파일에만 적용한다. 제품의 초기화는 빈 봉투 커밋이다.
             if (db.databaseFile.isDirectory) db.databaseFile.delete()
             else SQLiteDatabase.deleteDatabase(db.databaseFile)
