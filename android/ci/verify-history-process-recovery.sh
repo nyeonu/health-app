@@ -28,6 +28,33 @@ restore() {
   rm -rf "$scratch"
 }
 trap restore EXIT
+# connectedDebugAndroidTest may uninstall both packages during teardown.
+# Reinstall only these already-built artifacts; -r preserves any existing data,
+# which the instrumentation fixture must reject before seeding.
+for apk in app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk; do
+  if [[ ! -f "$apk" ]]; then
+    echo "Required built instrumentation artifact is missing: $apk" >&2
+    exit 1
+  fi
+  if ! timeout 60s adb install -r -t "$apk" >"$scratch/install" 2>&1; then
+    cat "$scratch/install"
+    echo "Unable to install required built artifact: $apk" >&2
+    exit 1
+  fi
+  if ! grep -Eq '^Success[[:space:]]*$' "$scratch/install"; then
+    cat "$scratch/install"
+    echo "Package installation did not report success: $apk" >&2
+    exit 1
+  fi
+done
+if ! timeout 30s adb shell pm list instrumentation >"$scratch/instrumentation" 2>&1; then
+  echo 'Unable to query installed instrumentation' >&2
+  exit 1
+fi
+if ! grep -Fq "instrumentation:$runner (target=$app)" "$scratch/instrumentation"; then
+  echo 'Required AndroidJUnitRunner instrumentation is not registered' >&2
+  exit 1
+fi
 invoke() {
   local method=$1 output=$2
   shift 2
@@ -36,8 +63,8 @@ invoke() {
 }
 passed() {
   local output=$1
-  if rg -q 'FAILURES|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED|shortMsg=|Process crashed' "$output" ||
-     ! rg -q '^OK \(1 test\)' "$output"; then
+  if grep -Eq 'FAILURES|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED|shortMsg=|Process crashed' "$output" ||
+     ! grep -Eq '^OK \(1 test\)' "$output"; then
     cat "$output"
     echo 'Expected exactly one successful instrumentation test' >&2
     exit 1
@@ -46,7 +73,7 @@ passed() {
 ready() {
   local marker=$1 output=$2
   for ((i=0; i<600; i++)); do
-    if rg -q "$marker pid=[0-9]+" "$output"; then return; fi
+    if grep -Eq "$marker pid=[0-9]+" "$output"; then return; fi
     if ! kill -0 "$job" 2>/dev/null; then cat "$output"; echo 'Instrumentation ended before ready' >&2; exit 1; fi
     sleep 0.1
   done
@@ -70,7 +97,7 @@ for fixture in success running authorizing awaiting empty reset-after reset-befo
   if adb shell "test -d /proc/$dead_pid"; then echo 'Original PID still exists' >&2; exit 1; fi
   invoke reopenedActivityRestoresOnlyCommittedMetadata "$scratch/reopen" -e fixture "$fixture" -e deadPid "$dead_pid"
   passed "$scratch/reopen"
-  rg -q 'HISTORY_REOPENED pid=[0-9]+' "$scratch/reopen"
+  grep -Eq 'HISTORY_REOPENED pid=[0-9]+' "$scratch/reopen"
   recovery_count=$((recovery_count + 1))
   printf 'recovery scenario=%s successful_verifier_tests=1 pid_change_verified=true
 ' "$fixture" >>"$evidence"
