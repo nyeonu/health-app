@@ -1,0 +1,39 @@
+# V1 기기 수동 검증
+
+판정: **Galaxy·TalkBack 수동 수용 대기 / 에뮬레이터 자동 검증 통과**. 이 문서는 실행 절차이며 Galaxy S23 Ultra 또는 TalkBack 실행 결과가 아니다. 에뮬레이터 Activity 종료·재실행은 OS 프로세스 종료의 증거가 아니다.
+
+공개 증거에는 고정 합성 날짜·항목·파일 수만 사용한다. 개인 측정값, 실제 계정·기기 식별자, 토큰, CSV 본문, 앱 전용 DB 및 디버깅 덤프를 첨부하지 않는다. 기존 사용자 이력을 테스트용으로 덮어쓰거나 지우지 않는다. 상태·PASS/FAIL/대기와 비식별 설명만 기록한다.
+
+| 항목 | 절차 및 합격 조건 | 현재 결과 |
+|---|---|---|
+| 첫 실행 | 별도 테스트 설치에서 열기. 자동 Google 인증·데이터 읽기·업로드 없이 수동 동의 흐름을 표시한다. | 대기 |
+| 과거 성공 재열기 | 합성 성공을 준비하고 강제 종료 후 수동 재실행한다. 과거 날짜·허용 항목·파일 수와 현재 계정 전체 완료를 뜻하지 않는 안내가 유지된다. 새 동의·인증·별도 업로드 계속 없이 실행하지 않는다. | 대기 |
+| 인증 중 종료 | 합성 인증 대기 상태에서 강제 종료 후 재실행한다. 인증 단계 종료·업로드 미시작을 구분하고 이전 인증 결과나 동의를 복원하지 않는다. | 대기 |
+| 업로드 시작 전 종료 | 합성 인증 완료·미실행 상태에서 강제 종료 후 재실행한다. 다시 인증 안내를 표시하며 준비된 업로드를 이어서 실행하지 않는다. | 대기 |
+| 실행 중 종료 | 합성 실행 중 상태에서 강제 종료 후 재실행한다. 결과 불명·일부 파일 잔존 가능성을 알리고 알 수 없는 종료 시각·파일 수를 만들지 않는다. 이전 성공은 별도 유지한다. | 대기 |
+| 이력 읽기 실패 | 합성 읽기 실패 상태에서 로컬 재시도와 삭제를 제공한다. 다시 불러오기는 인증·읽기·원격 업로드를 실행하지 않는다. | 대기 |
+| 삭제 취소 | 삭제 범위 안내에서 취소한다. 기존 이력과 현재 메모리 동의가 유지되고 외부 삭제가 없다. | 대기 |
+| 삭제 확인 | 명시적으로 확인한다. 현재 동의·인증·준비 작업이 폐기되고 내구성 있는 빈 상태 확인 뒤에만 완료를 알린다. 재열어도 빈 상태다. Drive 파일과 시스템 권한은 유지된다. | 대기 |
+| 삭제 커밋 전 종료 | 합성 저장 경계에서 종료 후 재실행한다. 이전 이력 또는 빈 상태만 읽고 확인되지 않은 삭제 완료를 주장하지 않는다. | 대기 |
+| 삭제 커밋 후 종료 | 합성 빈 상태 커밋 후 종료·재실행한다. 빈 상태와 새 수동 동의 요구가 유지된다. | 대기 |
+| 삭제 실패 | 합성 실패에서 실패 문구·삭제 재시도·기존 이력 유지 기능을 확인한다. 이전 성공을 완료 삭제로 표시하지 않고 동의·인증을 복원하지 않는다. | 대기 |
+| 밝은/어두운 테마 | 각 테마에서 상태·오류·이전 성공·다음 동작이 색상 없이도 문구로 식별된다. 버튼과 안내가 읽힌다. | 대기 |
+| 글자 확대 | 시스템 큰 글자에서 스크롤하여 동의, 인증, 계속, 상세, 재시도, 삭제, 확인·취소에 도달한다. 잘림이나 겹침으로 핵심 동작이 사라지지 않는다. | 대기 |
+| TalkBack 읽기 | 실제 서비스를 켜고 제목→현재 상태→과거 성공→수동 동기화→상세 순서가 이해되는지 확인한다. 동의의 이름·체크 상태, 버튼 이름·역할·비활성 상태를 음성으로 구분한다. | 대기 |
+| TalkBack 조작 | 스와이프·스크롤로 모든 핵심 동작에 도달한다. 삭제 대화상자의 범위·취소·확인을 읽고 취소 후 원래 흐름으로 복귀한다. 상태가 색상만으로 전달되지 않는다. | 대기 |
+
+합성 저장 실패·커밋 경계 준비 방법은 별도 승인된 기기 테스트 환경에서 정한다. 프로덕션 테스트 진입점, 권한 우회 또는 실계정 업로드로 대신하지 않는다. 환경을 준비하지 못한 항목은 대기로 유지한다.
+
+자동화 PNG는 `v1-synthetic-ui/{상태}-{light|dark}-{text1x|text2x}-{top|action}.png`이다. 상태는 `no-history`, `success`, `authorization`, `running`, `interrupted`, `read-failure`, `delete-failure`의 7개이며 총 56개다. `top`은 초기 화면, `action`은 다음 동작으로 스크롤한 화면이다. 이는 실제 TalkBack 또는 기기 글자 설정 검증을 대체하지 않는다.
+
+
+## Latest automated evidence and minimal physical follow-up
+
+Source `cc30964a882f7798e71aca7e5c5f73138a1abf72`, [CI41529578551](https://github.com/nyeonu/health-app/actions/runs/41529578551): normal48 tests pass with0failures/errors/skips. External adb force-stop is followed by distinct-process verification for8 synthetic success/running/authorization/empty/delete-boundary fixtures. Four real system night/font changes are observed before and after in a live Activity, with control assertions and4captures. Host summary records8recovery+4settings+8cleanup successful tests; killed holds are not passes. This closes the previously missing emulator OS-process/system-setting proof, not Galaxy/account/TalkBack observation.
+
+The owner separates development merge from physical acceptance. The detailed table above remains unobserved for Galaxy; it is not a request to corrupt a personal phone or repeat every synthetic storage fixture. Minimal remaining physical follow-up:
+
+1. Update using the existing fixed-signature master debug build. After one explicit manual sync, force-stop/reopen and confirm historical success is retained while consent/credential/continuation resets; retry follows fresh manual consent. Report categorical result only, no measurements/tokens/key contents.
+2. With actual TalkBack enabled, check status and historical-success reading, consent name/check state, enabled/disabled actions, scrolling and delete-confirm/cancel focus at system themes/enlarged text. Record only PASS/FAIL/unknown.
+
+Existing P0 unknowns, key-backup uncertainty and actual account/device acceptance remain unchanged. These emulator results are not production-release approval.

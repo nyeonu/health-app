@@ -20,6 +20,7 @@ import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,9 +43,24 @@ internal data class SyncUiState(
     val lastSuccessCoverage: Set<DataType> = emptySet(),
     val uploadedFiles: Int = 0,
     val coverage: Set<DataType> = emptySet(),
+    val history: HistorySessionState? = null,
+    val transientRemoteStatus: SyncStatus? = null,
+    val transientConfirmedFiles: Int? = null,
 ) {
-    val busy: Boolean get() = refreshing || pendingConsent || syncing
+    val busy: Boolean get() = refreshing || pendingConsent || syncing || history?.operation?.let { it != HistoryOperation.IDLE } == true
 }
+
+/** 현재 시도의 메모리 표시만 폐기한다. 영속 성공은 저장소 확인 전까지 유지한다. */
+internal fun SyncUiState.invalidateCurrentAttempt(): SyncUiState = copy(
+    uploadOptIn = false,
+    readyToUpload = false,
+    pendingConsent = false,
+    transientRemoteStatus = null,
+    transientConfirmedFiles = null,
+    uploadedFiles = 0,
+    coverage = emptySet(),
+    message = "로컬 동의와 현재 시도 표시를 지웠습니다. 저장된 기록을 확인해 주세요.",
+)
 
 class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private val reader = HealthConnectReader(application)
@@ -54,8 +70,38 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private var foreground = false
     private var syncJob: Job? = null
     private var refreshJob: Job? = null
-    // Never put access tokens in SavedStateHandle, preferences, bundles or logs.
+    // 토큰은 저장 상태, 번들, 기록 또는 로그에 넣지 않는다.
     private var accessToken: String? = null
+    internal var authorizationTicket: Long? = null
+        private set
+    private val resolutionTickets = AuthorizationResolutionTickets()
+    private val historySession = HistorySession(SqliteHistoryStore(application), viewModelScope) {
+        accessToken = null
+        authorizationTicket = null
+        resolutionTickets.clear()
+        mutableState.value = mutableState.value.invalidateCurrentAttempt()
+    }
+    private val effects = HistoryEffects(historySession)
+
+    init {
+        viewModelScope.launch {
+            historySession.state.collect { history ->
+                val attempt = history.read.history?.attempt
+                val success = history.read.history?.success
+                mutableState.value = mutableState.value.copy(
+                    history = history,
+                    lastAttempt = attempt?.authorizationRequestedAt,
+                    lastSuccess = success?.confirmedAt,
+                    lastSuccessDate = success?.date,
+                    lastSuccessCoverage = success?.coverage ?: emptySet(),
+                    message = if (history.error != null) {
+                        "로컬 기록을 확인하거나 저장하지 못했습니다. 이전 성공과 원격 결과는 다를 수 있습니다. 기록을 다시 읽어 확인해 주세요."
+                    } else mutableState.value.message,
+                )
+            }
+        }
+        viewModelScope.launch { historySession.restore() }
+    }
 
     internal fun resume() {
         foreground = true
@@ -72,7 +118,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 message = "중단됨: 앱이 전경을 벗어났습니다. 일부 파일은 업로드되었을 수 있습니다. 다시 수동 동기화해 주세요.",
             )
         }
-        // Pending external consent may itself pause the activity. It never starts a read.
+        // 외부 동의 화면의 일시 정지는 읽기나 업로드를 시작하지 않는다.
     }
 
     internal fun refreshPermissions() {
@@ -103,11 +149,12 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         if (mutableState.value.busy) return
         accessToken = null
         mutableState.value = mutableState.value.copy(uploadOptIn = value, readyToUpload = false)
+        if (authorizationTicket != null) viewModelScope.launch { historySession.reload() }
     }
 
     internal fun beginHealthConsent(): Boolean {
         val state = mutableState.value
-        if (!foreground || state.busy || state.availability != HealthConnectClient.SDK_AVAILABLE) return false
+        if (!foreground || state.busy || state.readyToUpload || authorizationTicket != null || state.availability != HealthConnectClient.SDK_AVAILABLE) return false
         accessToken = null
         mutableState.value = state.copy(pendingConsent = true, readyToUpload = false)
         return true
@@ -121,34 +168,45 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         refreshPermissions()
     }
 
-    internal fun beginAuthorization(): Boolean {
+    internal fun beginAuthorization(onReady: () -> Unit) {
         val state = mutableState.value
-        if (!foreground || state.busy || !state.uploadOptIn) return false
+        if (!foreground || !entryGate().allowsAuthorization(authorizationTicket) || !state.uploadOptIn || state.readyToUpload) return
         if (state.availability != HealthConnectClient.SDK_AVAILABLE || state.grantedCount == 0) {
             mutableState.value = state.copy(message = "PERMISSION_REQUIRED: 사용 가능한 Health Connect 읽기 권한이 필요합니다.")
-            return false
-        }
-        accessToken = null
-        mutableState.value = state.copy(
-            pendingConsent = true, readyToUpload = false, uploadedFiles = 0, coverage = emptySet(),
-            date = DayWindow.yesterday(clock),
-            lastAttempt = clock.instant(), message = "Google Drive 권한 확인 중…",
-        )
-        return true
-    }
-
-    internal fun authorizationReturned(token: String?, scopes: List<String>) {
-        if (!mutableState.value.pendingConsent) return
-        val failure = AuthorizationDiagnostics.resultFailure(token, DRIVE_SCOPE in scopes)
-        if (failure != null) {
-            authorizationFailed(failure)
             return
         }
-        accessToken = token
-        mutableState.value = mutableState.value.copy(
-            pendingConsent = false, readyToUpload = true,
-            message = "Google 권한 확인됨. 아래 ‘업로드 계속’을 눌러 전경에서 읽기와 업로드를 시작하세요.",
-        )
+        accessToken = null
+        val date = DayWindow.yesterday(clock)
+        mutableState.value = state.copy(pendingConsent = true, readyToUpload = false,
+            uploadedFiles = 0, coverage = emptySet(), date = date,
+            transientRemoteStatus = null, transientConfirmedFiles = null,
+            message = "Google Drive 권한 확인 중…")
+        viewModelScope.launch {
+            val accepted = effects.authorize(date, clock.instant()) { ticket ->
+                authorizationTicket = ticket
+                if (foreground) onReady()
+                else authorizationFailed(ticket, Failure.FOREGROUND_DEPARTURE)
+            }
+            if (!accepted) mutableState.value = mutableState.value.copy(pendingConsent = false)
+        }
+    }
+
+    internal fun authorizationReturned(ticket: Long, token: String?, scopes: List<String>) {
+        if (ticket != authorizationTicket || !mutableState.value.pendingConsent) return
+        resolutionTickets.clear()
+        val failure = AuthorizationDiagnostics.resultFailure(token, DRIVE_SCOPE in scopes)
+        if (failure != null) {
+            authorizationFailed(ticket, failure)
+            return
+        }
+        viewModelScope.launch {
+            val accepted = effects.acceptAuthorization(ticket) { accessToken = token }
+            if (ticket != authorizationTicket) return@launch
+            if (!accepted) authorizationTicket = null
+            mutableState.value = mutableState.value.copy(pendingConsent = false, readyToUpload = accepted,
+                message = if (accepted) "Google 권한 확인됨. 아래 ‘업로드 계속’을 눌러 전경에서 읽기와 업로드를 시작하세요."
+                    else "로컬 기록 저장을 확인하지 못했습니다. 기록을 다시 읽어 주세요.")
+        }
     }
 
     internal fun healthConsentLaunchFailed() {
@@ -159,73 +217,103 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    internal fun authorizationFailed(failure: Failure, statusCode: Int? = null) {
+    internal fun authorizationFailed(ticket: Long, failure: Failure, statusCode: Int? = null) {
+        if (ticket != authorizationTicket || !mutableState.value.pendingConsent) return
+        resolutionTickets.clear()
         accessToken = null
-        mutableState.value = mutableState.value.copy(
-            pendingConsent = false, readyToUpload = false,
-            message = AuthorizationDiagnostics.message(failure, statusCode),
-        )
+        mutableState.value = mutableState.value.copy(pendingConsent = false, readyToUpload = false,
+            message = AuthorizationDiagnostics.message(failure, statusCode))
+        viewModelScope.launch {
+            historySession.authorizationFailed(ticket, failure, clock.instant())
+            if (authorizationTicket == ticket) authorizationTicket = null
+        }
     }
 
     internal fun continueUpload() {
         val state = mutableState.value
         val token = accessToken ?: return
+        val ticket = authorizationTicket ?: return
         if (!foreground || state.busy || !state.readyToUpload || !state.uploadOptIn) return
+        val selectedDate = DayWindow.yesterday(clock)
         accessToken = null
-        mutableState.value = state.copy(syncing = true, readyToUpload = false, message = "허용된 데이터 읽기 및 업로드 중…")
+        if (historySession.state.value.read.history?.attempt?.date != selectedDate) {
+            mutableState.value = state.copy(readyToUpload = false,
+                message = "날짜가 바뀌었습니다. Google 권한을 새로 확인하고 업로드 계속을 눌러 주세요.")
+            viewModelScope.launch { historySession.reload() }
+            return
+        }
+        mutableState.value = state.copy(syncing = true, readyToUpload = false, date = selectedDate,
+            message = "허용된 데이터 읽기 및 업로드 중…")
         syncJob = viewModelScope.launch {
             try {
-                var selectedDate: LocalDate? = null
-                var coverage = emptySet<DataType>()
-                val foregroundReader = object : HealthReader {
-                    override suspend fun read(date: LocalDate): com.ny.my.health.core.HealthSnapshot {
-                    check(foreground)
-                    val snapshot = reader.read(date)
-                    currentCoroutineContext().ensureActive()
-                    check(foreground)
-                    coverage = snapshot.grantedTypes
-                    mutableState.value = mutableState.value.copy(coverage = coverage)
-                    return snapshot
+                effects.execute(ticket, selectedDate, clock.instant(), clock::instant, { foreground }, { outcome ->
+                    mutableState.value = mutableState.value.copy(
+                        uploadedFiles = outcome.result.uploadedFiles, coverage = outcome.coverage,
+                        transientRemoteStatus = outcome.result.status,
+                        transientConfirmedFiles = outcome.result.uploadedFiles,
+                        message = when (outcome.result.status) {
+                            SyncStatus.SUCCESS -> "허용된 ${outcome.coverage.size}/5개 항목 범위의 내보내기 업로드 확인됨. 비어 있거나 미허용인 데이터는 포함하지 않습니다."
+                            SyncStatus.EMPTY -> "EMPTY: 허용된 범위에서 내보낼 기록이 없습니다. 업로드 성공이 아닙니다."
+                            SyncStatus.PERMISSION_REQUIRED -> "PERMISSION_REQUIRED: 읽기 권한이 없습니다."
+                            SyncStatus.FAILED -> SyncDiagnostics.failureMessage(outcome.result)
+                        },
+                    )
+                }) { date ->
+                    var coverage = emptySet<DataType>()
+                    val foregroundReader = object : HealthReader {
+                        override suspend fun read(date: LocalDate): com.ny.my.health.core.HealthSnapshot {
+                            check(foreground)
+                            val snapshot = reader.read(date)
+                            currentCoroutineContext().ensureActive()
+                            check(foreground)
+                            coverage = snapshot.grantedTypes
+                            return snapshot
+                        }
                     }
+                    val result = SyncCoordinator(foregroundReader, DefaultNormalizer(), VersionedCsvExporter(),
+                        PrivateDriveUploader(GoogleDriveTransport(token)), clock).sync(date)
+                    HistoryExecutionResult(result, coverage)
                 }
-                val result = SyncCoordinator(
-                    foregroundReader, DefaultNormalizer(), VersionedCsvExporter(),
-                    PrivateDriveUploader(GoogleDriveTransport(token)), clock,
-                ).syncYesterday { date ->
-                    selectedDate = date
-                    mutableState.value = mutableState.value.copy(date = date)
-                }
-                currentCoroutineContext().ensureActive()
-                if (!foreground) return@launch
-                val message = when (result.status) {
-                    SyncStatus.SUCCESS -> "허용된 ${coverage.size}/5개 항목 범위의 내보내기 업로드 확인됨. 비어 있거나 미허용인 데이터는 포함하지 않습니다."
-                    SyncStatus.EMPTY -> "EMPTY: 허용된 범위에서 내보낼 기록이 없습니다. 업로드 성공이 아닙니다."
-                    SyncStatus.PERMISSION_REQUIRED -> "PERMISSION_REQUIRED: 읽기 권한이 없습니다."
-                    SyncStatus.FAILED -> SyncDiagnostics.failureMessage(result)
-                }
-                val previous = mutableState.value
-                mutableState.value = previous.copy(
-                    syncing = false, message = message, uploadedFiles = result.uploadedFiles,
-                    lastSuccess = if (result.status == SyncStatus.SUCCESS) clock.instant() else previous.lastSuccess,
-                    lastSuccessDate = if (result.status == SyncStatus.SUCCESS) selectedDate else previous.lastSuccessDate,
-                    lastSuccessCoverage = if (result.status == SyncStatus.SUCCESS) coverage else previous.lastSuccessCoverage,
-                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                mutableState.value = mutableState.value.copy(syncing = false, message = "동기화를 완료하지 못했습니다. 다시 수동으로 시도해 주세요.")
             } finally {
+                if (authorizationTicket == ticket) authorizationTicket = null
                 mutableState.value = mutableState.value.copy(syncing = false)
             }
         }
     }
 
-    internal fun forget() {
-        if (mutableState.value.busy) return
-        accessToken = null
-        mutableState.value = SyncUiState(message = "이 프로세스의 동의·상태를 지웠습니다. 시스템 Health Connect와 Google 계정 설정에서 권한을 별도로 철회하세요. Drive 파일은 삭제되지 않습니다.")
-        refreshPermissions()
+    internal fun registerAuthorizationResolution(ticket: Long): Boolean {
+        if (ticket != authorizationTicket || !mutableState.value.pendingConsent) return false
+        return resolutionTickets.register(ticket)
     }
+
+    internal fun consumeAuthorizationResolution(): Long? = resolutionTickets.consume()?.takeIf {
+        it == authorizationTicket && mutableState.value.pendingConsent
+    }
+
+    private fun entryGate(): HistoryEntryGate {
+        val state = mutableState.value
+        return HistoryEntryGate(state.pendingConsent, state.refreshing, state.syncing, historySession.state.value)
+    }
+
+    internal fun reloadHistory() { viewModelScope.launch { historySession.reload() } }
+    internal fun requestDeleteHistory() {
+        if (!entryGate().allowsDeletion()) return
+        historySession.requestDelete()
+    }
+    internal fun cancelDeleteHistory() { historySession.cancelDelete() }
+    internal fun confirmDeleteHistory() {
+        if (!entryGate().allowsDeletion()) return
+        viewModelScope.launch { if (entryGate().allowsDeletion()) historySession.confirmDelete() }
+    }
+    internal fun retryDeleteHistory() {
+        if (!entryGate().allowsDeletion()) return
+        viewModelScope.launch { if (entryGate().allowsDeletion()) historySession.retryDelete() }
+    }
+    internal fun keepExistingHistory() { viewModelScope.launch { historySession.keepExistingAfterDeleteFailure() } }
+
+    internal fun forget() { requestDeleteHistory() }
 
     companion object {
         internal const val DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
