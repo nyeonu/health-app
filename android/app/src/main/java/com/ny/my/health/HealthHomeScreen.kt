@@ -20,6 +20,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.HealthConnectClient
 import com.ny.my.health.core.DataType
@@ -126,7 +128,10 @@ internal fun HealthHomeScreen(state: SyncUiState, actions: HistoryUiActions) {
         Text("일부 허용 시 허용된 항목만 처리합니다. 미허용·빈 데이터는 완료된 5개 항목으로 간주하지 않습니다.")
         Button(enabled = available && state.availability == HealthConnectClient.SDK_AVAILABLE, onClick = actions.requestHealthConsent) { Text("Health Connect 권한 요청") }
         Row {
-            Checkbox(checked = state.uploadOptIn, enabled = available, onCheckedChange = actions.changeOptIn)
+            Checkbox(
+                checked = state.uploadOptIn, enabled = available, onCheckedChange = actions.changeOptIn,
+                modifier = Modifier.semantics { contentDescription = "비공개 Drive 업로드 동의" },
+            )
             Text("내 Google Drive의 비공개 HealthApp 폴더 생성·사용과 날짜별 CSV 갱신에 동의합니다. 공유 권한은 추가하지 않습니다.")
         }
         Button(enabled = available && state.uploadOptIn && !state.readyToUpload, onClick = actions.authorize) { Text("Google 권한 확인") }
@@ -135,7 +140,7 @@ internal fun HealthHomeScreen(state: SyncUiState, actions: HistoryUiActions) {
         TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "상세·설정 접기" else "상세·설정 펼치기") }
         if (expanded) {
             Text("인증 요청 시각: ${time(attempt?.authorizationRequestedAt)}")
-            Text("실행 시작 시각: ${attempt?.startedAt?.let(::time) ?: "미시작"}")
+            Text("실행 시작 시각: ${if (loading || !readable) "확인 불가" else attempt?.startedAt?.let(::time) ?: "미시작"}")
             Text("종료 시각: ${attempt?.finishedAt?.let(::time) ?: "확인 불가"}")
             Text("최근 시도 허용 항목: ${coverage(attempt?.coverage.orEmpty())}")
             Text("최근 시도에서 확인된 업로드: ${attempt?.confirmedFiles?.let { "${it}개 파일" } ?: "확인되지 않음"}")

@@ -3,6 +3,10 @@ package com.ny.my.health
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.StateRestorationTester
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -53,7 +57,7 @@ class HealthHomeScreenInstrumentedTest {
         ui.value = state.copy(date = date, availability = HealthConnectClient.SDK_AVAILABLE, history = history)
         val actions = HistoryUiActions(
             requestHealthConsent = { calls += "health" }, refreshPermissions = { calls += "permissions" },
-            changeOptIn = { calls += "optIn" }, authorize = { calls += "authorize" },
+            changeOptIn = { calls += "optIn"; ui.value = ui.value.copy(uploadOptIn = it) }, authorize = { calls += "authorize" },
             continueUpload = { calls += "upload" }, requestDelete = {
                 calls += "requestDelete"
                 ui.value = ui.value.copy(history = ui.value.history!!.copy(deleteDialog = true))
@@ -216,6 +220,38 @@ class HealthHomeScreenInstrumentedTest {
         compose.onNodeWithText("최근 시도의 업로드가 확인되었습니다.").assertDoesNotExist()
         shown("확인된 파일 수: 7개")
         assertEquals(emptyList<String>(), calls)
+    }
+
+    @Test fun unreadableAndLoadingExecutionStartRemainsUnknownWhileKnownUnstartedHistoryShowsNotStarted() {
+        render(history = session().copy(read = HistoryRead(HistoryReadStatus.CORRUPT, null), error = HistoryError.READ))
+        details()
+        for (status in listOf(HistoryReadStatus.CORRUPT, HistoryReadStatus.UNAVAILABLE, HistoryReadStatus.UNSUPPORTED)) {
+            compose.runOnIdle { ui.value = ui.value.copy(history = session().copy(
+                read = HistoryRead(status, null), error = HistoryError.READ)) }
+            shown("실행 시작 시각: 확인 불가")
+            shown("종료 시각: 확인 불가")
+            compose.onNodeWithText("실행 시작 시각: 미시작").assertDoesNotExist()
+            compose.onNodeWithText("확인된 파일 수:", substring = true).assertDoesNotExist()
+            compose.onNodeWithText("실행 시작 시각: 2026", substring = true).assertDoesNotExist()
+        }
+        compose.runOnIdle { ui.value = ui.value.copy(history = session(previous = null).copy(
+            read = HistoryRead(HistoryReadStatus.UNAVAILABLE, null), operation = HistoryOperation.LOADING)) }
+        shown("실행 시작 시각: 확인 불가")
+        compose.onNodeWithText("확인된 파일 수:", substring = true).assertDoesNotExist()
+        compose.runOnIdle { ui.value = ui.value.copy(history = session(
+            attempt(HistoryPhase.UPLOAD_NOT_STARTED).copy(startedAt = null, finishedAt = null, confirmedFiles = null), previous = null)) }
+        shown("실행 시작 시각: 미시작")
+        shown("종료 시각: 확인 불가")
+        compose.onNodeWithText("확인된 파일 수:", substring = true).assertDoesNotExist()
+        assertEquals(emptyList<String>(), calls)
+    }
+
+    @Test fun privateDriveConsentCheckboxHasAccessibleNameAndExplicitClickUpdatesCheckedState() {
+        render(history = session(previous = null))
+        val consent = compose.onNodeWithContentDescription("비공개 Drive 업로드 동의")
+        consent.performScrollTo().assertHasClickAction().assertIsOff().performClick()
+        consent.assertIsOn()
+        compose.runOnIdle { assertEquals(listOf("optIn"), calls) }
     }
 
     @Test fun localReloadFromUnreadableHistoryInvokesNoExternalEffects() {
