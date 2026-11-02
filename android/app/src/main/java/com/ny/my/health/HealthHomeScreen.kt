@@ -48,6 +48,12 @@ internal fun HealthHomeScreen(state: SyncUiState, actions: HistoryUiActions) {
     val history = session?.read?.history
     val attempt = history?.attempt
     val success = history?.success
+    val recoveredOutcome = when (attempt?.phase) {
+        HistoryPhase.AUTHORIZATION_ABANDONED -> "인증 단계에서 종료됨 · 업로드 미시작"
+        HistoryPhase.UPLOAD_NOT_STARTED -> "업로드 시작 전 종료됨 · 다시 인증해 주세요."
+        HistoryPhase.INTERRUPTED -> "실행 중 종료됨 · 업로드 결과를 확인할 수 없습니다."
+        else -> null
+    }
     val available = !state.busy && readable && session?.error == null && session?.deleteFailed != true && session?.deleteDialog != true
     val loading = session == null || session.operation == HistoryOperation.LOADING
     val storageError = !loading && (session?.error != null || !readable)
@@ -87,13 +93,16 @@ internal fun HealthHomeScreen(state: SyncUiState, actions: HistoryUiActions) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("현재 상태", style = MaterialTheme.typography.titleMedium)
                 Text(status, color = if (storageError || session?.deleteFailed == true || attempt?.phase == HistoryPhase.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                if (session?.error == HistoryError.RECOVERY_WRITE && readable && recoveredOutcome != null) {
+                    Text(recoveredOutcome)
+                }
                 Text(state.message)
                 if (state.syncing) Text("화면을 벗어나면 중단됩니다")
                 if (session?.deleteFailed == true) {
                     Text(if (session.retainedAfterDeleteFailure) "삭제되지 않은 기존 이력" else "기존 로컬 이력의 보존 여부를 확인할 수 없습니다.")
                     Text("현재 업로드 동의와 준비된 인증은 폐기되었습니다. 새 업로드는 다시 동의하고 인증해 주세요.")
                     Button(enabled = !state.busy, onClick = actions.retryDelete) { Text("삭제 다시 시도") }
-                    TextButton(enabled = !state.busy, onClick = actions.keepExisting) { Text("기존 이력 유지 · 다시 확인") }
+                    TextButton(enabled = !state.busy, onClick = actions.keepExisting) { Text("삭제 취소·기존 이력 유지") }
                 } else if (storageError) {
                     Button(enabled = !state.busy, onClick = actions.reload) { Text("다시 불러오기") }
                     TextButton(enabled = !state.busy, onClick = actions.requestDelete) { Text("로컬 이력 삭제") }

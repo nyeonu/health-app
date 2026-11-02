@@ -207,7 +207,7 @@ class HealthHomeScreenInstrumentedTest {
     @Test fun failedDeletionLabelsRetainedHistoryWhileUnreadableHistoryRemainsUnknown() {
         render(session().copy(deleteFailed = true, retainedAfterDeleteFailure = true, error = HistoryError.DELETE))
         shown("삭제되지 않은 기존 이력")
-        click("기존 이력 유지 · 다시 확인")
+        click("삭제 취소·기존 이력 유지")
         assertEquals(listOf("keepExisting"), calls)
         compose.runOnIdle { ui.value = ui.value.copy(history = session().copy(
             read = HistoryRead(HistoryReadStatus.CORRUPT, null), deleteFailed = true,
@@ -282,6 +282,38 @@ class HealthHomeScreenInstrumentedTest {
         consent.performScrollTo().assertHasClickAction().assertIsOff().performClick()
         consent.assertIsOn()
         compose.runOnIdle { assertEquals(listOf("optIn"), calls) }
+    }
+
+    @Test fun recoveryWriteFailureShowsDerivedOutcomeAndUnknownResultWhilePreservingPriorSuccessAndBlockingNewUpload() {
+        val recovered = listOf(
+            HistoryPhase.AUTHORIZATION_ABANDONED to "인증 단계에서 종료됨 · 업로드 미시작",
+            HistoryPhase.UPLOAD_NOT_STARTED to "업로드 시작 전 종료됨 · 다시 인증해 주세요.",
+            HistoryPhase.INTERRUPTED to "실행 중 종료됨 · 업로드 결과를 확인할 수 없습니다.",
+        )
+        render(history = session().copy(error = HistoryError.RECOVERY_WRITE), state = SyncUiState(uploadOptIn = true))
+        details()
+        for ((phase, outcome) in recovered) {
+            compose.runOnIdle {
+                ui.value = ui.value.copy(readyToUpload = false, history = session(attempt(phase).copy(
+                    startedAt = if (phase == HistoryPhase.INTERRUPTED) started else null,
+                    finishedAt = null, confirmedFiles = null,
+                )).copy(error = HistoryError.RECOVERY_WRITE))
+            }
+            shown("복구 이력 저장에 실패했습니다. 다시 불러오거나 로컬 이력을 삭제해 주세요.")
+            shown(outcome)
+            shown("대상 날짜: 2026-01-01")
+            shown("확인 시각: 2026-01-02 09:00:00 (한국 시간)")
+            shown("당시 허용 항목: 체중")
+            shown("확인된 파일 수: 7개")
+            shown(if (phase == HistoryPhase.INTERRUPTED) "실행 시작 시각: 2026-01-03 09:01:00 (한국 시간)" else "실행 시작 시각: 미시작")
+            shown("종료 시각: 확인 불가")
+            shown("최근 시도에서 확인된 업로드: 확인되지 않음")
+            compose.onNodeWithText("종료 시각: 2026", substring = true).assertDoesNotExist()
+            compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
+            compose.runOnIdle { ui.value = ui.value.copy(readyToUpload = true) }
+            compose.onNodeWithText("업로드 계속").performScrollTo().assertIsNotEnabled()
+        }
+        assertEquals(emptyList<String>(), calls)
     }
 
     @Test fun localReloadFromUnreadableHistoryInvokesNoExternalEffects() {
