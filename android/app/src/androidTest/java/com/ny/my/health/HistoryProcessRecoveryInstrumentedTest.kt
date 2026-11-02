@@ -192,6 +192,26 @@ class HistoryProcessRecoveryInstrumentedTest {
         val expectedNight = args.getString("night") == "yes"
         val expectedFont = args.getString("font")!!.toFloat()
         launch { scenario, model ->
+            // Host starts at the opposite settings. Prove the Activity observes
+            // them before allowing the host to issue the live configuration change.
+            compose.waitUntil(20_000) {
+                var initialMatches = false
+                scenario.onActivity {
+                    val initial = it.resources.configuration
+                    initialMatches = (initial.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                        (if (expectedNight) Configuration.UI_MODE_NIGHT_NO else Configuration.UI_MODE_NIGHT_YES) &&
+                        kotlin.math.abs(initial.fontScale - if (expectedFont == 1f) 2f else 1f) < 0.01f
+                }
+                initialMatches
+            }
+            scenario.onActivity {
+                val initial = it.resources.configuration
+                assertEquals("Initial system theme must be opposite before READY",
+                    if (expectedNight) Configuration.UI_MODE_NIGHT_NO else Configuration.UI_MODE_NIGHT_YES,
+                    initial.uiMode and Configuration.UI_MODE_NIGHT_MASK)
+                assertEquals("Initial system font must be opposite before READY",
+                    if (expectedFont == 1f) 2f else 1f, initial.fontScale, 0.01f)
+            }
             marker("HISTORY_SETTINGS_READY")
             compose.waitUntil(20_000) {
                 var matches = false

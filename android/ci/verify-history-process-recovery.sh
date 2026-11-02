@@ -15,8 +15,21 @@ settings_count=0
 cleanup_count=0
 old_night=$(adb shell settings get secure ui_night_mode | tr -d '\r')
 old_font=$(adb shell settings get system font_scale | tr -d '\r')
+stop_job() {
+  if [[ -z "$job" ]]; then return; fi
+  for ((reap=0; reap<50; reap++)); do
+    if ! kill -0 "$job" 2>/dev/null; then break; fi
+    sleep 0.1
+  done
+  if kill -0 "$job" 2>/dev/null; then
+    echo 'Instrumentation host job did not exit after force-stop; terminating bounded wrapper' >&2
+    kill -TERM "$job" 2>/dev/null || true
+  fi
+  wait "$job" 2>/dev/null || true
+  job=''
+}
 restore() {
-  if [[ -n "$job" ]]; then adb shell am force-stop "$app" >/dev/null 2>&1 || true; wait "$job" 2>/dev/null || true; fi
+  if [[ -n "$job" ]]; then timeout 5s adb shell am force-stop "$app" >/dev/null 2>&1 || true; stop_job; fi
   case "$old_night" in
     0) adb shell cmd uimode night auto >/dev/null ;;
     1) adb shell cmd uimode night no >/dev/null ;;
@@ -58,8 +71,16 @@ fi
 invoke() {
   local method=$1 output=$2
   shift 2
-  timeout 90s adb shell am instrument -w -r -e historyProcessHost true \
-    -e class "$class#$method" "$@" "$runner" >"$output" 2>&1
+  local status
+  if timeout 90s adb shell am instrument -w -r -e historyProcessHost true \
+    -e class "$class#$method" "$@" "$runner" >"$output" 2>&1; then
+    return 0
+  else
+    status=$?
+    cat "$output" >&2
+    echo "Instrumentation method $method failed or timed out (exit=$status)" >&2
+    return "$status"
+  fi
 }
 passed() {
   local output=$1
@@ -73,31 +94,48 @@ passed() {
 ready() {
   local marker=$1 output=$2
   for ((i=0; i<600; i++)); do
-    if grep -Eq "$marker pid=[0-9]+" "$output"; then return; fi
+    if [[ -r "$output" ]] && grep -Eq "$marker pid=[0-9]+" "$output"; then return; fi
     if ! kill -0 "$job" 2>/dev/null; then cat "$output"; echo 'Instrumentation ended before ready' >&2; exit 1; fi
     sleep 0.1
   done
+  if [[ -r "$output" ]]; then cat "$output" >&2; fi
   echo "Timed out waiting for $marker" >&2
   exit 1
 }
 for fixture in success running authorizing awaiting empty reset-after reset-before reset-empty-before; do
-  invoke seedAndHoldUntilHostKillsProcess "$scratch/seed" -e fixture "$fixture" &
+  seed_output="$scratch/seed-$fixture"
+  reopen_output="$scratch/reopen-$fixture"
+  cleanup_output="$scratch/cleanup-$fixture"
+  : >"$seed_output" # Parent clears this invocation's unique file before spawning.
+  echo "Starting bounded process fixture: $fixture"
+  invoke seedAndHoldUntilHostKillsProcess "$seed_output" -e fixture "$fixture" &
   job=$!
-  ready HISTORY_READY "$scratch/seed"
-  dead_pid=$(sed -n 's/.*HISTORY_READY pid=\([0-9]*\).*/\1/p' "$scratch/seed" | head -1)
-  [[ "$dead_pid" =~ ^[0-9]+$ ]]
-  [[ " $(adb shell pidof "$app" | tr -d '\r') " == *" $dead_pid "* ]]
+  ready HISTORY_READY "$seed_output"
+  dead_pid=$(sed -n 's/.*HISTORY_READY pid=\([0-9]*\).*/\1/p' "$seed_output" | head -1)
+  if [[ ! "$dead_pid" =~ ^[0-9]+$ ]]; then
+    cat "$seed_output" >&2
+    echo "Invalid ready PID for synthetic fixture: $fixture" >&2
+    exit 1
+  fi
+  if [[ " $(adb shell pidof "$app" | tr -d '\r') " != *" $dead_pid "* ]]; then
+    cat "$seed_output" >&2
+    echo "Ready PID is not the live target for synthetic fixture: $fixture" >&2
+    exit 1
+  fi
   adb shell am force-stop "$app"
-  wait "$job" || true # Deliberately killed hold; this invocation is never counted as PASS.
-  job=''
+  stop_job # Deliberately killed hold; this invocation is never counted as PASS.
   for ((i=0; i<50; i++)); do
     if ! adb shell "test -d /proc/$dead_pid"; then break; fi
     sleep 0.1
   done
   if adb shell "test -d /proc/$dead_pid"; then echo 'Original PID still exists' >&2; exit 1; fi
-  invoke reopenedActivityRestoresOnlyCommittedMetadata "$scratch/reopen" -e fixture "$fixture" -e deadPid "$dead_pid"
-  passed "$scratch/reopen"
-  grep -Eq 'HISTORY_REOPENED pid=[0-9]+' "$scratch/reopen"
+  invoke reopenedActivityRestoresOnlyCommittedMetadata "$reopen_output" -e fixture "$fixture" -e deadPid "$dead_pid"
+  passed "$reopen_output"
+  if ! grep -Eq 'HISTORY_REOPENED pid=[0-9]+' "$reopen_output"; then
+    cat "$reopen_output" >&2
+    echo "Missing successful reopen marker for synthetic fixture: $fixture" >&2
+    exit 1
+  fi
   recovery_count=$((recovery_count + 1))
   printf 'recovery scenario=%s successful_verifier_tests=1 pid_change_verified=true
 ' "$fixture" >>"$evidence"
@@ -110,14 +148,21 @@ for fixture in success running authorizing awaiting empty reset-after reset-befo
         if [[ "$font" == 1 ]]; then initial_font=2.0; else initial_font=1.0; fi
         adb shell cmd uimode night "$initial"
         adb shell settings put system font_scale "$initial_font"
-        invoke liveSystemThemeAndFontChangeReachActivityAndControls "$scratch/settings" -e night "$night" -e font "$font.0" &
+        settings_output="$scratch/settings-$night-$font"
+        : >"$settings_output"
+        invoke liveSystemThemeAndFontChangeReachActivityAndControls "$settings_output" -e night "$night" -e font "$font.0" &
         job=$!
-        ready HISTORY_SETTINGS_READY "$scratch/settings"
+        ready HISTORY_SETTINGS_READY "$settings_output"
         adb shell cmd uimode night "$night"
         adb shell settings put system font_scale "$font.0"
-        wait "$job"
+        if ! wait "$job"; then
+          cat "$settings_output" >&2
+          echo "Live settings invocation failed: night=$night font=$font.0" >&2
+          job=''
+          exit 1
+        fi
         job=''
-        passed "$scratch/settings"
+        passed "$settings_output"
         if [[ "$night" == yes ]]; then theme=dark; else theme=light; fi
         image="system-$theme-$font.png"
         adb pull "/sdcard/Android/data/$app/files/v1-synthetic-process/$image" "app/build/outputs/v1-synthetic-process/$image"
@@ -129,8 +174,8 @@ for fixture in success running authorizing awaiting empty reset-after reset-befo
       done
     done
   fi
-  invoke cleanupOwnedSyntheticFixture "$scratch/cleanup"
-  passed "$scratch/cleanup"
+  invoke cleanupOwnedSyntheticFixture "$cleanup_output"
+  passed "$cleanup_output"
   cleanup_count=$((cleanup_count + 1))
   printf 'cleanup scenario=%s successful_tests=1
 ' "$fixture" >>"$evidence"
