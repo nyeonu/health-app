@@ -1,10 +1,12 @@
 ---
-status: deferred
+status: specification_draft
 requested_by: user
 scope: future profiling and evidence-based sync optimization
 ---
 
-# Deferred: investigate slow manual synchronization
+# Investigate slow manual synchronization
+
+**2026-11-02:** after PR #8 development merge, the owner requested the next work continue. Read-only request-shape discovery and a [profiling-first spec draft](../2026-11-02-sync-profiling/spec.md) are prepared on master671d213; implementation and optimization targets are not yet approved. See [observed evidence and limits](../2026-11-02-sync-profiling/discovery.md). P0/Galaxy/TalkBack unknowns remain unchanged.
 
 The user reports that upload/synchronization takes too long and asks to identify the bottleneck and consider parallel execution or other speed improvements **as later work**. No optimization, instrumentation, new dependency, concurrency change or performance acceptance target is authorized by this note. Continue the current P0 device acceptance first unless the user reprioritizes.
 
