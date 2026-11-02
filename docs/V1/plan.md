@@ -2,7 +2,7 @@
 plan_id: V1
 title: Durable manual history and status-first home
 kind: single
-status: approved
+status: in_progress
 approved: 2026-11-01
 author: Codex
 created: 2026-11-01
@@ -13,7 +13,7 @@ tasks:
   - id: T1
     title: Establish real SQLite reopen test harness
     depends_on: []
-    status: pending
+    status: in_progress
     tier: standard
   - id: T2
     title: Define bounded history transitions
@@ -57,7 +57,7 @@ Keep persistence adapters in app, and value/codec/recovery decisions in core. Re
 
 **ADR candidate:** persisted format/version policy and SQLite transaction boundary. After plan approval, record a Proposed ADR with adr-writer; do not mark this design Accepted until conformance verification passes.
 
-**Entry gate:** the owner explicitly approved this execution plan and requested workflow execution. The approval is recorded; implementation has not started. Before T1 implementation, obtain explicit P0 disposition covering unresolved original-session comparison, recoverable signing-key backup, isolated revocation gaps and dialog cancellation. A bundled clarification is pending. Planning and automated review do not waive these items. No P0 result is promoted here.
+**Entry disposition (2026-11-02):** the owner approved the plan and instructed continued workflow execution, corrected original-source comparison as already performed, and explicitly directed that all other unverified P0 items remain unverified. Proceed with this bounded V1 development/testing; do not claim P0 completion or release approval. No source values, key material or new device results are recorded here.
 
 ## 2. 공통 설계
 
@@ -164,6 +164,21 @@ internal data class HistoryUiActions(
 - On explicit continuation, compute yesterday once, persist that execution date and call existing `SyncCoordinator.sync(date)` with exactly that date. Do not independently recompute the day between metadata and read across midnight.
 - `HealthHomeScreen.kt`: pure display projection combines latest outcome and independently committed success; never derive success count from the latest attempt.
 
+- `HistoryDatabase`: Use app no-backup private storage; internal DB schema version 1, a single row keyed by 1 with payload format version and payload committed together; rollback journal and synchronous FULL. Read must not create a missing DB. Unknown user_version and unavailable/corrupt DB block writes; no destructive corruption handler or fallback. One transaction acknowledges only after successful endTransaction; precommit fault injection is internal to tests. Reset writes a supported empty envelope atomically, never unlinks files.
+- `SyncHistory`: Persist only latest attempt and latest success, format version 1, ISO instants/local dates, known enum coverage/phase, allowlisted errors and nonnegative or unknown counts. Parser cap is 16 KiB UTF-8; reject over-cap, invalid fields, duplicate/unknown categories and unknown enums. Unknown version is UNSUPPORTED, malformed payload CORRUPT; neither means empty. No token/account/file/record identifier or raw measurement.
+
+- `T2Cases`: History codec rejects forbidden fields and oversized or malformed metadata (①/②, JVM); Later non-success outcomes retain independently committed prior success (①/②/④, JVM); Recovery distinguishes abandoned authorization from awaiting-upload interruption (①/②/④, JVM); Running recovery never invents terminal time or confirmed upload count (①/④, JVM); Terminal restoration preserves actual outcome and prior independent success (①/②/④, JVM and SQLite reopen)
+
+- `T3Cases`: Committed manual success survives a fresh store reopen with coherent fields (①/④, SQLite integration); Failed result transaction reopens the prior committed success (①/③, SQLite integration; transient error UI in T5); Absent unsupported corrupt and unavailable stores have distinct reopen results (①/②/③, SQLite integration); Confirmed local deletion invalidates credentials and reopens empty without remote effects (①/④, JVM session plus SQLite integration); Acknowledged empty-state transaction reopens without attempt or success (①/④, SQLite integration); Interrupted reset reopens committed old or empty state without claiming deletion completed (①/④, SQLite integration fixtures plus actual Galaxy process-loss checklist); Stale generation cannot rewrite an acknowledged reset after recovery (①/④, JVM session plus SQLite reopen); Repeated empty deletion is local and persistence failure never becomes success (①/②/③, SQLite integration and JVM session); Terminal restoration preserves actual outcome and prior independent success (①/②/④, JVM and SQLite reopen); Reading incompatible corrupt or unavailable history never overwrites it (①/②/③, SQLite integration); Recovery-save failure shows derived interruption and local storage error (①/③, JVM session plus SQLite rollback integration)
+
+- `T4Cases`: Restoring unfinished execution reports unknown outcome without retry (①/④, JVM session); Duplicate starts and delayed completions cannot overwrite acknowledged deletion (①/④, JVM session); Confirmed local deletion invalidates credentials and reopens empty without remote effects (①/④, JVM session plus SQLite integration); Cancelling delete confirmation preserves credentials and durable history (①/④, JVM session and Compose instrumentation); Busy sessions reject stale delete requests and explain disabled deletion (①/②/④, JVM session and Compose instrumentation); Confirmed deletion invalidates credentials before the first store suspension (①/④, JVM session); Failed deletion offers retry without claiming completion or restoring credentials (①/③, JVM session and Compose instrumentation); Failed deletion labels retained history while unreadable history remains unknown (①/②/③, JVM session and Compose instrumentation); Delete failure blocks new authorization until reset or explicit keep and reload succeeds (①/③/④, JVM session); Stale generation cannot rewrite an acknowledged reset after recovery (①/④, JVM session plus SQLite reopen); Repeated empty deletion is local and persistence failure never becomes success (①/②/③, SQLite integration and JVM session); Delete confirmation states its local-only scope and triggers no external deletion (①, Compose instrumentation and effect assertions); Unreadable history blocks upload until explicit successful reload or reset (①/③/④, JVM session); Recovery-save failure shows derived interruption and local storage error (①/③, JVM session plus SQLite rollback integration)
+
+- `T5Cases`: Cancelled authorization has a request time and no execution start (①/④, JVM session); Failed running-state commit prevents every reader and uploader effect (①/③, JVM session); Failed result transaction reopens the prior committed success (①/③, SQLite integration; transient error UI in T5); Reopened history grants no consent token continuation or external execution (①/④, JVM session and Activity instrumentation); Restored success is labelled historical and never bypasses manual execution (①/④, Compose instrumentation and session); CSV headers ordering quoting and missing values follow v0_1; Empty and denied reads never upload or report success; Successful partial-grant sync uploads only authorized populated datasets (①/⑤, existing JVM regression suites; reuse PrivateDriveUploaderTest and reader suite too); Reopen after abandoned authorization or failed deletion never restores credentials (①/③/④, JVM session and Activity instrumentation)
+
+- `T6Cases`: Details distinguish authorization execution and result times with partial scope (①/②, Compose instrumentation); Restored success is labelled historical and never bypasses manual execution (①/④, Compose instrumentation and session); Collapsed home shows current error prior success target day and next action (①, Compose instrumentation); Success card count date time and coverage come from one committed success (①/④, Compose instrumentation); Details render missing execution and terminal times without invented timestamps (①/②, Compose instrumentation); Latest failure and empty outcome remain distinct from prior successful upload (①/②, Compose instrumentation); Expanding details or restoring UI never authorizes reads or uploads (①/④, Compose instrumentation); Cancelling delete confirmation preserves credentials and durable history (①/④, JVM session and Compose instrumentation); Busy sessions reject stale delete requests and explain disabled deletion (①/②/④, JVM session and Compose instrumentation); Failed deletion offers retry without claiming completion or restoring credentials (①/③, JVM session and Compose instrumentation); Failed deletion labels retained history while unreadable history remains unknown (①/②/③, JVM session and Compose instrumentation); Delete confirmation states its local-only scope and triggers no external deletion (①, Compose instrumentation and effect assertions)
+
+- `T7Cases`: Reopened history grants no consent token continuation or external execution (①/④, JVM session and Activity instrumentation); CSV headers ordering quoting and missing values follow v0_1; Empty and denied reads never upload or report success; Successful partial-grant sync uploads only authorized populated datasets (①/⑤, existing JVM regression suites; reuse PrivateDriveUploaderTest and reader suite too); Home actions remain reachable in both themes and enlarged text (①/②, Compose instrumentation; manual TalkBack checklist required); Synthetic state gallery captures all required history and execution states (①, Compose instrumentation and artifact review); Interrupted reset reopens committed old or empty state without claiming deletion completed (①/④, SQLite integration fixtures plus actual Galaxy process-loss checklist); Reopen after abandoned authorization or failed deletion never restores credentials (①/③/④, JVM session and Activity instrumentation)
+
 ### Format and commit policy
 
 - Internal database schema version 1; fixed single-row table with key 1 and separate payload format version 1. ISO instants and local dates, enum-valued phases/coverage, nonnegative confirmed-file count or explicit unknown, fixed allowlisted failure category; no free-form provider text.
@@ -241,7 +256,7 @@ Additional boundary baseline: envelope exactly 16 KiB/one byte over, zero/nonzer
   | `app/src/main/java/com/ny/my/health/HistoryDatabase.kt` | New | Private path, version-1 single-row schema, transaction helper |
   | `app/src/androidTest/java/com/ny/my/health/HistoryDatabaseInstrumentedTest.kt` | New | Real Android DB context/reopen smoke |
 
-- **인터페이스**: Internal DB open/close and transaction helper only; typed history behavior comes in T3.
+- **인터페이스**: 2절 `HistoryDatabase` 참조. Internal DB open/close and transaction helper only; typed history behavior comes in T3.
 - **결정 로직**: Absent file is not silently created by a read; unsupported schema is rejected without destructive fallback.
 - **호출 순서**:
   1. Open test-only private DB, inspect version/pragmas, commit synthetic probe, close and reopen.
@@ -274,7 +289,7 @@ T1 완료 후 시작.
   Successful terminal result → coherent success fields copied from that attempt
   Unknown version / invalid payload → unsupported / corrupt, never implicit empty
   ```
-- **작성할 테스트**: New core tests assigned to T2 in the traceability table, plus exact parser-cap boundary, invalid enums/duplicates, negative counts and date/time validation (②/③).
+- **작성할 테스트**: 2절 `T2Cases` 참조.  New core tests assigned to T2 in the traceability table, plus exact parser-cap boundary, invalid enums/duplicates, negative counts and date/time validation (②/③).
 - **완료 기준**: Every T2 traceability test and codec boundary passes with fixed clock/synthetic values; encoded whitelist excludes all forbidden fields.
 - **검증 방법**:
   ```bash
@@ -294,13 +309,13 @@ T2 완료 후 시작.
   | `app/src/main/java/com/ny/my/health/SqliteHistoryStore.kt` | New | Bound reads/transactional envelope replacement/reset |
   | `app/src/androidTest/java/com/ny/my/health/SqliteHistoryStoreInstrumentedTest.kt` | New | Real rollback, empty commit, old/new reopen |
 
-- **인터페이스**: Shared `HistoryStore`, `SyncHistory` and T1 DB helper.
+- **인터페이스**: Shared `HistoryStore`, `SyncHistory` and `HistoryDatabase` from T1.
 - **결정 로직**: Absent, unsupported, corrupt and unavailable are distinct results; unknown storage never silently initializes or overwrites history.
 - **호출 순서**:
   1. Validate encoded envelope before starting a write transaction.
   2. Commit one bound row update; acknowledge only after transaction completion.
   3. Error or cancellation → preserve uncertainty, close safely, reopen to determine committed state.
-- **작성할 테스트**: T3 traceability cases use actual SQLite close/reopen; inject precommit failure for result/reset rollback and repeat with committed empty state. Test unreadable database separately from invalid JSON and unsupported version.
+- **작성할 테스트**: 2절 `T3Cases` 참조.  T3 traceability cases use actual SQLite close/reopen; inject precommit failure for result/reset rollback and repeat with committed empty state. Test unreadable database separately from invalid JSON and unsupported version.
 - **완료 기준**: Real reopened state is old after rollback, new after commit, and valid on interrupted-state fixtures; errors are categorized without provider/SQL/payload details.
 - **검증 방법**:
   ```bash
@@ -334,7 +349,7 @@ T3 완료 후 시작.
   1. Serialize local load, derive recovery and persist it; persistence failure remains visibly non-durable.
   2. Serialize authorization/execution-start metadata before permitting external effects.
   3. Serialize delete/reload under the same guard; do not acquire a lock recursively around suspended callbacks.
-- **작성할 테스트**: All T4 mapped cases; deferred completions prove busy/generation behavior. Use small handwritten boundary fakes and deterministic coroutine gates, not timing sleeps.
+- **작성할 테스트**: 2절 `T4Cases` 참조.  All T4 mapped cases; deferred completions prove busy/generation behavior. Use small handwritten boundary fakes and deterministic coroutine gates, not timing sleeps.
 - **완료 기준**: No local recovery triggers reader/network effects; delete failure and stale callback rules hold; pure decisions stay outside SQL/callback chains.
 - **검증 방법**:
   ```bash
@@ -362,7 +377,7 @@ T4 완료 후 시작.
   2. Persist awaiting-continuation phase → show explicit continuation; stale SDK callbacks are rejected.
   3. Durable running write → start existing coordinator; failure means zero read/upload calls.
   4. Coordinator terminal/cancellation → serialized terminal record; result-save failure retains old committed success and discloses transient remote evidence.
-- **작성할 테스트**: T5 mapped cases: zero effects after start-write failure, remote confirmation/local-save failure, preserved prior success, pause cancellation, late callbacks and duplicate continuation. Reuse existing reader/coordinator/transport tests.
+- **작성할 테스트**: 2절 `T5Cases` 참조.  T5 mapped cases: zero effects after start-write failure, remote confirmation/local-save failure, preserved prior success, pause cancellation, late callbacks and duplicate continuation. Reuse existing reader/coordinator/transport tests.
 - **완료 기준**: Existing SDK launches remain Activity-owned; no persisted token; independently scoped terminal-history write cannot be accidentally cancelled with the sync job, and never attempts remote replay.
 - **검증 방법**:
   ```bash
@@ -387,7 +402,7 @@ T5 완료 후 시작.
 
 - **인터페이스**: Shared `HealthHomeScreen`, `HistoryUiActions`.
 - **결정 로직**: Current error and committed success are independent; missing start/finish time is explicit; success card fields originate from the same committed success.
-- **작성할 테스트**: T6 traceability cases plus delete dialog cancel/confirm semantics, busy-state rejection and local reload with no external effects.
+- **작성할 테스트**: 2절 `T6Cases` 참조.  T6 traceability cases plus delete dialog cancel/confirm semantics, busy-state rejection and local reload with no external effects.
 - **완료 기준**: Approved section-4 arrangement/copy is visible; latest failure survives earlier success; token is never part of the render state; details expansion invokes no read/upload.
 - **검증 방법**:
   ```bash
@@ -411,7 +426,7 @@ T6 완료 후 시작.
 
 - **인터페이스**: Existing instrumentation runner and shared `HealthHomeScreen`.
 - **결정 로직**: None; test actual rendering and evidence boundaries.
-- **작성할 테스트**: T7 mapped cases; synthetic captures for no-history/success/authorization/running/interrupted/read-failure/delete-failure, light/dark themes and enlarged text. Retain existing consent and zero-grant paths using approved new UI copy.
+- **작성할 테스트**: 2절 `T7Cases` 참조.  T7 mapped cases; synthetic captures for no-history/success/authorization/running/interrupted/read-failure/delete-failure, light/dark themes and enlarged text. Retain existing consent and zero-grant paths using approved new UI copy.
 - **완료 기준**: Instrumentation results/captures reviewed, Galaxy force-stop and TalkBack results recorded only when actually performed; pending physical checks prevent full conformance PASS.
 - **검증 방법**:
   ```bash
@@ -448,6 +463,7 @@ Checkpoint after T7: spec-only independent conformance check, code review and se
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T1–T7 | 1/2 each | Initial T1 brief assembled with 0 Shared design references; later task text referred to traceability not included in briefs | Existing policies and test descriptions were already approved but not mechanically delivered | Tag existing DB/codec policies and test lists; add explicit references, preserving approved schema and criteria | plan.md only; implementation absent | Reassemble each task before dispatch; stop on unresolved references | Codex / no code changes in this correction |
 
 ## 환경 준비 기록
 
