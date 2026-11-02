@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteDatabaseCorruptException
 import android.database.sqlite.SQLiteException
 import java.io.File
 import java.nio.file.Files
+import java.util.Locale
 
 /** 제공자 오류 문자열을 해석하지 않고 지원하지 않는 버전을 구분한다. */
 internal class UnsupportedHistorySchemaException :
@@ -81,18 +82,14 @@ internal class HistoryDatabase internal constructor(internal val databaseFile: F
         try {
             if (create && database.version == 0) {
                 commit(database) { db ->
-                    db.execSQL(
-                        "CREATE TABLE history (" +
-                            "id INTEGER PRIMARY KEY CHECK (id = 1), " +
-                            "payload_format_version INTEGER NOT NULL, " +
-                            "payload TEXT NOT NULL)",
-                    )
+                    db.execSQL(CREATE_HISTORY_TABLE)
                     db.version = SCHEMA_VERSION
                 }
             }
             if (database.version != SCHEMA_VERSION) {
                 throw UnsupportedHistorySchemaException()
             }
+            validateHistorySchema(database)
             // 버전만 맞고 실제 테이블이 없거나 읽을 수 없는 DB도 쓰기 전에 거부한다.
             database.rawQuery(
                 "SELECT id, payload_format_version, payload FROM history LIMIT 1",
@@ -115,6 +112,25 @@ internal class HistoryDatabase internal constructor(internal val databaseFile: F
         }
     }
 
+    private fun validateHistorySchema(database: SQLiteDatabase) {
+        database.rawQuery(
+            "SELECT type, sql FROM sqlite_master WHERE name = ? COLLATE NOCASE AND type IN ('table', 'view')",
+            arrayOf("history"),
+        ).use { rows ->
+            // Preserve the existing distinction between an absent table and an unsupported definition.
+            if (!rows.moveToFirst()) throw SQLiteException("기록 DB 테이블을 읽을 수 없습니다")
+            if (rows.getString(0) != "table" || rows.isNull(1) ||
+                normalizeSchema(rows.getString(1)) != normalizeSchema(CREATE_HISTORY_TABLE) || rows.moveToNext()
+            ) throw UnsupportedHistorySchemaException()
+        }
+        database.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ? COLLATE NOCASE LIMIT 1",
+            arrayOf("history"),
+        ).use { rows ->
+            if (rows.moveToFirst()) throw UnsupportedHistorySchemaException()
+        }
+    }
+
     private fun <T> commit(
         database: SQLiteDatabase,
         beforeCommit: () -> Unit = {},
@@ -134,6 +150,12 @@ internal class HistoryDatabase internal constructor(internal val databaseFile: F
     private companion object {
         val locks = mutableMapOf<String, Any>()
         const val SCHEMA_VERSION = 1
+        const val CREATE_HISTORY_TABLE = "CREATE TABLE history (" +
+            "id INTEGER PRIMARY KEY CHECK (id = 1), " +
+            "payload_format_version INTEGER NOT NULL, " +
+            "payload TEXT NOT NULL)"
+
+        fun normalizeSchema(sql: String): String = sql.filterNot { it.isWhitespace() }.lowercase(Locale.ROOT)
 
         fun databaseFile(context: Context, name: String): File {
             require(name.isNotBlank() && File(name).name == name) {

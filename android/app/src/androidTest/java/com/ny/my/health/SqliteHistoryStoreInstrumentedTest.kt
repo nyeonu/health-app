@@ -176,6 +176,87 @@ class SqliteHistoryStoreInstrumentedTest {
     }
 
     @Test
+    fun malformedVersionOneConstraintsAndHistoryTriggersRequireExplicitReplacement() = fixture { db ->
+        val definitions = listOf(
+            "CREATE TABLE history (id INTEGER PRIMARY KEY, payload_format_version INTEGER NOT NULL, payload TEXT NOT NULL)" to 2,
+            "CREATE TABLE history (id INTEGER CHECK (id = 1), payload_format_version INTEGER NOT NULL, payload TEXT NOT NULL)" to 1,
+            "CREATE TABLE history (id INTEGER PRIMARY KEY CHECK (id = 1), payload_format_version INTEGER NOT NULL, payload TEXT NOT NULL)" to 1,
+        )
+        for ((index, definition) in definitions.withIndex()) {
+            SQLiteDatabase.deleteDatabase(db.databaseFile)
+            SQLiteDatabase.openOrCreateDatabase(db.databaseFile, null).use { connection ->
+                connection.execSQL(definition.first)
+                connection.version = 1
+                connection.execSQL(
+                    "INSERT INTO history (id, payload_format_version, payload) VALUES (?, ?, ?)",
+                    arrayOf<Any>(definition.second, 1, SyncHistoryCodec.encode(committed)),
+                )
+                if (index == 2) {
+                    connection.execSQL(
+                        "CREATE TRIGGER retain_history BEFORE INSERT ON history BEGIN SELECT RAISE(IGNORE); END",
+                    )
+                }
+                connection.rawQuery("PRAGMA integrity_check", null).use { rows ->
+                    assertTrue(rows.moveToFirst())
+                    assertEquals("ok", rows.getString(0))
+                    assertFalse(rows.moveToNext())
+                }
+            }
+            val originalBytes = db.databaseFile.readBytes()
+            assertEquals(HistoryReadStatus.UNSUPPORTED, reopen(db).load().status)
+            expectFailure { reopen(db).replace(empty) }
+            assertTrue(originalBytes.contentEquals(db.databaseFile.readBytes()))
+            reopen(db).reset()
+            assertEquals(HistoryRead(HistoryReadStatus.READY, empty), reopen(db).load())
+            assertFalse(db.resetDirectory.exists())
+            listOf("-journal", "-wal", "-shm").forEach { assertFalse(File(db.databaseFile.path + it).exists()) }
+            for (history in listOf(committed, committed.copy(attempt = attempt(HistoryPhase.FAILED)))) {
+                reopen(db).replace(history)
+                assertEquals(HistoryRead(HistoryReadStatus.READY, history), reopen(db).load())
+                checkNotNull(db.openForRead()).use { connection ->
+                    connection.rawQuery("SELECT id FROM history", null).use { rows ->
+                        assertTrue(rows.moveToFirst())
+                        assertEquals(1, rows.getInt(0))
+                        assertFalse(rows.moveToNext())
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun canonicalSchemaWithPreviouslyIgnoredCheckRequiresConfirmedResetToClearEveryRow() = fixture { db ->
+        SqliteHistoryStore(db).replace(committed)
+        db.openForWrite().use { connection ->
+            connection.execSQL("PRAGMA ignore_check_constraints=ON")
+            connection.execSQL(
+                "INSERT INTO history (id, payload_format_version, payload) VALUES (?, ?, ?)",
+                arrayOf<Any>(2, 1, SyncHistoryCodec.encode(committed)),
+            )
+            connection.execSQL("PRAGMA ignore_check_constraints=OFF")
+        }
+        val originalBytes = db.databaseFile.readBytes()
+        assertEquals(HistoryReadStatus.CORRUPT, reopen(db).load().status)
+        expectFailure { reopen(db).replace(empty) }
+        assertTrue(originalBytes.contentEquals(db.databaseFile.readBytes()))
+        reopen(db).reset()
+        assertEquals(HistoryRead(HistoryReadStatus.READY, empty), reopen(db).load())
+        assertFalse(db.resetDirectory.exists())
+        for (history in listOf(committed, empty)) {
+            reopen(db).replace(history)
+            assertEquals(HistoryRead(HistoryReadStatus.READY, history), reopen(db).load())
+            checkNotNull(db.openForRead()).use { connection ->
+                connection.rawQuery("SELECT id FROM history", null).use { rows ->
+                    assertTrue(rows.moveToFirst())
+                    assertEquals(1, rows.getInt(0))
+                    assertFalse(rows.moveToNext())
+                }
+            }
+        }
+        listOf("-journal", "-wal", "-shm").forEach { assertFalse(File(db.databaseFile.path + it).exists()) }
+    }
+
+    @Test
     fun unknownWalSchemaReadsAndOrdinaryWritesDoNotConvertOrOverwriteItsDatabaseFamily() = fixture { db ->
         SqliteHistoryStore(db).replace(committed)
         SQLiteDatabase.openDatabase(db.databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { foreign ->

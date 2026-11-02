@@ -77,12 +77,19 @@ class SqliteHistoryStore internal constructor(
                             validateEmpty = { check(read(it) == HistoryRead(HistoryReadStatus.READY, history)) },
                         )
                     } else database.transaction(beforeCommit = checkBeforeCommit) { db ->
-                        if (!explicitReset) {
+                        if (explicitReset) {
+                            db.execSQL("DELETE FROM history")
+                        } else {
                             check(read(db).status in setOf(HistoryReadStatus.READY, HistoryReadStatus.ABSENT)) {
                                 "기록 저장소를 읽을 수 없습니다"
                             }
                         }
                         insert(db, payload)
+                        if (explicitReset) {
+                            check(read(db) == HistoryRead(HistoryReadStatus.READY, history)) {
+                                "빈 기록 저장을 확인할 수 없습니다"
+                            }
+                        }
                     }
                 }
             } catch (error: CancellationException) {
