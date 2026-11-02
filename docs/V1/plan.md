@@ -13,7 +13,7 @@ tasks:
   - id: T1
     title: Establish real SQLite reopen test harness
     depends_on: []
-    status: done
+    status: in_progress
     tier: standard
   - id: T2
     title: Define bounded history transitions
@@ -131,6 +131,8 @@ internal class HistoryDatabase(context: Context, databaseName: String = "sync-hi
     internal fun openForWrite(): SQLiteDatabase
     internal fun <T> transaction(beforeCommit: () -> Unit = {}, block: (SQLiteDatabase) -> T): T
 }
+internal class UnsupportedHistorySchemaException : SQLiteException
+// Corruption handler preserves SQLiteDatabaseCorruptException (fixed message, no provider text/cause).
 ```
 
 ```kotlin
@@ -289,7 +291,7 @@ Additional boundary baseline: envelope exactly 16 KiB/one byte over, zero/nonzer
   cd android
   ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.HistoryDatabaseInstrumentedTest
   ```
-- **주의사항**: Local emulator is absent; use approved CI execution or report blocked. Confirm platform DB path/pragma behavior before coding; if unsupported, stop for plan correction. Do not install a destructive corruption handler or add a persistence dependency.
+- **주의사항**: Recovery 2/2: retain a typed unsupported-schema exception and platform corruption exception with fixed non-sensitive messages; no schema/configuration change. Local emulator is absent; use approved CI execution or report blocked. Confirm platform DB path/pragma behavior before coding; if unsupported, stop for plan correction. Do not install a destructive corruption handler or add a persistence dependency.
 
 ### T2: Define bounded history transitions
 
@@ -484,6 +486,7 @@ Checkpoint after T7: spec-only independent conformance check, code review and se
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T1 | 2/2 | T3 adapter blocked: helper generic SQLiteException conflates unknown schema and corruption | Source inspected: fixed schema guard and corruption handler erase type distinctions | Use internal UnsupportedHistorySchemaException and platform SQLiteDatabaseCorruptException, preserving no-destructive-fallback and schema v1 | HistoryDatabase.kt plus existing smoke test; preserve T2 and all payload rules | Compile and existing harness; T3 must assert actual reopen statuses | v1_t1 scoped recovery / T3 waits for typed API |
 | T1–T7 | 1/2 each | Initial T1 brief assembled with 0 Shared design references; later task text referred to traceability not included in briefs | Existing policies and test descriptions were already approved but not mechanically delivered | Tag existing DB/codec policies and test lists; add explicit references, preserving approved schema and criteria | plan.md only; implementation absent | Reassemble each task before dispatch; stop on unresolved references | Codex / no code changes in this correction |
 
 ## 환경 준비 기록

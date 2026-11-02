@@ -3,8 +3,13 @@ package com.ny.my.health
 import android.content.Context
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteDatabaseCorruptException
 import android.database.sqlite.SQLiteException
 import java.io.File
+
+/** 제공자 오류 문자열을 해석하지 않고 지원하지 않는 버전을 구분한다. */
+internal class UnsupportedHistorySchemaException :
+    SQLiteException("지원하지 않는 기록 DB 스키마입니다")
 
 /**
  * 백업 대상에서 제외된 앱 전용 기록 DB. 앱 실행 경로에는 아직 연결하지 않는다.
@@ -56,7 +61,7 @@ internal class HistoryDatabase(
             .setSynchronousMode("FULL")
             // 기본 손상 처리기의 파일 삭제를 금지하고 저장소 오류를 유지한다.
             .setErrorHandler(DatabaseErrorHandler {
-                throw SQLiteException("기록 DB가 손상되었습니다")
+                throw SQLiteDatabaseCorruptException("기록 DB가 손상되었습니다")
             })
             .build()
         val database = SQLiteDatabase.openDatabase(databaseFile, parameters)
@@ -73,7 +78,7 @@ internal class HistoryDatabase(
                 }
             }
             if (database.version != SCHEMA_VERSION) {
-                throw SQLiteException("지원하지 않는 기록 DB 스키마입니다")
+                throw UnsupportedHistorySchemaException()
             }
             // 버전만 맞고 실제 테이블이 없거나 읽을 수 없는 DB도 쓰기 전에 거부한다.
             database.rawQuery(
