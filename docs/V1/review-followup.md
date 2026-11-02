@@ -30,11 +30,15 @@ Host-only hold methods require that external orchestration and are excluded from
 
 ## Verification
 
-- Root local core/app JVM, APK, lint and instrumentation compilation: BUILD SUCCESSFUL; existing JVM84 tests, no failures/errors/skips.
-- Independent session reran JVM tests and reviewed assertions/source without plans or prior review reports; final latest-head Android evidence is pending.
-- Current source Android CI: [41523078006](https://github.com/nyeonu/health-app/actions/runs/41523078006), runtime pending.
-- Current source JVM/APK/lint CI: [41523077877](https://github.com/nyeonu/health-app/actions/runs/41523077877).
-- Fresh OSV Maven audit:121 coordinates,0 query errors,0 known matches. No dependency or permission change.
-- Gitleaks feature history and staged correction diff: no leaks found.
+- Verified implementation/test/workflow source: `cc30964a882f7798e71aca7e5c5f73138a1abf72`.
+- Local JVM84(core35+app49), APK/lint/instrumentation compilation pass. Latest JVM/APK/lint CI[41529578661](https://github.com/nyeonu/health-app/actions/runs/41529578661) succeeds.
+- Android CI[41529578551](https://github.com/nyeonu/health-app/actions/runs/41529578551): downloaded raw XML48testcases,0failures/errors/skips. Host summary complete=true,8 real process-death recovery+4 real system theme/font+8 fixture-cleanup passes. Killed holds count0passes.
+- Downloaded PNG60:56gallery+4actual-system captures; root and independent verifier inspected representative renders. System-setting handshake proves initial opposite Activity values before applying target settings.
+- Independent fresh session: **APPROVE**, no Critical/Important/Suggestion. Software automated scope PASS; full39 acceptance38PASS/1unverified actual TalkBack/Galaxy criterion. Plan/prior reports were excluded from the verifier.
+- Fresh OSV audit121coordinates,0query errors/known matches; dependency fingerprints unchanged. Secret scans of source/feature history/correction diffs found no leaks.
 
-Actual runtime counts, independent verdict and merge disposition must be updated from the downloaded raw evidence before claiming completion. Actual Galaxy/account/TalkBack observations remain pending throughout.
+Independent review also found a malformed schema-v1 case that could falsely acknowledge reset. The correction validates canonical table constraints/PK and rejects history triggers, uses DELETE-all plus empty read-back inside supported reset, and recreates malformed schemas through explicit replacement. Actual CHECK/PK/trigger/ignored-CHECK fixtures now pass and repeated writes remain coherent.
+
+Host setup and readiness errors were corrected without skipping assertions: explicitly reinstall exact built test APKs after Gradle teardown, use portable grep, and use parent-cleared per-case outputs with active PID checks instead of stale READY files. Prior partial runs were not counted as full passes. Detailed correction counts remain in plan.md.
+
+The owner authorizes development merge after issue-free independent review. Actual Galaxy/account/TalkBack and P0 unknowns remain pending; the spec stays approved and ADRs Proposed until full acceptance. See [current conformance](conformance-report.md) and [minimal physical follow-up](device-acceptance.md).

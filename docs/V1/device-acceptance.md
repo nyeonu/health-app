@@ -1,6 +1,6 @@
 # V1 기기 수동 검증
 
-판정: **대기**. 이 문서는 실행 절차이며 Galaxy S23 Ultra 또는 TalkBack 실행 결과가 아니다. 에뮬레이터 Activity 종료·재실행은 OS 프로세스 종료의 증거가 아니다.
+판정: **Galaxy·TalkBack 수동 수용 대기 / 에뮬레이터 자동 검증 통과**. 이 문서는 실행 절차이며 Galaxy S23 Ultra 또는 TalkBack 실행 결과가 아니다. 에뮬레이터 Activity 종료·재실행은 OS 프로세스 종료의 증거가 아니다.
 
 공개 증거에는 고정 합성 날짜·항목·파일 수만 사용한다. 개인 측정값, 실제 계정·기기 식별자, 토큰, CSV 본문, 앱 전용 DB 및 디버깅 덤프를 첨부하지 않는다. 기존 사용자 이력을 테스트용으로 덮어쓰거나 지우지 않는다. 상태·PASS/FAIL/대기와 비식별 설명만 기록한다.
 
@@ -25,3 +25,15 @@
 합성 저장 실패·커밋 경계 준비 방법은 별도 승인된 기기 테스트 환경에서 정한다. 프로덕션 테스트 진입점, 권한 우회 또는 실계정 업로드로 대신하지 않는다. 환경을 준비하지 못한 항목은 대기로 유지한다.
 
 자동화 PNG는 `v1-synthetic-ui/{상태}-{light|dark}-{text1x|text2x}-{top|action}.png`이다. 상태는 `no-history`, `success`, `authorization`, `running`, `interrupted`, `read-failure`, `delete-failure`의 7개이며 총 56개다. `top`은 초기 화면, `action`은 다음 동작으로 스크롤한 화면이다. 이는 실제 TalkBack 또는 기기 글자 설정 검증을 대체하지 않는다.
+
+
+## Latest automated evidence and minimal physical follow-up
+
+Source `cc30964a882f7798e71aca7e5c5f73138a1abf72`, [CI41529578551](https://github.com/nyeonu/health-app/actions/runs/41529578551): normal48 tests pass with0failures/errors/skips. External adb force-stop is followed by distinct-process verification for8 synthetic success/running/authorization/empty/delete-boundary fixtures. Four real system night/font changes are observed before and after in a live Activity, with control assertions and4captures. Host summary records8recovery+4settings+8cleanup successful tests; killed holds are not passes. This closes the previously missing emulator OS-process/system-setting proof, not Galaxy/account/TalkBack observation.
+
+The owner separates development merge from physical acceptance. The detailed table above remains unobserved for Galaxy; it is not a request to corrupt a personal phone or repeat every synthetic storage fixture. Minimal remaining physical follow-up:
+
+1. Update using the existing fixed-signature master debug build. After one explicit manual sync, force-stop/reopen and confirm historical success is retained while consent/credential/continuation resets; retry follows fresh manual consent. Report categorical result only, no measurements/tokens/key contents.
+2. With actual TalkBack enabled, check status and historical-success reading, consent name/check state, enabled/disabled actions, scrolling and delete-confirm/cancel focus at system themes/enlarged text. Record only PASS/FAIL/unknown.
+
+Existing P0 unknowns, key-backup uncertainty and actual account/device acceptance remain unchanged. These emulator results are not production-release approval.
