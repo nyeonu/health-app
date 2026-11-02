@@ -39,6 +39,14 @@ Build a minimal, reliable, privacy-first Android app that reads user-authorized 
 - Use English for code identifiers and documentation conventions; Korean is fine for user-facing text.
 
 
+## Independent PR review (owner instruction, 2026-11-02)
+
+- Every PR, including documentation/specification PRs and PR #9, requires review in a separate session from its author and fixer. Use a fresh-context reviewer for each PR; for specification conformance, provide the approved spec and implementation, not the plan or earlier review conclusions.
+- Review the current head and full relevant diff. Record the reviewed commit, scope, findings and severity, actual validation evidence and limits, and verdict in the PR's comments. An explicit no-findings result still needs a comment. Chat replies or local reports alone do not satisfy this requirement.
+- Correct blocking findings, record the fix commit(s) and checks in PR comments, and obtain independent re-review of the updated head before merge. Preserve previous findings and explain their disposition rather than replacing the review history.
+- Record the final reviewed head and merge suitability in a PR comment. Do not treat review approval as owner approval of a draft spec, permission to expand scope, or evidence that unperformed device/account checks passed; retain the existing authorization and acceptance gates.
+- Keep reviewers read-only and avoid exposing previous agents' reports through agent-status tools when an isolated review is required. Keep all public review comments free of health data, credentials and private identifiers.
+
 ## Battery-aware scheduling (V1+)
 - WorkManager is an Android Jetpack **persistent background work scheduler**, not a custom thread manager. Implement work itself in a `CoroutineWorker`; let WorkManager/OS handle scheduling, constraints, and process lifecycle. Do not build a polling loop, custom periodic threads, or always-on service.
 - `PeriodicWorkRequest` does **not** guarantee a fixed wall-clock time or even completion within a given calendar day. Doze, app standby, OEM restrictions, absent network, low battery, phone power-off, revoked permission, or force-stop may defer work, sometimes for hours or longer. Do not describe a periodic worker as a reliable 06:00 alarm.
