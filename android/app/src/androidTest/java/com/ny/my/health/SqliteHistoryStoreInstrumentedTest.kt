@@ -180,7 +180,10 @@ class SqliteHistoryStoreInstrumentedTest {
         SqliteHistoryStore(db).replace(committed)
         SQLiteDatabase.openDatabase(db.databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { foreign ->
             assertTrue(foreign.enableWriteAheadLogging())
-            foreign.execSQL("PRAGMA wal_autocheckpoint=0")
+            foreign.rawQuery("PRAGMA wal_autocheckpoint=0", null).use { rows ->
+                assertTrue(rows.moveToFirst())
+                assertEquals(0, rows.getInt(0))
+            }
             foreign.version = 99
             val wal = File(db.databaseFile.path + "-wal")
             assertTrue(wal.isFile)

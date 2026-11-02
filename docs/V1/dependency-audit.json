@@ -1,6 +1,6 @@
 {
-  "resolved_source": "79ffd0f16f4c93be2f992f998582d22333666254",
-  "queried_at_utc": "2026-11-02T11:17:45.175572+00:00",
+  "resolved_source": "67ea617af41f8052335081ea95edf209098ee49d",
+  "queried_at_utc": "2026-11-02T20:52:57.549631+00:00",
   "database": "https://api.osv.dev/v1/querybatch (Maven)",
   "scope": "All resolved release/debug/JVM-test external component nodes including BOMs/variants; excludes build plugins, instrumentation-only dependencies, Android/Google runtime implementations and undisclosed vulnerabilities. No reachability proof.",
   "query_count": 121,
@@ -370,5 +370,5 @@
     "android/app/build.gradle.kts": "5d1665029a0c30c01937f98a03d7eabfa9653968609848da815862585ff8ebaf",
     "android/core/build.gradle.kts": "7e4d36b21c4dc458c66a4e2316d4f4140dba3dcbb7efca2a3998df9fc4b7ae6e"
   },
-  "configuration_unchanged_verified_source": "b97ff632b12cfdc935303c2167d840d16c894e7e"
+  "configuration_unchanged_verified_source": "67ea617af41f8052335081ea95edf209098ee49d"
 }
