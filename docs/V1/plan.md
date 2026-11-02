@@ -225,7 +225,7 @@ internal data class HistoryUiActions(
 
 ## 3. 추적성
 
-Actual method names below index the approved criteria. JVM and prior Android evidence passed; T7 methods await the latest Android run. Actual Galaxy process-loss and TalkBack observations remain pending; semantic tests do not substitute for those observations.
+Actual method names below index the approved criteria. Current-source JVM84 and Android40 passed with zero failures/errors/skips;56 PNG artifacts were downloaded and representative images reviewed. Actual Galaxy process-loss and TalkBack observations remain pending; semantic tests do not substitute for those observations.
 
 | Specification criterion (verbatim) | Actual test name / remaining observation | Fulfilled in |
 | --- | --- | --- |
@@ -534,3 +534,11 @@ Checkpoint after T7: spec-only independent conformance check, code review and se
 - T6 final source `79ffd0f`: root compilation passed. [Android CI 41434453899](https://github.com/nyeonu/health-app/actions/runs/41434453899) succeeded; downloaded XML confirms 34 tests (17 screen + 3 Activity + 3 DB harness + 11 store), 0 failures/errors/skips. [JVM/APK/lint CI 41434453978](https://github.com/nyeonu/health-app/actions/runs/41434453978) succeeded. T7 remains pending runtime gallery/lifecycle evidence.
 
 - T7 fixture-check verification launcher initially ran from repository root and failed with FileNotFoundError for ./gradlew before Gradle started. Correcting cwd to android and rerunning the identical compile is environment launch recovery, not a source retry; no code edit or budget reset.
+
+- Final verification target `b97ff632b12cfdc935303c2167d840d16c894e7e`: root reran core/app JVM, APK, lint and Android-test compilation; BUILD SUCCESSFUL in 49s. JVM XML remains84 (35+49), failures/errors/skips0. Android CI41438677211 and synthetic artifacts pending. T6 returned to in_progress while its new recovered-outcome rendering awaits Android runtime evidence; T7 correction is test-fixture-only and does not imply T6 completion.
+
+- Final source `b97ff632b12cfdc935303c2167d840d16c894e7e`: [Android CI41438677211](https://github.com/nyeonu/health-app/actions/runs/41438677211) succeeded. Downloaded raw XML confirms40 tests (screen20, Activity3, fresh Activity/ViewModel3, DB3, store11), failures/errors/skips0. Artifact13137259532 contains exactly56 expected fixed synthetic PNGs, all readable1080×2400; root reviewed7 representative latest-source images covering all7 required states including corrected keep-existing caption and light/dark/enlarged states. [JVM/APK/lint CI41438677210](https://github.com/nyeonu/health-app/actions/runs/41438677210) succeeded. T6 corrected rendering is verified done. T7 automated portion passes; actual Galaxy/process-loss/system-settings/TalkBack remains pending and prevents full completion.
+
+- Verification isolation recovery: a verifier called collaboration.list_agents while waiting and the tool unexpectedly exposed prior reports. Its observations were not used as final independent conformance. A fresh spec/code/artifact-only verifier was dispatched with explicit prohibition on agent-status tools; implementation remained unchanged. No implementation recovery budget reset or new software scope.
+
+- Final isolated spec conformance:34/39 PASS;5 criteria FAIL for absent actual OS process-loss and system-settings/TalkBack evidence, not observed implementation defects. See `conformance-report.md`. Root independently matched all39 verbatim criteria and every mapped function against actual executed XML (no missing/skipped mapping). Per gate, keep approved spec, Proposed ADR, in_progress plan/T7 and draft PR; final code/security reviews and merge remain blocked. Final verifier did not read plans/prior reports or call agent-status tools.

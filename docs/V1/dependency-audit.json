@@ -369,5 +369,6 @@
   "configuration_sha256": {
     "android/app/build.gradle.kts": "5d1665029a0c30c01937f98a03d7eabfa9653968609848da815862585ff8ebaf",
     "android/core/build.gradle.kts": "7e4d36b21c4dc458c66a4e2316d4f4140dba3dcbb7efca2a3998df9fc4b7ae6e"
-  }
+  },
+  "configuration_unchanged_verified_source": "b97ff632b12cfdc935303c2167d840d16c894e7e"
 }
