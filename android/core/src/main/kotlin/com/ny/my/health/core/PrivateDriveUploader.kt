@@ -16,7 +16,10 @@ interface DriveTransport {
 data class DriveResponse(val status: Int, val body: String)
 
 /** Uses drive.file and only this app's marked, privately owned My Drive tree. */
-class PrivateDriveUploader(private val transport: DriveTransport) : DriveUploader {
+class PrivateDriveUploader(
+    private val transport: DriveTransport,
+    private val profiling: SyncProfiling? = null,
+) : DriveUploader {
     private val mutex = Mutex()
     private val base = "https://www.googleapis.com/drive/v3/files"
     private val upload = "https://www.googleapis.com/upload/drive/v3/files"
@@ -144,24 +147,32 @@ class PrivateDriveUploader(private val transport: DriveTransport) : DriveUploade
     }
 
     private suspend fun request(operation: DriveOperation, method: String, url: String, type: String? = null, bytes: ByteArray? = null): JsonObject {
-        val response = transport.execute(method, url, type, bytes)
-        if (response.status !in 200..299) throw DriveUploadException(DriveFailureDetails(operation, DriveFailureKind.HTTP, response.status.takeIf { it in 100..599 }))
-        // Never attach an API body, CSV, or parser exception to an outward failure.
-        return runCatching { Json.parseToJsonElement(response.body) as? JsonObject }.getOrNull()
-            ?: throw DriveUploadException(DriveFailureDetails(operation, DriveFailureKind.RESPONSE_INVALID))
+        val execute: suspend () -> JsonObject = {
+            val response = transport.execute(method, url, type, bytes)
+            if (response.status !in 200..299) throw DriveUploadException(DriveFailureDetails(operation, DriveFailureKind.HTTP, response.status.takeIf { it in 100..599 }))
+            // API 본문, CSV, 파서 예외는 외부 오류에 첨부하지 않는다.
+            runCatching { Json.parseToJsonElement(response.body) as? JsonObject }.getOrNull()
+                ?: throw DriveUploadException(DriveFailureDetails(operation, DriveFailureKind.RESPONSE_INVALID))
+        }
+        return if (profiling != null) profiling.request(operation, execute) else execute()
     }
 
-    private suspend fun <T> operation(operation: DriveOperation, block: suspend () -> T): T = try {
-        block()
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (safe: DriveUploadException) {
-        throw safe
-    } catch (_: IOException) {
-        throw DriveUploadException(DriveFailureDetails(operation, DriveFailureKind.NETWORK))
-    } catch (_: Exception) {
-        // No provider metadata, file content, IDs or exception causes cross this boundary.
-        throw DriveUploadException(DriveFailureDetails(operation, DriveFailureKind.TARGET_REJECTED))
+    private suspend fun <T> operation(operation: DriveOperation, block: suspend () -> T): T {
+        val execute: suspend () -> T = {
+            try {
+                block()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (safe: DriveUploadException) {
+                throw safe
+            } catch (_: IOException) {
+                throw DriveUploadException(DriveFailureDetails(operation, DriveFailureKind.NETWORK))
+            } catch (_: Exception) {
+                // 공급자 메타데이터, 파일 내용, ID, 예외 원인은 이 경계를 넘지 않는다.
+                throw DriveUploadException(DriveFailureDetails(operation, DriveFailureKind.TARGET_REJECTED))
+            }
+        }
+        return if (profiling != null) profiling.operation(operation, execute) else execute()
     }
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")

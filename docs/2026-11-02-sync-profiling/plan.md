@@ -22,12 +22,12 @@ tasks:
   - id: T3
     title: Drive 작업별 요청 계측
     depends_on: [T2]
-    status: in_progress
+    status: done
     tier: standard
   - id: T4
     title: 로컬 이력 커밋 계측
     depends_on: [T3]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T5
     title: 실제 수동 인증 흐름 연결
