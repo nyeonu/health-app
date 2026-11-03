@@ -17,12 +17,12 @@ tasks:
   - id: T2
     title: 코어 실행 구간 계측
     depends_on: [T1]
-    status: in_progress
+    status: done
     tier: standard
   - id: T3
     title: Drive 작업별 요청 계측
     depends_on: [T2]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T4
     title: 로컬 이력 커밋 계측
