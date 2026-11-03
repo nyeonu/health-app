@@ -3,6 +3,7 @@ package com.ny.my.health
 import com.ny.my.health.core.*
 import java.time.Instant
 import java.time.LocalDate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -66,6 +67,51 @@ class HistorySessionTest {
         val ticket = requireNotNull(session.beginAuthorization(date, at))
         assertTrue(session.authorizationReturned(ticket))
         return ticket
+    }
+
+    private fun profiling(): SyncProfiling {
+        var tick = 0L
+        return SyncProfiling(ProfilingClock { tick.also { tick += 10L } })
+    }
+
+    private fun assertCommit(profiling: SyncProfiling, stage: ProfileStage, completed: Long, failed: Long) {
+        assertEquals(ProfileStats(1, completed, failed, 0, 10, false), profiling.snapshot().stages[stage])
+    }
+
+    @Test
+    fun `계측은 동기화 결과와 부분 확인을 보존하고 시작 및 종결 커밋을 측정한다`() = runBlocking {
+        for (profiling in listOf(null, profiling())) {
+            for (result in listOf(
+                SyncResult(SyncStatus.SUCCESS, 2),
+                SyncResult(SyncStatus.EMPTY),
+                SyncResult(SyncStatus.PERMISSION_REQUIRED),
+                SyncResult(SyncStatus.FAILED, 1, "UPLOAD_FAILED"),
+            )) {
+                val store = store()
+                val session = session(store, this)
+                session.restore()
+                val ticket = prepared(session)
+                val measurement = profiling?.let { profiling() }
+                val expected = HistoryExecutionResult(result, setOf(DataType.STEPS))
+                var remote: HistoryExecutionResult? = null
+                val actual = HistoryEffects(session).execute(ticket, date, at, { at }, { true }, {
+                    assertEquals(HistoryPhase.RUNNING, store.saved.history!!.attempt!!.phase)
+                    assertNull(measurement?.snapshot()?.stages?.get(ProfileStage.TERMINAL_HISTORY))
+                    remote = it
+                }, measurement) {
+                    assertEquals(HistoryPhase.RUNNING, store.saved.history!!.attempt!!.phase)
+                    measurement?.let { assertCommit(it, ProfileStage.START_HISTORY, 1, 0) }
+                    expected
+                }
+                assertSame(expected, actual)
+                assertSame(expected, remote)
+                assertEquals(result.uploadedFiles, store.saved.history!!.attempt!!.confirmedFiles)
+                measurement?.let {
+                    assertCommit(it, ProfileStage.START_HISTORY, 1, 0)
+                    assertCommit(it, ProfileStage.TERMINAL_HISTORY, 1, 0)
+                }
+            }
+        }
     }
 
     @Test
@@ -382,22 +428,26 @@ class HistorySessionTest {
 
     @Test
     fun `실행 시작 저장 실패는 실제 효과 경계의 읽기와 업로드를 모두 막는다`() = runBlocking {
-        val store = store()
-        val session = session(store, this)
-        session.restore()
-        val ticket = prepared(session)
-        store.failWrite = true
-        var reads = 0
-        var uploads = 0
-        val outcome = HistoryEffects(session).execute(ticket, date, at, { at }, { true }, { fail("원격 결과 없음") }) {
-            reads++
-            uploads++
-            HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 1), setOf(DataType.STEPS))
+        for (profiling in listOf(null, profiling())) {
+            val store = store()
+            val session = session(store, this)
+            session.restore()
+            val ticket = prepared(session)
+            store.failWrite = true
+            var reads = 0
+            var uploads = 0
+            val outcome = HistoryEffects(session).execute(ticket, date, at, { at }, { true }, { fail("원격 결과 없음") }, profiling) {
+                reads++
+                uploads++
+                HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 1), setOf(DataType.STEPS))
+            }
+            assertNull(outcome)
+            assertEquals(0, reads)
+            assertEquals(0, uploads)
+            assertEquals(success, store.saved.history!!.success)
+
+            profiling?.let { assertCommit(it, ProfileStage.START_HISTORY, 0, 1) }
         }
-        assertNull(outcome)
-        assertEquals(0, reads)
-        assertEquals(0, uploads)
-        assertEquals(success, store.saved.history!!.success)
     }
 
     @Test
@@ -432,72 +482,128 @@ class HistorySessionTest {
 
     @Test
     fun `원격 확인 뒤 결과 저장 실패는 일시 증거와 이전 영속 성공을 분리한다`() = runBlocking {
-        val store = store()
-        val session = session(store, this)
-        session.restore()
-        val ticket = prepared(session)
-        var remote: HistoryExecutionResult? = null
-        HistoryEffects(session).execute(ticket, date, at, { at.plusSeconds(60) }, { true }, { remote = it }) {
-            store.failWrite = true
-            HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 2), setOf(DataType.STEPS, DataType.WEIGHT))
+        for (profiling in listOf(null, profiling())) {
+            val store = store()
+            val session = session(store, this)
+            session.restore()
+            val ticket = prepared(session)
+            var remote: HistoryExecutionResult? = null
+            HistoryEffects(session).execute(ticket, date, at, { at.plusSeconds(60) }, { true }, { remote = it }, profiling) {
+                store.failWrite = true
+                HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 2), setOf(DataType.STEPS, DataType.WEIGHT))
+            }
+            assertEquals(SyncStatus.SUCCESS, remote!!.result.status)
+            assertEquals(2, remote!!.result.uploadedFiles)
+            assertEquals(HistoryError.WRITE, session.state.value.error)
+            assertEquals(success, session.state.value.read.history!!.success)
+            assertEquals(success, store.saved.history!!.success)
+            store.failWrite = false
+            val reopened = session(store, this)
+            reopened.restore()
+            assertEquals(success, reopened.state.value.read.history!!.success)
+            assertEquals(HistoryPhase.INTERRUPTED, reopened.state.value.read.history!!.attempt!!.phase)
+
+            profiling?.let { assertCommit(it, ProfileStage.TERMINAL_HISTORY, 0, 1) }
         }
-        assertEquals(SyncStatus.SUCCESS, remote!!.result.status)
-        assertEquals(2, remote!!.result.uploadedFiles)
-        assertEquals(HistoryError.WRITE, session.state.value.error)
-        assertEquals(success, session.state.value.read.history!!.success)
-        assertEquals(success, store.saved.history!!.success)
-        store.failWrite = false
-        val reopened = session(store, this)
-        reopened.restore()
-        assertEquals(success, reopened.state.value.read.history!!.success)
-        assertEquals(HistoryPhase.INTERRUPTED, reopened.state.value.read.history!!.attempt!!.phase)
     }
 
     @Test
     fun `전경 작업 취소는 독립 종결 저장을 끝내고 원격 업로드를 재실행하지 않는다`() = runBlocking {
-        val store = store()
-        val session = session(store, this)
-        session.restore()
-        val ticket = prepared(session)
-        val entered = CompletableDeferred<Unit>()
-        val remoteWait = CompletableDeferred<Unit>()
-        var uploads = 0
-        val execution = launch(start = CoroutineStart.UNDISPATCHED) {
-            HistoryEffects(session).execute(ticket, date, at, { at }, { true }, {}) {
-                uploads++
-                entered.complete(Unit)
-                remoteWait.await()
-                HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 1), setOf(DataType.STEPS))
+        for (profiling in listOf(null, profiling())) {
+            val store = store()
+            val session = session(store, this)
+            session.restore()
+            val ticket = prepared(session)
+            val entered = CompletableDeferred<Unit>()
+            val remoteWait = CompletableDeferred<Unit>()
+            var uploads = 0
+            val execution = launch(start = CoroutineStart.UNDISPATCHED) {
+                HistoryEffects(session).execute(ticket, date, at, { at }, { true }, {}, profiling) {
+                    uploads++
+                    entered.complete(Unit)
+                    remoteWait.await()
+                    HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 1), setOf(DataType.STEPS))
+                }
+            }
+            entered.await()
+            execution.cancelAndJoin()
+            assertEquals(HistoryPhase.INTERRUPTED, store.saved.history!!.attempt!!.phase)
+            assertEquals(at, store.saved.history!!.attempt!!.finishedAt)
+            assertEquals(1, uploads)
+            assertEquals(success, store.saved.history!!.success)
+
+            profiling?.let { assertCommit(it, ProfileStage.TERMINAL_HISTORY, 1, 0) }
+        }
+    }
+
+    @Test
+    fun `중단 이력 저장이 실패해도 원래 취소와 이전 성공을 보존한다`() = runBlocking {
+        for (profiling in listOf(null, profiling())) {
+            val store = store()
+            val session = session(store, this)
+            session.restore()
+            val ticket = prepared(session)
+            val writesBeforeExecution = store.writes
+            val cancellation = CancellationException("합성 실행 취소")
+            var effects = 0
+            var reads = 0
+            var uploads = 0
+            val propagated = try {
+                HistoryEffects(session).execute(ticket, date, at, { at }, { true }, {
+                    fail("취소된 실행의 원격 결과 없음")
+                }, profiling) {
+                    assertEquals(HistoryPhase.RUNNING, store.saved.history!!.attempt!!.phase)
+                    effects++
+                    reads++
+                    uploads++
+                    store.failWrite = true
+                    throw cancellation
+                }
+                fail("원래 취소를 전파해야 한다")
+                null
+            } catch (cancelled: CancellationException) {
+                cancelled
+            }
+            assertSame(cancellation, propagated)
+            assertEquals(HistoryError.WRITE, session.state.value.error)
+            assertEquals(success, store.saved.history!!.success)
+            assertEquals(success, session.state.value.read.history!!.success)
+            assertEquals(HistoryPhase.RUNNING, store.saved.history!!.attempt!!.phase)
+            assertEquals(writesBeforeExecution + 2, store.writes)
+            assertEquals(1, effects)
+            assertEquals(1, reads)
+            assertEquals(1, uploads)
+            profiling?.let {
+                assertCommit(it, ProfileStage.START_HISTORY, 1, 0)
+                assertCommit(it, ProfileStage.TERMINAL_HISTORY, 0, 1)
             }
         }
-        entered.await()
-        execution.cancelAndJoin()
-        assertEquals(HistoryPhase.INTERRUPTED, store.saved.history!!.attempt!!.phase)
-        assertEquals(at, store.saved.history!!.attempt!!.finishedAt)
-        assertEquals(1, uploads)
-        assertEquals(success, store.saved.history!!.success)
     }
 
     @Test
     fun `결과 저장 중 전경 취소는 원격 확인과 성공 커밋을 잃지 않는다`() = runBlocking {
-        val store = store()
-        val session = session(store, this)
-        session.restore()
-        val ticket = prepared(session)
-        val gate = CompletableDeferred<Unit>()
-        val execution = launch(start = CoroutineStart.UNDISPATCHED) {
-            HistoryEffects(session).execute(ticket, date, at, { at.plusSeconds(1) }, { true }, {}) {
-                store.gate = gate
-                HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 2), setOf(DataType.STEPS))
+        for (profiling in listOf(null, profiling())) {
+            val store = store()
+            val session = session(store, this)
+            session.restore()
+            val ticket = prepared(session)
+            val gate = CompletableDeferred<Unit>()
+            val execution = launch(start = CoroutineStart.UNDISPATCHED) {
+                HistoryEffects(session).execute(ticket, date, at, { at.plusSeconds(1) }, { true }, {}, profiling) {
+                    store.gate = gate
+                    HistoryExecutionResult(SyncResult(SyncStatus.SUCCESS, 2), setOf(DataType.STEPS))
+                }
             }
+            assertEquals(HistoryOperation.WRITING, session.state.value.operation)
+            execution.cancel()
+            assertFalse(execution.isCompleted)
+            gate.complete(Unit)
+            execution.join()
+            assertEquals(HistoryPhase.SUCCESS, store.saved.history!!.attempt!!.phase)
+            assertEquals(2, store.saved.history!!.success!!.confirmedFiles)
+
+            profiling?.let { assertCommit(it, ProfileStage.TERMINAL_HISTORY, 1, 0) }
         }
-        assertEquals(HistoryOperation.WRITING, session.state.value.operation)
-        execution.cancel()
-        assertFalse(execution.isCompleted)
-        gate.complete(Unit)
-        execution.join()
-        assertEquals(HistoryPhase.SUCCESS, store.saved.history!!.attempt!!.phase)
-        assertEquals(2, store.saved.history!!.success!!.confirmedFiles)
     }
 
     @Test

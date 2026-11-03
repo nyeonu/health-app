@@ -1,6 +1,8 @@
 package com.ny.my.health
 
 import android.app.Application
+import android.content.pm.ApplicationInfo
+import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,6 +13,8 @@ import com.ny.my.health.core.DayWindow
 import com.ny.my.health.core.DefaultNormalizer
 import com.ny.my.health.core.HealthReader
 import com.ny.my.health.core.PrivateDriveUploader
+import com.ny.my.health.core.ProfileOutcome
+import com.ny.my.health.core.ProfileStage
 import com.ny.my.health.core.SyncCoordinator
 import com.ny.my.health.core.SyncDiagnostics
 import com.ny.my.health.core.SyncStatus
@@ -70,12 +74,14 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private var foreground = false
     private var syncJob: Job? = null
     private var refreshJob: Job? = null
+    private var manualProfiling: ManualSyncProfiling? = null
     // 토큰은 저장 상태, 번들, 기록 또는 로그에 넣지 않는다.
     private var accessToken: String? = null
     internal var authorizationTicket: Long? = null
         private set
     private val resolutionTickets = AuthorizationResolutionTickets()
     private val historySession = HistorySession(SqliteHistoryStore(application), viewModelScope) {
+        finishProfiling(manualProfiling, ProfileOutcome.CANCELLED)
         accessToken = null
         authorizationTicket = null
         resolutionTickets.clear()
@@ -147,6 +153,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     internal fun optIn(value: Boolean) {
         if (mutableState.value.busy) return
+        finishProfiling(manualProfiling, ProfileOutcome.CANCELLED)
         accessToken = null
         mutableState.value = mutableState.value.copy(uploadOptIn = value, readyToUpload = false)
         if (authorizationTicket != null) viewModelScope.launch { historySession.reload() }
@@ -177,17 +184,34 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         }
         accessToken = null
         val date = DayWindow.yesterday(clock)
+        finishProfiling(manualProfiling, ProfileOutcome.CANCELLED)
+        val profiling = ManualSyncProfiling().also { manualProfiling = it }
         mutableState.value = state.copy(pendingConsent = true, readyToUpload = false,
             uploadedFiles = 0, coverage = emptySet(), date = date,
             transientRemoteStatus = null, transientConfirmedFiles = null,
             message = "Google Drive 권한 확인 중…")
         viewModelScope.launch {
-            val accepted = effects.authorize(date, clock.instant()) { ticket ->
-                authorizationTicket = ticket
-                if (foreground) onReady()
-                else authorizationFailed(ticket, Failure.FOREGROUND_DEPARTURE)
+            var historyOutcome = ProfileOutcome.FAILED
+            profiling.collector.start(ProfileStage.AUTHORIZATION_HISTORY)
+            try {
+                val accepted = effects.authorize(date, clock.instant()) { ticket ->
+                    historyOutcome = ProfileOutcome.COMPLETED
+                    profiling.collector.finish(ProfileStage.AUTHORIZATION_HISTORY, historyOutcome)
+                    profiling.authorizationStarted()
+                    authorizationTicket = ticket
+                    if (foreground) onReady()
+                    else authorizationFailed(ticket, Failure.FOREGROUND_DEPARTURE)
+                }
+                if (!accepted) {
+                    mutableState.value = mutableState.value.copy(pendingConsent = false)
+                }
+            } catch (cancelled: CancellationException) {
+                historyOutcome = ProfileOutcome.CANCELLED
+                throw cancelled
+            } finally {
+                profiling.collector.finish(ProfileStage.AUTHORIZATION_HISTORY, historyOutcome)
+                if (historyOutcome != ProfileOutcome.COMPLETED) finishProfiling(profiling, historyOutcome)
             }
-            if (!accepted) mutableState.value = mutableState.value.copy(pendingConsent = false)
         }
     }
 
@@ -199,13 +223,24 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             authorizationFailed(ticket, failure)
             return
         }
+        val profiling = manualProfiling
+        profiling?.authorizationReturned(true)
         viewModelScope.launch {
-            val accepted = effects.acceptAuthorization(ticket) { accessToken = token }
-            if (ticket != authorizationTicket) return@launch
-            if (!accepted) authorizationTicket = null
-            mutableState.value = mutableState.value.copy(pendingConsent = false, readyToUpload = accepted,
-                message = if (accepted) "Google 권한 확인됨. 아래 ‘업로드 계속’을 눌러 전경에서 읽기와 업로드를 시작하세요."
-                    else "로컬 기록 저장을 확인하지 못했습니다. 기록을 다시 읽어 주세요.")
+            var accepted = false
+            var outcome = ProfileOutcome.FAILED
+            try {
+                accepted = effects.acceptAuthorization(ticket) { accessToken = token }
+                if (ticket != authorizationTicket) return@launch
+                if (!accepted) authorizationTicket = null
+                mutableState.value = mutableState.value.copy(pendingConsent = false, readyToUpload = accepted,
+                    message = if (accepted) "Google 권한 확인됨. 아래 ‘업로드 계속’을 눌러 전경에서 읽기와 업로드를 시작하세요."
+                        else "로컬 기록 저장을 확인하지 못했습니다. 기록을 다시 읽어 주세요.")
+            } catch (cancelled: CancellationException) {
+                outcome = ProfileOutcome.CANCELLED
+                throw cancelled
+            } finally {
+                if (!accepted) finishProfiling(profiling, outcome)
+            }
         }
     }
 
@@ -219,6 +254,8 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     internal fun authorizationFailed(ticket: Long, failure: Failure, statusCode: Int? = null) {
         if (ticket != authorizationTicket || !mutableState.value.pendingConsent) return
+        manualProfiling?.authorizationReturned(false)
+        finishProfiling(manualProfiling, ProfileOutcome.FAILED)
         resolutionTickets.clear()
         accessToken = null
         mutableState.value = mutableState.value.copy(pendingConsent = false, readyToUpload = false,
@@ -237,6 +274,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         val selectedDate = DayWindow.yesterday(clock)
         accessToken = null
         if (historySession.state.value.read.history?.attempt?.date != selectedDate) {
+            finishProfiling(manualProfiling, ProfileOutcome.CANCELLED)
             mutableState.value = state.copy(readyToUpload = false,
                 message = "날짜가 바뀌었습니다. Google 권한을 새로 확인하고 업로드 계속을 눌러 주세요.")
             viewModelScope.launch { historySession.reload() }
@@ -244,9 +282,12 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         }
         mutableState.value = state.copy(syncing = true, readyToUpload = false, date = selectedDate,
             message = "허용된 데이터 읽기 및 업로드 중…")
+        val profiling = manualProfiling
+        profiling?.executionStarted()
         syncJob = viewModelScope.launch {
+            var profileOutcome = ProfileOutcome.FAILED
             try {
-                effects.execute(ticket, selectedDate, clock.instant(), clock::instant, { foreground }, { outcome ->
+                val execution = effects.execute(ticket, selectedDate, clock.instant(), clock::instant, { foreground }, { outcome ->
                     mutableState.value = mutableState.value.copy(
                         uploadedFiles = outcome.result.uploadedFiles, coverage = outcome.coverage,
                         transientRemoteStatus = outcome.result.status,
@@ -258,7 +299,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                             SyncStatus.FAILED -> SyncDiagnostics.failureMessage(outcome.result)
                         },
                     )
-                }) { date ->
+                }, profiling?.collector) { date ->
                     var coverage = emptySet<DataType>()
                     val foregroundReader = object : HealthReader {
                         override suspend fun read(date: LocalDate): com.ny.my.health.core.HealthSnapshot {
@@ -271,15 +312,24 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                     val result = SyncCoordinator(foregroundReader, DefaultNormalizer(), VersionedCsvExporter(),
-                        PrivateDriveUploader(GoogleDriveTransport(token)), clock).sync(date)
+                        PrivateDriveUploader(GoogleDriveTransport(token), profiling?.collector), clock,
+                        profiling?.collector).sync(date)
                     HistoryExecutionResult(result, coverage)
                 }
+                if (execution != null && execution.result.status in setOf(SyncStatus.SUCCESS, SyncStatus.EMPTY) &&
+                    historySession.state.value.error == null) profileOutcome = ProfileOutcome.COMPLETED
             } catch (cancelled: CancellationException) {
+                profileOutcome = ProfileOutcome.CANCELLED
                 throw cancelled
             } finally {
+                finishProfiling(profiling, profileOutcome)
                 if (authorizationTicket == ticket) authorizationTicket = null
                 mutableState.value = mutableState.value.copy(syncing = false)
             }
+        }
+        syncJob?.invokeOnCompletion { cause ->
+            // 실행 전 취소된 coroutine에도 종료 관찰을 남긴다. 실행된 경우 finally가 먼저 끝난다.
+            if (cause is CancellationException) finishProfiling(profiling, ProfileOutcome.CANCELLED)
         }
     }
 
@@ -314,6 +364,20 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     internal fun keepExistingHistory() { viewModelScope.launch { historySession.keepExistingAfterDeleteFailure() } }
 
     internal fun forget() { requestDeleteHistory() }
+
+    private fun finishProfiling(profiling: ManualSyncProfiling?, outcome: ProfileOutcome) {
+        profiling ?: return
+        profiling.finish(outcome)
+        profiling.publish(getApplication<Application>().applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            Log.d("SyncProfiling", it)
+        }
+        if (manualProfiling === profiling) manualProfiling = null
+    }
+
+    override fun onCleared() {
+        if (!mutableState.value.syncing) finishProfiling(manualProfiling, ProfileOutcome.CANCELLED)
+        super.onCleared()
+    }
 
     companion object {
         internal const val DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"

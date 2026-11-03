@@ -29,84 +29,154 @@ class SyncCoordinatorTest {
 
     @Test
     fun `Empty and denied reads never upload or report success`() = runBlocking {
-        var uploads = 0
-        val uploader = object : DriveUploader {
-            override suspend fun upsert(file: CsvFile): String { uploads++; return "synthetic-id" }
+        for (profiling in listOf(null, SyncProfiling())) {
+            var uploads = 0
+            val uploader = object : DriveUploader {
+                override suspend fun upsert(file: CsvFile): String { uploads++; return "synthetic-id" }
+            }
+            val denied = snapshot().copy(steps = 42, grantedTypes = emptySet())
+            assertEquals(SyncResult(SyncStatus.PERMISSION_REQUIRED), SyncCoordinator(reader(denied), DefaultNormalizer(), VersionedCsvExporter(), uploader, clock, profiling).sync(date))
+            assertEquals(SyncResult(SyncStatus.EMPTY), SyncCoordinator(reader(snapshot()), DefaultNormalizer(), VersionedCsvExporter(), uploader, clock, profiling).sync(date))
+            assertEquals(0, uploads)
+            if (profiling != null) {
+                assertEquals(setOf(ProfileStage.HEALTH_READ, ProfileStage.NORMALIZE, ProfileStage.CSV_EXPORT), profiling.snapshot().stages.keys)
+                assertEquals(2L, profiling.snapshot().stages.getValue(ProfileStage.HEALTH_READ).completed)
+            }
         }
-        val denied = snapshot().copy(steps = 42, grantedTypes = emptySet())
-        assertEquals(SyncResult(SyncStatus.PERMISSION_REQUIRED), SyncCoordinator(reader(denied), DefaultNormalizer(), VersionedCsvExporter(), uploader, clock).sync(date))
-        assertEquals(SyncResult(SyncStatus.EMPTY), SyncCoordinator(reader(snapshot()), DefaultNormalizer(), VersionedCsvExporter(), uploader, clock).sync(date))
-        assertEquals(0, uploads)
     }
 
     @Test
     fun `Partial upload failure reports only confirmed files`() = runBlocking {
-        val events = mutableListOf<String>()
-        val populated = snapshot().copy(steps = 42, heartRateSamples = listOf(HeartRateSample("synthetic-record", "synthetic.source", generatedAt.minusSeconds(86400), 70)))
-        val trackedReader = object : HealthReader {
-            override suspend fun read(date: LocalDate): HealthSnapshot { events += "read"; return populated }
-        }
-        val normalizer = object : Normalizer {
-            override fun normalize(snapshot: HealthSnapshot, generatedAt: Instant): NormalizedDay {
-                events += "normalize"
-                assertEquals(this@SyncCoordinatorTest.generatedAt, generatedAt)
-                return DefaultNormalizer().normalize(snapshot, generatedAt)
+        for (profiling in listOf(null, SyncProfiling())) {
+            val events = mutableListOf<String>()
+            val populated = snapshot().copy(steps = 42, heartRateSamples = listOf(HeartRateSample("synthetic-record", "synthetic.source", generatedAt.minusSeconds(86400), 70)))
+            val trackedReader = object : HealthReader {
+                override suspend fun read(date: LocalDate): HealthSnapshot { events += "read"; return populated }
             }
-        }
-        val exporter = object : CsvExporter {
-            override fun export(day: NormalizedDay): List<CsvFile> { events += "export"; return VersionedCsvExporter().export(day) }
-        }
-        for (blankConfirmation in listOf(false, true)) {
-            events.clear()
-            val uploader = object : DriveUploader {
-                override suspend fun upsert(file: CsvFile): String {
-                    events += file.relativePath
-                    if (file.relativePath.startsWith("daily/")) return "synthetic-confirmed-id"
-                    if (blankConfirmation) return " "
-                    throw IllegalStateException("sensitive detail must not escape")
+            val normalizer = object : Normalizer {
+                override fun normalize(snapshot: HealthSnapshot, generatedAt: Instant): NormalizedDay {
+                    events += "normalize"
+                    assertEquals(this@SyncCoordinatorTest.generatedAt, generatedAt)
+                    return DefaultNormalizer().normalize(snapshot, generatedAt)
                 }
             }
-            val result = SyncCoordinator(trackedReader, normalizer, exporter, uploader, clock).sync(date)
-            assertEquals(SyncResult(SyncStatus.FAILED, 1, "UPLOAD_FAILED"), result)
-            assertEquals(listOf("read", "normalize", "export", "daily/$date.csv", "heart-rate/$date.csv"), events)
+            val exporter = object : CsvExporter {
+                override fun export(day: NormalizedDay): List<CsvFile> { events += "export"; return VersionedCsvExporter().export(day) }
+            }
+            for (blankConfirmation in listOf(false, true)) {
+                events.clear()
+                val uploader = object : DriveUploader {
+                    override suspend fun upsert(file: CsvFile): String {
+                        events += file.relativePath
+                        if (file.relativePath.startsWith("daily/")) return "synthetic-confirmed-id"
+                        if (blankConfirmation) return " "
+                        throw IllegalStateException("sensitive detail must not escape")
+                    }
+                }
+                val result = SyncCoordinator(trackedReader, normalizer, exporter, uploader, clock, profiling).sync(date)
+                assertEquals(SyncResult(SyncStatus.FAILED, 1, "UPLOAD_FAILED"), result)
+                assertEquals(listOf("read", "normalize", "export", "daily/$date.csv", "heart-rate/$date.csv"), events)
+                if (profiling != null) {
+                    val drive = profiling.snapshot().stages.getValue(ProfileStage.DRIVE_TOTAL)
+                    assertEquals(if (blankConfirmation) 2L else 1L, drive.failed)
+                    assertEquals(0L, drive.completed)
+                    assertEquals(false, drive.active)
+                }
+            }
         }
     }
 
     @Test
     fun `Cancellation propagates without reporting success`() = runBlocking {
-        val cancellation = CancellationException("synthetic cancellation")
-        val populated = snapshot().copy(steps = 42)
-        for (phase in listOf("read", "normalize", "export", "upload")) {
-            var uploads = 0
-            val reader = object : HealthReader {
-                override suspend fun read(date: LocalDate): HealthSnapshot {
-                    if (phase == "read") throw cancellation
-                    return populated
+        for (profiling in listOf(null, SyncProfiling())) {
+            val cancellation = CancellationException("synthetic cancellation")
+            val populated = snapshot().copy(steps = 42)
+            for (phase in listOf("read", "normalize", "export", "upload")) {
+                val phaseProfiling = if (profiling == null) null else SyncProfiling()
+                var uploads = 0
+                val reader = object : HealthReader {
+                    override suspend fun read(date: LocalDate): HealthSnapshot {
+                        if (phase == "read") throw cancellation
+                        return populated
+                    }
                 }
+                val normalizer = object : Normalizer {
+                    override fun normalize(snapshot: HealthSnapshot, generatedAt: Instant): NormalizedDay {
+                        if (phase == "normalize") throw cancellation
+                        return DefaultNormalizer().normalize(snapshot, generatedAt)
+                    }
+                }
+                val exporter = object : CsvExporter {
+                    override fun export(day: NormalizedDay): List<CsvFile> {
+                        if (phase == "export") throw cancellation
+                        return VersionedCsvExporter().export(day)
+                    }
+                }
+                val uploader = object : DriveUploader {
+                    override suspend fun upsert(file: CsvFile): String { uploads++; throw cancellation }
+                }
+                try {
+                    SyncCoordinator(reader, normalizer, exporter, uploader, clock, phaseProfiling).sync(date)
+                    fail("Cancellation must propagate from $phase")
+                } catch (actual: CancellationException) {
+                    assertSame(cancellation, actual)
+                }
+                assertEquals(if (phase == "upload") 1 else 0, uploads)
+                if (phaseProfiling != null) {
+                    val stage = when (phase) {
+                        "read" -> ProfileStage.HEALTH_READ
+                        "normalize" -> ProfileStage.NORMALIZE
+                        "export" -> ProfileStage.CSV_EXPORT
+                        else -> ProfileStage.DRIVE_TOTAL
+                    }
+                    assertEquals(1L, phaseProfiling.snapshot().stages.getValue(stage).cancelled)
+                    assertEquals(false, phaseProfiling.snapshot().stages.getValue(stage).active)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `Profiling preserves successful sync outcomes call order and separate stage timings`() = runBlocking {
+        val populated = snapshot().copy(steps = 42)
+        val observed = mutableListOf<Pair<SyncResult, List<String>>>()
+        for (enabled in listOf(false, true)) {
+            val events = mutableListOf<String>()
+            var tick = 0L
+            val profiling = if (enabled) SyncProfiling(ProfilingClock { tick++ }) else null
+            val trackedReader = object : HealthReader {
+                override suspend fun read(date: LocalDate): HealthSnapshot { events += "read"; return populated }
             }
             val normalizer = object : Normalizer {
                 override fun normalize(snapshot: HealthSnapshot, generatedAt: Instant): NormalizedDay {
-                    if (phase == "normalize") throw cancellation
+                    events += "normalize"
                     return DefaultNormalizer().normalize(snapshot, generatedAt)
                 }
             }
             val exporter = object : CsvExporter {
                 override fun export(day: NormalizedDay): List<CsvFile> {
-                    if (phase == "export") throw cancellation
+                    events += "export"
                     return VersionedCsvExporter().export(day)
                 }
             }
             val uploader = object : DriveUploader {
-                override suspend fun upsert(file: CsvFile): String { uploads++; throw cancellation }
+                override suspend fun upsert(file: CsvFile): String { events += file.relativePath; return "synthetic-id" }
             }
-            try {
-                SyncCoordinator(reader, normalizer, exporter, uploader, clock).sync(date)
-                fail("Cancellation must propagate from $phase")
-            } catch (actual: CancellationException) {
-                assertSame(cancellation, actual)
+            val result = SyncCoordinator(trackedReader, normalizer, exporter, uploader, clock, profiling).sync(date)
+            assertEquals(SyncResult(SyncStatus.SUCCESS, 1), result)
+            assertEquals(listOf("read", "normalize", "export", "daily/$date.csv"), events)
+            observed += result to events.toList()
+            if (profiling != null) {
+                val summary = profiling.snapshot()
+                assertEquals(setOf(ProfileStage.HEALTH_READ, ProfileStage.NORMALIZE, ProfileStage.CSV_EXPORT, ProfileStage.DRIVE_TOTAL), summary.stages.keys)
+                for (stats in summary.stages.values) {
+                    assertEquals(ProfileStats(1, 1, 0, 0, 1, false), stats)
+                }
+                assertEquals(emptyMap<DriveOperation, ProfileStats>(), summary.operations)
+                assertEquals(emptyMap<DriveOperation, ProfileStats>(), summary.requests)
             }
-            assertEquals(if (phase == "upload") 1 else 0, uploads)
         }
+        assertEquals(observed[0], observed[1])
     }
 
     @Test

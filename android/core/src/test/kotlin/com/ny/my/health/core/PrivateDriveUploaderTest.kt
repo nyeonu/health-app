@@ -34,10 +34,84 @@ class PrivateDriveUploaderTest {
             return queue.removeFirst()
         }
     }
-    private fun rejected(transport: Fake, export: CsvFile = file): Throwable {
-        val result = runCatching { runBlocking { PrivateDriveUploader(transport).upsert(export) } }
+    private fun rejected(transport: Fake, export: CsvFile = file, profiling: SyncProfiling = SyncProfiling()): Throwable {
+        val result = runCatching { runBlocking { PrivateDriveUploader(transport, profiling).upsert(export) } }
         assertTrue("Upload must fail", result.isFailure)
         return result.exceptionOrNull()!!
+    }
+
+    @Test
+    fun `Drive request counts match warm cold and paginated calls`() = runBlocking {
+        data class Scenario(
+            val responses: List<DriveResponse>,
+            val operations: Map<DriveOperation, Long>,
+            val requests: Map<DriveOperation, Long>,
+            val methods: List<String>,
+        )
+        val warmCounts = mapOf(
+            DriveOperation.APP_FOLDER_LOOKUP to 1L,
+            DriveOperation.DATASET_FOLDER_LOOKUP to 1L,
+            DriveOperation.FILE_LOOKUP to 1L,
+            DriveOperation.FILE_UPDATE to 1L,
+        )
+        val warmResponses = listOf(listed(root), listed(dataset), listed(remote), response(remote))
+        val coldCounts = mapOf(
+            DriveOperation.APP_FOLDER_LOOKUP to 2L,
+            DriveOperation.APP_FOLDER_CREATE to 1L,
+            DriveOperation.DATASET_FOLDER_LOOKUP to 1L,
+            DriveOperation.DATASET_FOLDER_CREATE to 1L,
+            DriveOperation.FILE_LOOKUP to 1L,
+            DriveOperation.FILE_CREATE to 1L,
+        )
+        val scenarios = listOf(
+            Scenario(warmResponses, warmCounts, warmCounts, listOf("GET", "GET", "GET", "PATCH")),
+            Scenario(
+                listOf(listed(), response(root), listed(root), listed(), response(dataset), listed(), response(remote)),
+                coldCounts, coldCounts, listOf("GET", "POST", "GET", "GET", "POST", "GET", "POST"),
+            ),
+            Scenario(
+                listOf(listed(page = "synthetic next"), listed(root), listed(dataset), listed(remote), response(remote)),
+                warmCounts, warmCounts + (DriveOperation.APP_FOLDER_LOOKUP to 2L),
+                listOf("GET", "GET", "GET", "GET", "PATCH"),
+            ),
+        )
+        for (scenario in scenarios) {
+            var tick = 0L
+            val profiling = SyncProfiling(ProfilingClock { tick++ })
+            val fake = Fake(*scenario.responses.toTypedArray())
+            assertEquals("date-file", PrivateDriveUploader(fake, profiling).upsert(file))
+            assertEquals(scenario.methods, fake.calls.map { it.method })
+            val summary = profiling.snapshot()
+            assertTrue(summary.stages.isEmpty())
+            assertEquals(scenario.operations.keys, summary.operations.keys)
+            assertEquals(scenario.requests.keys, summary.requests.keys)
+            for ((kind, count) in scenario.requests) {
+                assertEquals(ProfileStats(count, count, 0, 0, count, false), summary.requests[kind])
+            }
+            for ((kind, count) in scenario.operations) {
+                assertEquals(ProfileStats(count, count, 0, 0, count + 2 * scenario.requests.getValue(kind), false), summary.operations[kind])
+            }
+        }
+        var tick = 0L
+        val profiling = SyncProfiling(ProfilingClock { tick++ })
+        val exports = listOf("daily", "workouts", "sleep").map { file.copy(relativePath = "$it/2026-10-30.csv") }
+        val responses = exports.flatMap { export ->
+            val name = export.relativePath.substringBefore('/')
+            listOf(listed(root), listed(entry("daily-folder", name, "app-root")), listed(remote), response(remote))
+        }
+        val fake = Fake(*responses.toTypedArray())
+        val uploader = PrivateDriveUploader(fake, profiling)
+        for (export in exports) assertEquals("date-file", uploader.upsert(export))
+        assertEquals(12, fake.calls.size)
+        assertEquals(9, fake.calls.count { it.method == "GET" })
+        assertEquals(3, fake.calls.count { it.method == "PATCH" })
+        val summary = profiling.snapshot()
+        assertEquals(warmCounts.keys, summary.operations.keys)
+        assertEquals(warmCounts.keys, summary.requests.keys)
+        for (kind in warmCounts.keys) {
+            assertEquals(ProfileStats(3, 3, 0, 0, 3, false), summary.requests[kind])
+            assertEquals(ProfileStats(3, 3, 0, 0, 9, false), summary.operations[kind])
+        }
     }
 
     @Test
@@ -104,7 +178,10 @@ class PrivateDriveUploaderTest {
     @Test
     fun `Ambiguous or shared targets are rejected before upload`() {
         val ambiguous = Fake(listed(root, page = "synthetic next"), listed(root))
-        rejected(ambiguous)
+        val ambiguousProfiling = SyncProfiling()
+        rejected(ambiguous, profiling = ambiguousProfiling)
+        assertEquals(2L, ambiguousProfiling.snapshot().requests.getValue(DriveOperation.APP_FOLDER_LOOKUP).completed)
+        assertEquals(1L, ambiguousProfiling.snapshot().operations.getValue(DriveOperation.APP_FOLDER_LOOKUP).failed)
         assertTrue(ambiguous.calls.last().url.contains("pageToken=synthetic+next"))
         assertTrue(ambiguous.calls.all { it.method == "GET" })
         for (unsafe in listOf(
@@ -116,7 +193,10 @@ class PrivateDriveUploaderTest {
             JsonObject(root + ("driveId" to JsonPrimitive("shared-drive"))),
         )) {
             val fake = Fake(listed(unsafe))
-            rejected(fake)
+            val profiling = SyncProfiling()
+            rejected(fake, profiling = profiling)
+            assertEquals(1L, profiling.snapshot().requests.getValue(DriveOperation.APP_FOLDER_LOOKUP).completed)
+            assertEquals(1L, profiling.snapshot().operations.getValue(DriveOperation.APP_FOLDER_LOOKUP).failed)
             assertEquals(1, fake.calls.size)
             assertTrue(fake.calls.all { it.method == "GET" })
         }
@@ -154,7 +234,14 @@ class PrivateDriveUploaderTest {
     fun `HTTP failures and malformed responses never report confirmed upload`() {
         for (bad in listOf(DriveResponse(403, "sensitive-body"), DriveResponse(200, "invalid sensitive-body"), response(buildJsonObject { put("id", "bad/id") }))) {
             val fake = Fake(listed(root), listed(dataset), listed(remote), bad)
-            val error = rejected(fake)
+            val profiling = SyncProfiling()
+            val error = rejected(fake, profiling = profiling)
+            val summary = profiling.snapshot()
+            val request = summary.requests.getValue(DriveOperation.FILE_UPDATE)
+            assertEquals(1L, request.started)
+            assertEquals(if (bad.status == 200 && bad.body.startsWith("{")) 1L else 0L, request.completed)
+            assertEquals(if (bad.status == 200 && bad.body.startsWith("{")) 0L else 1L, request.failed)
+            assertEquals(1L, summary.operations.getValue(DriveOperation.FILE_UPDATE).failed)
             assertFalse(error.toString().contains("sensitive-body"))
             assertNull(error.cause)
             assertEquals(4, fake.calls.size)
@@ -192,7 +279,10 @@ class PrivateDriveUploaderTest {
                 throw java.io.IOException("sensitive-token-url", IllegalStateException("sensitive-cause"))
             }
         }
-        val network = runCatching { PrivateDriveUploader(transport).upsert(file) }.exceptionOrNull() as DriveUploadException
+        val networkProfiling = SyncProfiling()
+        val network = runCatching { PrivateDriveUploader(transport, networkProfiling).upsert(file) }.exceptionOrNull() as DriveUploadException
+        assertEquals(1L, networkProfiling.snapshot().requests.getValue(DriveOperation.APP_FOLDER_LOOKUP).failed)
+        assertEquals(1L, networkProfiling.snapshot().operations.getValue(DriveOperation.APP_FOLDER_LOOKUP).failed)
         assertEquals(DriveFailureDetails(DriveOperation.APP_FOLDER_LOOKUP, DriveFailureKind.NETWORK), network.details)
         assertNull(network.cause)
         assertFalse(network.toString().contains("sensitive"))
@@ -205,7 +295,16 @@ class PrivateDriveUploaderTest {
         val cancelledTransport = object : DriveTransport {
             override suspend fun execute(method: String, url: String, contentType: String?, body: ByteArray?): DriveResponse = throw cancelled
         }
-        assertSame(cancelled, runCatching { PrivateDriveUploader(cancelledTransport).upsert(file) }.exceptionOrNull())
+        val cancelledProfiling = SyncProfiling()
+        assertSame(cancelled, runCatching { PrivateDriveUploader(cancelledTransport, cancelledProfiling).upsert(file) }.exceptionOrNull())
+        val summary = cancelledProfiling.snapshot()
+        for (stats in listOf(summary.requests.getValue(DriveOperation.APP_FOLDER_LOOKUP), summary.operations.getValue(DriveOperation.APP_FOLDER_LOOKUP))) {
+            assertEquals(1L, stats.started)
+            assertEquals(1L, stats.cancelled)
+            assertEquals(0L, stats.completed)
+            assertEquals(0L, stats.failed)
+            assertFalse(stats.active)
+        }
     }
 
     @Test
