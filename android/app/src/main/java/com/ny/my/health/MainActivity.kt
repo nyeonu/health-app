@@ -76,6 +76,9 @@ class MainActivity : ComponentActivity() {
                         retryDelete = model::retryDeleteHistory,
                         keepExisting = model::keepExistingHistory,
                         reload = model::reloadHistory,
+                        copyPhoneProfiling = {
+                            model.copyPhoneProfiling { text -> writePhoneProfilingClipboard(this, text) }
+                        },
                     ))
                 }
             }

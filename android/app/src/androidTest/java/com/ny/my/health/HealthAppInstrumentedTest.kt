@@ -54,6 +54,47 @@ class HealthAppInstrumentedTest {
         compose.onNodeWithText("확인된 업로드 이력이 없습니다.").assertExists()
         compose.onNodeWithText("확인된 파일 수:", substring = true).assertDoesNotExist()
     }
+
+    @Test
+    fun openingEmptyDiagnosticsAndRecreationNeverStartConsentOrUpload() {
+        lateinit var model: SyncViewModel
+        compose.activityRule.scenario.onActivity {
+            model = androidx.lifecycle.ViewModelProvider(it)[SyncViewModel::class.java]
+        }
+        fun assertNoConsentOrUpload() {
+            compose.runOnIdle {
+                val state = model.state.value
+                org.junit.Assert.assertFalse(state.uploadOptIn)
+                org.junit.Assert.assertFalse(state.pendingConsent)
+                org.junit.Assert.assertFalse(state.readyToUpload)
+                org.junit.Assert.assertFalse(state.syncing)
+                org.junit.Assert.assertNull(model.authorizationTicket)
+                org.junit.Assert.assertNull(state.history?.read?.history?.attempt)
+                org.junit.Assert.assertNull(state.transientRemoteStatus)
+                org.junit.Assert.assertNull(state.phoneProfiling.report)
+                org.junit.Assert.assertFalse(state.phoneProfiling.collecting)
+                org.junit.Assert.assertEquals(PhoneCopyState.NONE, state.phoneProfiling.copyState)
+            }
+            compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
+            compose.onNodeWithText("업로드 계속").assertDoesNotExist()
+            compose.onNodeWithText("확인된 파일 수:", substring = true).assertDoesNotExist()
+        }
+        compose.waitUntil(10_000) {
+            model.state.value.history?.operation == HistoryOperation.IDLE && !model.state.value.refreshing
+        }
+        compose.onNodeWithText("성능 진단 보기").performScrollTo().performClick()
+        compose.onNodeWithText("표시할 진단이 없습니다.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("안전한 진단 요약 복사").performScrollTo().assertIsNotEnabled()
+        assertNoConsentOrUpload()
+        compose.activityRule.scenario.recreate()
+        compose.activityRule.scenario.onActivity {
+            model = androidx.lifecycle.ViewModelProvider(it)[SyncViewModel::class.java]
+        }
+        compose.waitUntil(10_000) { !model.state.value.refreshing }
+        compose.onNodeWithText("표시할 진단이 없습니다.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("안전한 진단 요약 복사").performScrollTo().assertIsNotEnabled()
+        assertNoConsentOrUpload()
+    }
 }
 
 /** 실제 SQLite와 새 Activity/화면 모델을 검증한다. OS 프로세스 종료 검증은 아니다. */

@@ -49,23 +49,7 @@ internal class ManualSyncProfiling(clock: ProfilingClock = ProfilingClock(System
     }
 
     /** 라벨도 고정 enum으로 제한하며 active는 정수로 출력한다. */
-    fun safeSummary(): String {
-        val summary = collector.snapshot()
-        return buildString {
-            fun appendStats(name: String, stats: ProfileStats?) {
-                append(name).append(' ')
-                append(stats?.started ?: 0L).append(' ')
-                append(stats?.completed ?: 0L).append(' ')
-                append(stats?.failed ?: 0L).append(' ')
-                append(stats?.cancelled ?: 0L).append(' ')
-                append(stats?.elapsedNanos ?: 0L).append(' ')
-                append(if (stats?.active == true) 1 else 0).append('\n')
-            }
-            ProfileStage.entries.forEach { appendStats(it.name, summary.stages[it]) }
-            DriveOperation.entries.forEach { appendStats(it.name, summary.operations[it]) }
-            DriveOperation.entries.forEach { appendStats(it.name, summary.requests[it]) }
-        }.take(8192)
-    }
+    fun safeSummary(): String = safeProfilingSummary(collector.snapshot())
 
     fun publish(debugEnabled: Boolean, emit: (String) -> Unit) {
         if (phase != Phase.FINISHED || published) return
@@ -75,4 +59,22 @@ internal class ManualSyncProfiling(clock: ProfilingClock = ProfilingClock(System
             // 진단 출력 실패는 업무 결과와 취소를 변경하지 않는다.
         }
     }
+}
+
+/** 하나의 관찰값에서 기존 고정 24행을 정형화한다. */
+internal fun safeProfilingSummary(summary: ProfileSummary): String {
+    return buildString {
+        fun appendStats(name: String, stats: ProfileStats?) {
+            append(name).append(' ')
+            append(stats?.started ?: 0L).append(' ')
+            append(stats?.completed ?: 0L).append(' ')
+            append(stats?.failed ?: 0L).append(' ')
+            append(stats?.cancelled ?: 0L).append(' ')
+            append(stats?.elapsedNanos ?: 0L).append(' ')
+            append(if (stats?.active == true) 1 else 0).append('\n')
+        }
+        ProfileStage.entries.forEach { appendStats(it.name, summary.stages[it]) }
+        DriveOperation.entries.forEach { appendStats(it.name, summary.operations[it]) }
+        DriveOperation.entries.forEach { appendStats(it.name, summary.requests[it]) }
+    }.take(8192)
 }

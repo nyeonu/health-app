@@ -101,6 +101,7 @@ class HealthHomeScreenInstrumentedTest {
                 ui.value = ui.value.copy(history = ui.value.history!!.copy(deleteDialog = false))
             }, confirmDelete = { calls += "confirmDelete" }, retryDelete = { calls += "retryDelete" },
             keepExisting = { calls += "keepExisting" }, reload = { calls += "reload" },
+            copyPhoneProfiling = { calls += "copyPhoneProfiling" },
         )
         restoration.setContent {
             val density = LocalDensity.current.density
