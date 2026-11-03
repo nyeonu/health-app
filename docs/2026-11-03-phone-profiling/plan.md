@@ -2,7 +2,7 @@
 plan_id: 2026-11-03-phone-profiling
 title: PC 없는 진단 보기·복사 실행 계획
 kind: single
-status: draft
+status: in_progress
 author: Codex
 created: 2026-11-03
 target: nyeonu/health-app
@@ -12,7 +12,7 @@ tasks:
   - id: T1
     title: 제한된 메모리 진단 상태
     depends_on: []
-    status: pending
+    status: in_progress
     tier: standard
   - id: T2
     title: 실제 클립보드 쓰기 경계
@@ -37,6 +37,8 @@ tasks:
 ---
 
 # PC 없는 진단 보기·복사 실행 계획
+
+승인 기록: 2026-11-03 소유자가 “워크플로우 쭉 진행해”로 이 계획의 구현·검증·독립 리뷰 진행을 승인했다.
 
 ## 1. 선택한 방식과 이유
 
