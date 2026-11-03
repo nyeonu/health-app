@@ -22,12 +22,12 @@ tasks:
   - id: T3
     title: 선택적 진단 화면
     depends_on: [T2]
-    status: in_progress
+    status: done
     tier: standard
   - id: T4
     title: 수동 동기화 흐름 연결
     depends_on: [T3]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T5
     title: 기기 수집 절차와 실행 증거
@@ -309,8 +309,8 @@ T4 완료 후 시작.
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
 | T1 | 1/2 | 실행자가 android cwd에서 android/ 접두사를 다시 사용해 신규 테스트 파일 생성 실패; 기존6개만 실행 | 절대 경로로 지정한 신규9개 테스트 작성 뒤 같은 대상 검증; 완료 코드 보존 | 기대값/스펙/파일 범위 유지; 미작성 테스트를 PASS로 세지 않음 | T1 세 파일; 기존 세션/정형 보존, formatter 들여쓰기만 정리 허용 | 신규9개+기존6개 실제 통과·실패/오류/skip0; root 같은 명령 및 XML 확인 | phone_t1 부분 복구 |
-| T2 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립 및 컴파일/CI 예정 | 해당 실행자에 최초 위임 전 전달 |
-| T3 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립 및 컴파일/CI 예정 | 해당 실행자에 최초 위임 전 전달 |
+| T2 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립·앱/테스트 APK compile PASS; API35 CI41672143507에서 해당 OS 테스트 포함49개·host20개 실제 통과 | phone_t2 최초 구현·root 원본 산출물 대조 완료 |
+| T3 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립·앱/테스트 APK compile PASS; API35 CI41675121121 head adf71a7에서 신규5개 포함54개·host20개 실제 통과·실패/오류/skip0 | phone_t3 최초 구현·root 원본 산출물 대조 완료 |
 | T4 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립 및 컴파일/CI 예정 | 해당 실행자에 최초 위임 전 전달 |
 
 ## 환경 준비 기록
