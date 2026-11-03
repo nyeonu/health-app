@@ -12,12 +12,12 @@ tasks:
   - id: T1
     title: 제한된 메모리 진단 상태
     depends_on: []
-    status: in_progress
+    status: done
     tier: standard
   - id: T2
     title: 실제 클립보드 쓰기 경계
     depends_on: [T1]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T3
     title: 선택적 진단 화면
@@ -149,21 +149,21 @@ internal fun copyPhoneProfiling(write: (String) -> Unit)
 
 ## 3. 추적성
 
-출처: ①성공 기준, ②경계/동등 분할, ③오류, ④상태/순서, ⑤과거 결함. 테스트명은 아래 문장 그대로 쓰며 번호를 붙이지 않는다. 실제 Galaxy/클립보드 동작의 플랫폼별 보장은 에뮬레이터와 구분한다.
+출처: ①성공 기준, ②경계/동등 분할, ③오류, ④상태/순서, ⑤과거 결함. JVM 테스트명은 아래 한국어 문장, Android instrumentation 테스트명은 아래 공백 없는 camelCase 식별자를 그대로 사용하며 번호를 붙이지 않는다. minSdk28용 DEX는 공백 method name을 허용하지 않으므로 SDK/기대값은 바꾸지 않고 이름만 계층에 맞춘다. 실제 Galaxy/클립보드 동작의 플랫폼별 보장은 에뮬레이터와 구분한다.
 
 | 스펙 기준 | 테스트 이름 (출처/층) | 충족 위치 |
 |---|---|---|
-| 디버그 앱에서 수동 시도 뒤 PC·ADB 없이 진단 보기를 열 수 있고, 진단이 없거나 아직 수집 중이면 과거 성공 또는 측정된 0으로 표시하지 않는다. | 진단 없음과 수집 중에는 복사와 과거 측정 표시가 없다; 진단 보기는 명시적으로 열고 복사 클릭만 콜백을 호출한다 (①④/유닛·Compose) | T1·T3·T4 |
+| 디버그 앱에서 수동 시도 뒤 PC·ADB 없이 진단 보기를 열 수 있고, 진단이 없거나 아직 수집 중이면 과거 성공 또는 측정된 0으로 표시하지 않는다. | 진단 없음과 수집 중에는 복사와 과거 측정 표시가 없다; missingAndCollectingDiagnosticsNeverShowPreviousMeasurementsOrEnableCopy; opensDiagnosticsExplicitlyAndCallsCopyOnlyOnClick (①④/유닛·Compose) | T1·T3·T4 |
 | 표시 시간은 인증/계속 대기와 실행을 분리하고 중첩 구간을 합산하지 않으며, 미관측·진행 중·종결된 실제 0과 표시 단위 때문에 작게 보이는 비영(非零) 시간을 구별한다. | 미관측 미완료 실제 영과 작은 양수 시간은 서로 다르게 표시한다; 단계별 표시와 복사 요약에는 고정 안전 정보만 있다 (①②/유닛) | T1 |
-| 사용자의 명시적 복사 동작만 기존 고정 24행 safe summary를 클립보드에 쓰고, 표시/복사 자체는 권한 요청·건강 읽기·업로드·자동 재시도·외부 전송을 시작하지 않는다. | 진단 보기는 명시적으로 열고 복사 클릭만 콜백을 호출한다; 전경 앱의 명시적 쓰기는 실제 클립보드에 같은 안전 요약을 남긴다; 빈 진단의 열기와 화면 재생성은 동의나 업로드를 시작하지 않는다 (①④/Compose·OS 통합) | T2·T3·T4 |
+| 사용자의 명시적 복사 동작만 기존 고정 24행 safe summary를 클립보드에 쓰고, 표시/복사 자체는 권한 요청·건강 읽기·업로드·자동 재시도·외부 전송을 시작하지 않는다. | opensDiagnosticsExplicitlyAndCallsCopyOnlyOnClick; explicitForegroundWritePlacesTheSameSafeSummaryOnSystemClipboard; openingEmptyDiagnosticsAndRecreationNeverStartConsentOrUpload (①④/Compose·OS 통합) | T2·T3·T4 |
 | 복사 성공/실패는 별도 안내하고 실패해도 SyncResult·부분 확인 수·이력·원래 취소 전파와 이후 수동 동기화 가능 여부를 바꾸지 않는다. | 복사 실패는 안전한 안내만 남기고 명시적 재시도만 허용한다; 복사 중 무효화 뒤 늦은 결과는 새 상태를 덮지 않는다; 기존100개 회귀 (①③④/유닛·기존 통합) | T1·T4·전체 검증1 |
 | 진단 표시와 복사에는 고정 단계/작업 라벨과 안전한 통계만 사용하고, 제외 범위의 건강 값·날짜/시각·개인 식별자·자격 정보·공급자 원문을 입력하거나 포함하지 않는다. | 단계별 표시와 복사 요약에는 고정 안전 정보만 있다; 기존 Safe profiling summary contains only fixed enums and numeric statistics (①②③/유닛) | T1·전체 검증1 |
-| 진단은 최근 시도 1건의 제한된 불변 요약으로만 메모리에 보관하고 디스크·저장된 상태·복원 번들·이력 DB·공유 파일에 기록하지 않는다. | 최근 한 건의 불변 요약만 유지하고 새 세션은 비어 있다; 화면 복원은 진단 본문을 복원하지 않는다 (①②④/유닛·Compose); 새 영속 경로 없음은 정적 확인 | T1·T3·전체 검증3 |
+| 진단은 최근 시도 1건의 제한된 불변 요약으로만 메모리에 보관하고 디스크·저장된 상태·복원 번들·이력 DB·공유 파일에 기록하지 않는다. | 최근 한 건의 불변 요약만 유지하고 새 세션은 비어 있다; restorationDoesNotRestoreDiagnosticPayload (①②④/유닛·Compose); 새 영속 경로 없음은 정적 확인 | T1·T3·전체 검증3 |
 | 유효한 새 시도 또는 로컬 상태 무효화 시 이전 요약을 지우고, 늦은 이전 콜백이 이를 다시 표시하거나 새 시도의 진단을 덮지 않는다. | 새 시도와 무효화는 이전 요약과 늦은 완료를 폐기한다; 복사 중 무효화 뒤 늦은 결과는 새 상태를 덮지 않는다 (①④/유닛) | T1·T4 |
-| 화면 재생성 시 같은 화면 모델이 유지되면 진단을 유지할 수 있지만 새 화면 모델·새 프로세스에서는 진단 없음으로 시작하며, release 앱에는 진단 보기·복사 경로를 노출하지 않는다. | 최근 한 건의 불변 요약만 유지하고 새 세션은 비어 있다; 비디버그에서는 진단과 복사 경로가 없다; 화면 복원은 진단 본문을 복원하지 않는다; 빈 진단의 열기와 화면 재생성은 동의나 업로드를 시작하지 않는다 (①④/유닛·Compose·Activity) | T1·T3·T4 |
-| 진단 경로를 추가해도 기존 동의·권한·명시적 계속·private Drive·동일 파일 갱신·순차 요청·취소·이력 커밋 및 삭제 계약을 유지한다. | 기존 coordinator/uploader/transport/reader/history 회귀 및 실제 Android/복구 CI; 빈 진단의 열기와 화면 재생성은 동의나 업로드를 시작하지 않는다 (①③④⑤/유닛·통합) | T4·전체 검증1·2 |
+| 화면 재생성 시 같은 화면 모델이 유지되면 진단을 유지할 수 있지만 새 화면 모델·새 프로세스에서는 진단 없음으로 시작하며, release 앱에는 진단 보기·복사 경로를 노출하지 않는다. | 최근 한 건의 불변 요약만 유지하고 새 세션은 비어 있다; 비디버그에서는 진단과 복사 경로가 없다; nonDebugDiagnosticsExposeNoViewOrCopyControls; restorationDoesNotRestoreDiagnosticPayload; openingEmptyDiagnosticsAndRecreationNeverStartConsentOrUpload (①④/유닛·Compose·Activity) | T1·T3·T4 |
+| 진단 경로를 추가해도 기존 동의·권한·명시적 계속·private Drive·동일 파일 갱신·순차 요청·취소·이력 커밋 및 삭제 계약을 유지한다. | 기존 coordinator/uploader/transport/reader/history 회귀 및 실제 Android/복구 CI; openingEmptyDiagnosticsAndRecreationNeverStartConsentOrUpload (①③④⑤/유닛·통합) | T4·전체 검증1·2 |
 | 합성 JVM/Compose 검증으로 정상·실패·취소·빈 진단·새 시도·무효화·지연 콜백·복사 실패·비디버그 조건을 확인하고, 실제 기기에서 수행하지 않은 수집이나 클립보드 동작은 미확인으로 남긴다. | 종결 정상 실패 취소와 미완료를 업무 결과와 혼동하지 않는다; 위 상태/복사/UI 테스트 전체 (①②③④/유닛·Compose); 한계 문서 대조 | T1·T2·T3·T5 |
-| 사용자에게 공유 전 안전한 요약만 확인하도록 안내하고 클립보드/프로세스 수명 한계를 명시하며, 원시 로그·건강 화면 첨부나 진단의 자동 외부 전송을 요구하지 않는다. | 진단 화면은 안전한 공유와 클립보드 수명을 안내한다 (①/Compose); 실제 절차·자동 전송 부재는 문서/정적 확인 | T3·T5·전체 검증3 |
+| 사용자에게 공유 전 안전한 요약만 확인하도록 안내하고 클립보드/프로세스 수명 한계를 명시하며, 원시 로그·건강 화면 첨부나 진단의 자동 외부 전송을 요구하지 않는다. | diagnosticsExplainSafeSharingAndSeparateClipboardLifetime (①/Compose); 실제 절차·자동 전송 부재는 문서/정적 확인 | T3·T5·전체 검증3 |
 
 ## 4. 작업
 
@@ -209,7 +209,7 @@ T1 완료 후 시작.
   2. ClipboardManager.setPrimaryClip/ClipData.newPlainText에 고정 label로1회 쓴다.
   3. 예외는 로그/원문 안내 없이 session.copy로 전달한다.
   ```
-- **작성할 테스트**: 신규 `전경 앱의 명시적 쓰기는 실제 클립보드에 같은 안전 요약을 남긴다`. 기존 createAndroidComposeRule<MainActivity>와 실제 OS 서비스를 사용하고, 실제 읽기 비교는 합성 clip에만 수행한다. 외부 writer 실패 의미는 T1의 throwing lambda로 검증한다.
+- **작성할 테스트**: 신규 `explicitForegroundWritePlacesTheSameSafeSummaryOnSystemClipboard`. 기존 createAndroidComposeRule<MainActivity>와 실제 OS 서비스를 사용하고, 실제 읽기 비교는 합성 clip에만 수행한다. 외부 writer 실패 의미는 T1의 throwing lambda로 검증한다.
 - **완료 기준**: 최소1개 실제 OS 연동 테스트로 기반 기동. 같은 합성 텍스트/고정 label의 쓰기를 확인하고 production에서 읽기/clear/자동 전송이 없다.
 - **검증 방법**: `cd android && ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.PhoneProfilingClipboardInstrumentedTest` (API35 계정 없는 에뮬레이터).
 - **주의사항**: 합성 전용 에뮬레이터에서 실행한다. 기존 clipboard 내용을 수집/로그/복원하지 않는다. 테스트 정리는 자신이 쓴 label/text가 아직 일치할 때만 수행하며 알 수 없는 clipboard 값을 assertEquals 실패 메시지에 출력하지 않는다. URI 변환/coerceToText로 외부 데이터를 읽지 않는다. 최초 도입에서 SDK/서비스의 읽기 전용 확인은 허용하되 실패 시 설정 우회 없이 blocked로 보고한다.
@@ -234,7 +234,7 @@ T2 완료 후 시작.
   report없음/collecting → 해당 안내·복사 비활성
   report있음 → 단계별 표시·명시적 copy 콜백만 허용
   ```
-- **작성할 테스트**: 신규 `진단 보기는 명시적으로 열고 복사 클릭만 콜백을 호출한다`, `진단 없음과 수집 중에는 복사와 과거 측정 표시가 없다`(Compose층), `비디버그에서는 진단과 복사 경로가 없다`(Compose층), `화면 복원은 진단 본문을 복원하지 않는다`(StateRestorationTester+새 빈 state), `진단 화면은 안전한 공유와 클립보드 수명을 안내한다`. light/dark·큰 글꼴에서 진단/복사 버튼을 스크롤해 접근할 수 있는지도 같은 fixture로 확인한다.
+- **작성할 테스트**: 신규 `opensDiagnosticsExplicitlyAndCallsCopyOnlyOnClick`, `missingAndCollectingDiagnosticsNeverShowPreviousMeasurementsOrEnableCopy`(Compose층), `nonDebugDiagnosticsExposeNoViewOrCopyControls`(Compose층), `restorationDoesNotRestoreDiagnosticPayload`(StateRestorationTester+새 빈 state), `diagnosticsExplainSafeSharingAndSeparateClipboardLifetime`. light/dark·큰 글꼴에서 진단/복사 버튼을 스크롤해 접근할 수 있는지도 같은 fixture로 확인한다.
 - **완료 기준**: 최소1개 테스트로 새 component 기반 기동, 새 UI 테스트 PASS, 새로운 외부 효과는 onCopy 콜백뿐. 실제 HealthHomeScreen 배선은 아직 하지 않는다.
 - **검증 방법**: `cd android && ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.PhoneProfilingScreenInstrumentedTest`.
 - **주의사항**: rememberSaveable에는 펼침 boolean만 허용한다. 진단 데이터는 state 인자로만 받는다. callback 호출 수를 단언하며 새로운 인증/읽기/업로드 동작을 넣지 않는다. top app bar/insets/기존 레이아웃 변경 금지. 새 component 자신은 큰 글꼴에서 조작 가능해야 한다.
@@ -268,7 +268,7 @@ T3 완료 후 시작.
   3. MainActivity에서 copyPhoneProfiling에 실제 OS writer를 전달한다.
   4. HomeScreen에 별도 섹션을 붙이고 기존 actions fixture도 명시적 새 callback으로 갱신한다.
   ```
-- **작성할 테스트**: 신규 `빈 진단의 열기와 화면 재생성은 동의나 업로드를 시작하지 않는다`(실제 Activity). 기존 HealthHomeScreen/HealthApp/DurableHistoryActivity 및 HistorySession/ManualSyncProfiling/reader/uploader/transport 회귀 전부 재사용한다. 실제 VM 배선은 소스 대조와 실제 빈 Activity/lifecycle로 검증하며, 합성 UI/session 테스트를 실제 OAuth 완료 시나리오로 과장하지 않는다.
+- **작성할 테스트**: 신규 `openingEmptyDiagnosticsAndRecreationNeverStartConsentOrUpload`(실제 Activity). 기존 HealthHomeScreen/HealthApp/DurableHistoryActivity 및 HistorySession/ManualSyncProfiling/reader/uploader/transport 회귀 전부 재사용한다. 실제 VM 배선은 소스 대조와 실제 빈 Activity/lifecycle로 검증하며, 합성 UI/session 테스트를 실제 OAuth 완료 시나리오로 과장하지 않는다.
 - **완료 기준**:5개 파일 범위에서 배선이 compile되고 전체 JVM/UI 회귀 PASS. history 오류/permission0인 상황도 진단 상태가 있으면 읽기/복사가 가능하며 그 동작이 권한이나 동기화 재시작을 요구하지 않는다. invalidateCurrentAttempt와 기존 무효화 callback에서도 진단 상태를 지운다.
 - **검증 방법**: `cd android && ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug`; 이후 전체 Android CI는5절2항.
 - **주의사항**: current profile 객체와 session이 기록한 객체가 다르면 관찰 결과를 버린다. 이전 collector를 새 report로 강제 종결하거나 과거 이력으로 진단을 복원하지 않는다. DB/schema/credentials/collector/요청 경로는 수정하지 않는다. HistoryUiActions 신규 필드는 기존2개 호출 위치를 전부 명시 갱신하고 임시 무동작 기본값을 남기지 않는다.
@@ -308,6 +308,10 @@ T4 완료 후 시작.
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T1 | 1/2 | 실행자가 android cwd에서 android/ 접두사를 다시 사용해 신규 테스트 파일 생성 실패; 기존6개만 실행 | 절대 경로로 지정한 신규9개 테스트 작성 뒤 같은 대상 검증; 완료 코드 보존 | 기대값/스펙/파일 범위 유지; 미작성 테스트를 PASS로 세지 않음 | T1 세 파일; 기존 세션/정형 보존, formatter 들여쓰기만 정리 허용 | 신규9개+기존6개 실제 통과·실패/오류/skip0; root 같은 명령 및 XML 확인 | phone_t1 부분 복구 |
+| T2 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립 및 컴파일/CI 예정 | 해당 실행자에 최초 위임 전 전달 |
+| T3 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립 및 컴파일/CI 예정 | 해당 실행자에 최초 위임 전 전달 |
+| T4 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립 및 컴파일/CI 예정 | 해당 실행자에 최초 위임 전 전달 |
 
 ## 환경 준비 기록
 
