@@ -42,12 +42,12 @@ tasks:
   - id: T7
     title: 반복 가능한 합성 기준선
     depends_on: [T6]
-    status: in_progress
+    status: done
     tier: standard
   - id: T8
     title: 증거와 기기 절차 정리
     depends_on: [T7]
-    status: pending
+    status: in_progress
     tier: standard
 ---
 
@@ -468,7 +468,7 @@ T7 완료 후 시작.
 | T1 | 1/2 | 조립된 브리프가2절 산문 불변식(중복 시작/종료·진행 중 경과 의미)을 전달하지 못해 실행자가 확인 요청 | 원래 중복 집계 금지 규칙을 선언 주석으로 옮겨 전달하고 종료 구간 합/active 별도 의미를 명시 | 기존 고정 map·단조 시계·실패 격리 유지; 새 동작/의존성 없음 | plan2절 표기 및 T1 두 파일; 기존 코드 보존 | 브리프 재조립 후 해소 실패0; 실행자4개 테스트 통과, root 동일 명령 BUILD SUCCESSFUL·XML4/0실패/0오류/0skip | profiling_t1 부분 지시 후 검증 |
 | T4 | 1/2 | 실행자30개 테스트 PASS 후 취소+중단 저장 실패 조합 및 취소 객체 단언 누락 보고 | 승인된 취소 전파·이력 실패 보장 조합을 기존 테스트 기반으로 검증 | 기대값/스펙/업무 흐름 유지; T4 보완 테스트와 추적성 추가 | HistorySessionTest만 보완; 구현과 이전 증거 보존 | 실행자31개·실패/오류/skip0; root 동일 명령 BUILD SUCCESSFUL 및 XML 확인 | profiling_t4 부분 보완 |
 | T5 | 1/2 | 실행 전 브리프 점검에서 ManualSyncProfiling 산문 출력 계약이 Shared design에 빠짐(T1과 같은 유형 재발) | 기존8192자/고정 출력/고장 격리 규칙을 선언 주석으로 옮겨 재조립 | 새 규칙 없이 원래2절 계약 전달; 스펙/파일 범위 유지 | plan2절 표기만 보정 | 재조립 성공·Shared design52줄에 계약 포함 확인 | profiling_t5 최초 실행 전에 전달; 조립기 추출/전달 검증 확장 필요 |
-| T7 | 1/2 | 최초 기준선1개 테스트 PASS 뒤 root 소스 대조: report가 android/build에 기록돼 계획의 app/build 경로와 불일치, 값으로 반환된 HTTP503 실패를 measure(EXECUTION)가 COMPLETED로 분류 | 기준선 산출물 계약을 그대로 적용: app/build 위치와 명시적 실행 outcome 통계 | 실제 clock/TLS·N10/3warmup·요청4/7/12·업무 코드 보존 | T7 테스트/보고서만 부분 보정 | 지정 명령 재검증 예정 | profiling_t7 부분 보정 |
+| T7 | 1/2 | 최초 기준선1개 테스트 PASS 뒤 root 소스 대조: report가 android/build에 기록돼 계획의 app/build 경로와 불일치, 값으로 반환된 HTTP503 실패를 measure(EXECUTION)가 COMPLETED로 분류 | 기준선 산출물 계약을 그대로 적용: app/build 위치와 명시적 실행 outcome 통계 | 실제 clock/TLS·N10/3warmup·요청4/7/12·업무 코드 보존 | T7 테스트/보고서만 부분 보정 | 실행자41s PASS; root가 커밋2ccd1d5에서 동일 명령 --rerun-tasks42s PASS, JUnit1/0실패/0오류/0skip; 원본은 pr9-baseline-final에 보존 | profiling_t7 부분 보정 |
 
 ## 환경 준비 기록
 
