@@ -17,7 +17,7 @@ tasks:
   - id: T2
     title: 실제 클립보드 쓰기 경계
     depends_on: [T1]
-    status: in_progress
+    status: done
     tier: standard
   - id: T3
     title: 선택적 진단 화면
@@ -27,12 +27,12 @@ tasks:
   - id: T4
     title: 수동 동기화 흐름 연결
     depends_on: [T3]
-    status: in_progress
+    status: done
     tier: standard
   - id: T5
     title: 기기 수집 절차와 실행 증거
     depends_on: [T4]
-    status: pending
+    status: done
     tier: standard
 ---
 
@@ -311,11 +311,16 @@ T4 완료 후 시작.
 | T1 | 1/2 | 실행자가 android cwd에서 android/ 접두사를 다시 사용해 신규 테스트 파일 생성 실패; 기존6개만 실행 | 절대 경로로 지정한 신규9개 테스트 작성 뒤 같은 대상 검증; 완료 코드 보존 | 기대값/스펙/파일 범위 유지; 미작성 테스트를 PASS로 세지 않음 | T1 세 파일; 기존 세션/정형 보존, formatter 들여쓰기만 정리 허용 | 신규9개+기존6개 실제 통과·실패/오류/skip0; root 같은 명령 및 XML 확인 | phone_t1 부분 복구 |
 | T2 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립·앱/테스트 APK compile PASS; API35 CI41672143507에서 해당 OS 테스트 포함49개·host20개 실제 통과 | phone_t2 최초 구현·root 원본 산출물 대조 완료 |
 | T3 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립·앱/테스트 APK compile PASS; API35 CI41675121121 head adf71a7에서 신규5개 포함54개·host20개 실제 통과·실패/오류/skip0 | phone_t3 최초 구현·root 원본 산출물 대조 완료 |
-| T4 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립 및 컴파일/CI 예정 | 해당 실행자에 최초 위임 전 전달 |
-| T2 | 2/2 | 통합 CI41678564632 head fc47a01:55개 중 clipboard 고정 label 단언1개 실패·오류/skip0. 같은 writer/test는 T2·T3 CI에서 통과했고 T4는 이를 수정하지 않음. 원본 합성 log에서 RESUMED와 첫 표시 사이 지연 확인; runOnIdle만으로 window focus를 보장하지 않음 | 테스트가 요구하는 전경/입력 focus를 쓰기 전에 명시적으로 기다리고 실제 쓰기 직전에도 단언한다. focus 미확인을 원인 가설로 한정하며 production 성공으로 추정하지 않는다 | 같은 label·동일24행·한 항목·명시적1회 쓰기·소유 fixture만 정리 기준 유지. 단언 완화/재쓰기 반복/권한·OS 설정 변경 없음 | T2 clipboard instrumentation 파일만 보정; 검증된 T1/T3 및 T4 배선 보존 | 앱/테스트 APK compile 후 전체 API35 CI 재검증 예정; 실제 결과 전 T2/T4 완료 금지 | phone_t2 부분 복구 위임; 잔여0/2 |
+| T4 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 앱/테스트 APK·전체 JVM109개·lint PASS; API35 CI41681123691 head4a061cb에서 신규 Activity 포함55개·host20개 실제 통과 | phone_t4 최초 구현·root 직접 명령/원본 XML 대조 완료 |
+| T2 | 2/2 | 통합 CI41678564632 head fc47a01:55개 중 clipboard 고정 label 단언1개 실패·오류/skip0. 같은 writer/test는 T2·T3 CI에서 통과했고 T4는 이를 수정하지 않음. 원본 합성 log에서 RESUMED와 첫 표시 사이 지연 확인; runOnIdle만으로 window focus를 보장하지 않음 | 테스트가 요구하는 전경/입력 focus를 쓰기 전에 명시적으로 기다리고 실제 쓰기 직전에도 단언한다. focus 미확인을 원인 가설로 한정하며 production 성공으로 추정하지 않는다 | 같은 label·동일24행·한 항목·명시적1회 쓰기·소유 fixture만 정리 기준 유지. 단언 완화/재쓰기 반복/권한·OS 설정 변경 없음 | T2 clipboard instrumentation 파일만 보정; 검증된 T1/T3 및 T4 배선 보존 | 앱/테스트 APK compile 실행자22초/root16초 PASS; CI41681123691 head4a061cb에서55개·host20개 통과, 실패/오류/skip0. 원본 XML·60PNG·artifact digest 대조 | phone_t2 부분 복구 후 root 검증 완료; 사용2/2 |
+| T5 | 1/2 | root의 실제 diff 대조에서 execution-report의 T4 변경 파일이 수정하지 않은 workflow로 잘못 표기되고 실제 HealthHomeScreenInstrumentedTest fixture 수정이 목록에서 누락됨 | 원본 git diff의 파일 집합으로 문서 목록을 바로잡는다. 전체 검증3 중 독립 검토는 아직 대기임을 더 명확히 구분한다 | 승인된 앱/문서 범위·실제 테스트·기대값 유지; 문서 사실 교정만 수행 | execution-report.md만; 기기 절차·앱 코드 보존 | git diff --check·실제 changed-file/test-fixture 목록·문서 로컬 링크 대조 PASS | phone_t5 부분 복구 후 root 검증 완료; 사용1/2 |
 
 ## 환경 준비 기록
 
 | 원인·근거 | 준비 조치 | 조치 사용/1 | 확인 명령·결과 | 확인 사용/1 | 다음 조치 |
 |---|---|---|---|---|---|
-| 로컬 에뮬레이터/KVM 없음; 실제 OS 검증은 로컬에서 실행 불가 | 승인된 기존 API35 CI로 T2 실제 검증; source/테스트 APK 컴파일로 대체하지 않음 | 1/1 | API35 CI41672143507 head bc044e8 실제 Android49개·host20개 통과, 실패/오류/skip0; 원본 XML·60PNG·artifact SHA256 확인 | 1/1 | T2 완료, T3 진행 |
+| 로컬 에뮬레이터/KVM 없음; 실제 OS 검증은 로컬에서 실행 불가 | 승인된 기존 API35 CI로 T2 실제 검증; source/테스트 APK 컴파일로 대체하지 않음 | 1/1 | API35 CI41672143507 head bc044e8 실제 Android49개·host20개 통과, 실패/오류/skip0; 원본 XML·60PNG·artifact SHA256 확인 | 1/1 | 기반/화면/통합 OS 검증 완료; 후속 실패·복구와 최신 결과는 복구 기록 참조 |
+
+## 구현 검증 체크포인트
+
+T1–T5는 완료했다. 문서 완료 뒤 root 전체 Gradle 검증37초 PASS, core41/app68=109개 실패/오류/skip0, debug 앱/테스트 APK·lint PASS다. Android 및 workflow는 실제 OS 검증 source4a061cb와 byte 차이가 없고, CI41681123691의55개·host20개 통과를 원본으로 확인했다. 전체 검증3의 독립 스펙 적합성·코드/보안/성능 검토와 PR 처분은 아직 남아 plan은 in_progress로 유지한다. 실제 Galaxy·계정·TalkBack·성능 수집 및 기존 P0 미확인은 이 체크포인트로 닫지 않는다.
