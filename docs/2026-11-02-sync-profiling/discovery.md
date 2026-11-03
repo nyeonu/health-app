@@ -27,4 +27,4 @@ python /workspace/tooling/run-health-command.py ./gradlew --offline --no-daemon 
 - 인증/사용자 대기를 제외한 실행 시간, 반복 비교 조건 및 분포.
 - 캐시·배치·병렬화로 얻는 이득과 private-target 재검증·동시 생성·취소·부분 실패에 주는 영향.
 
-실제 최적화는 하지 않았다. [측정 스펙](spec.md)은 2026-11-02 사용자 진행 지시로 승인됐고 다음은 실행 계획 검토·승인이며, 수치 목표는 기준선 뒤에 정한다. 현재 P0/Galaxy/TalkBack 미확인은 완료로 바꾸지 않는다.
+실제 최적화는 하지 않았다. 이 문서는 master671d213의 사전 조사 기록이며, 이후 승인된 계획의 계측 구현과 [합성 기준선](baseline.md), [실행·검증](execution-report.md)을 완료했다. 다음은 [기기 절차](device-profiling.md)의 비공개 실측과 후속 최적화 판단이다. 현재 P0/Galaxy/TalkBack 미확인은 완료로 바꾸지 않는다.

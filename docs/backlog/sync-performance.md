@@ -6,7 +6,7 @@ scope: profiling and evidence-based sync optimization
 
 # 수동 동기화 지연 조사
 
-2026-11-03: 승인된 측정 범위의 단계별 진단과 합성 local TLS 기준선이 구현되었다. 구현·테스트 소스는 `2ccd1d5bbca1a3a2210a39f2f867c7ba03451a53`다. [실행 보고](../2026-11-02-sync-profiling/execution-report.md), [합성 기준선](../2026-11-02-sync-profiling/baseline.md), [실제 기기 절차](../2026-11-02-sync-profiling/device-profiling.md)를 함께 본다. 최종 독립 리뷰/현 head 판정과 실제 기기 측정은 별도이며 전체 완료나 머지 가능을 이 문서로 선언하지 않는다.
+2026-11-03: 승인된 측정 범위의 단계별 진단과 합성 local TLS 기준선이 구현되었다. 구현·테스트 소스는 `2ccd1d5bbca1a3a2210a39f2f867c7ba03451a53`다. [실행 보고](../2026-11-02-sync-profiling/execution-report.md), [합성 기준선](../2026-11-02-sync-profiling/baseline.md), [실제 기기 절차](../2026-11-02-sync-profiling/device-profiling.md)를 함께 본다. 독립 적합성11/11 PASS, 코드·보안·성능 APPROVE와 계정 없는 Android CI를 완료했다. 현재 문서 head와 병합 처분은 PR #9 코멘트에 남기며 실제 기기 성능 측정은 여전히 별도 대기다.
 
 ## 확인된 근거와 한계
 

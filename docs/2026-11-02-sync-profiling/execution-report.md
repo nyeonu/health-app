@@ -1,18 +1,18 @@
 ## 실행 결과
 
 - 계획: `docs/2026-11-02-sync-profiling/plan.md`
-- 완료한 작업: T1–T7 자동 검증 완료, T8 문서 조립·정적 검증; 8개 작업의 최종 상태 확정은 오케스트레이터가 수행한다. 승격 없음.
+- 완료한 작업: T1–T8 전체8개 작업과 전체 검증 완료. 오케스트레이터가 상태를 확정했다. 승격 없음.
 - 브리프:
   - <!-- brief T1 inherited · 187줄 · 10342자 · 추정 토큰 3447 · Shared design 참조 1(명시 1, 해소 실패 0) · 변경 파일 2 · 테스트 0 · 작업 블록 27줄 · Shared design 30줄 · Goal 5줄 --> 결과(재시도 1회); 계획 이탈(기존 산문 계약을 선언 주석으로 이동·재조립)
-  - <!-- brief T2 inherited · 205줄 · 11004자 · 추정 토큰 3668 · Shared design 참조 2(명시 2, 해소 실패 0) · 변경 파일 2 · 테스트 0 · 작업 블록 34줄 · Shared design 41줄 · Goal 5줄 --> 결과(재시도 1회, 개명 후 최종 확인 대기); 계획 이탈(검증 본문에 맞게 성공 전용 테스트 이름 정정)
+  - <!-- brief T2 inherited · 205줄 · 11004자 · 추정 토큰 3668 · Shared design 참조 2(명시 2, 해소 실패 0) · 변경 파일 2 · 테스트 0 · 작업 블록 34줄 · Shared design 41줄 · Goal 5줄 --> 결과(재시도 1회, 개명 후 독립8개 재실행 PASS); 계획 이탈(검증 본문에 맞게 성공 전용 테스트 이름 정정)
   - <!-- brief T3 inherited · 209줄 · 11131자 · 추정 토큰 3710 · Shared design 참조 2(명시 2, 해소 실패 0) · 변경 파일 2 · 테스트 0 · 작업 블록 38줄 · Shared design 41줄 · Goal 5줄 --> 결과(1회차 PASS); 계획 이탈(없음)
   - <!-- brief T4 inherited · 206줄 · 11000자 · 추정 토큰 3666 · Shared design 참조 2(명시 2, 해소 실패 0) · 변경 파일 2 · 테스트 0 · 작업 블록 35줄 · Shared design 41줄 · Goal 5줄 --> 결과(재시도 1회); 계획 이탈(누락된 취소/중단 저장 실패 검증 보완)
   - <!-- brief T5 inherited · 221줄 · 12019자 · 추정 토큰 4006 · Shared design 참조 2(명시 2, 해소 실패 0) · 변경 파일 3 · 테스트 0 · 작업 블록 39줄 · Shared design 52줄 · Goal 5줄 --> 결과(재시도 1회); 계획 이탈(기존 산문 계약을 선언 주석으로 이동·재조립)
   - <!-- brief T6 inherited · 197줄 · 10710자 · 추정 토큰 3570 · Shared design 참조 2(명시 2, 해소 실패 0) · 변경 파일 1 · 테스트 0 · 작업 블록 26줄 · Shared design 41줄 · Goal 5줄 --> 결과(1회차 PASS); 계획 이탈(없음)
   - <!-- brief T7 inherited · 205줄 · 11317자 · 추정 토큰 3772 · Shared design 참조 3(명시 3, 해소 실패 0) · 변경 파일 2 · 테스트 0 · 작업 블록 28줄 · Shared design 47줄 · Goal 5줄 --> 결과(재시도 1회); 계획 이탈(기준선 출력 경로·HTTP 503 FAILED 통계 명시 보정)
-  - <!-- brief T8 inherited · 156줄 · 8711자 · 추정 토큰 2903 · Shared design 참조 0(명시 0, 해소 실패 0) · 변경 파일 3 · 테스트 0 · 작업 블록 28줄 · Shared design 0줄 · Goal 5줄 --> 결과(재시도 1회, 문서 검증 완료, 최종 확정 대기); 계획 이탈(request 결과·종결된 0시간 정의·테스트 증거 범위 정정)
+  - <!-- brief T8 inherited · 156줄 · 8711자 · 추정 토큰 2903 · Shared design 참조 0(명시 0, 해소 실패 0) · 변경 파일 3 · 테스트 0 · 작업 블록 28줄 · Shared design 0줄 · Goal 5줄 --> 결과(재시도 1회, 문서 검증·확정 완료); 계획 이탈(request 결과·종결된 0시간 정의·테스트 증거 범위 정정)
 - 바뀐 파일: `android/core/src/main/kotlin/com/ny/my/health/core/{SyncProfiling,SyncCoordinator,PrivateDriveUploader}.kt`, `android/core/src/test/kotlin/com/ny/my/health/core/{SyncProfilingTest,SyncCoordinatorTest,PrivateDriveUploaderTest}.kt`, `android/app/src/main/java/com/ny/my/health/{HistorySession,ManualSyncProfiling,SyncViewModel}.kt`, `android/app/src/test/java/com/ny/my/health/{HistorySessionTest,ManualSyncProfilingTest,GoogleDriveTransportTest,SyncProfilingBaselineTest}.kt`, `docs/2026-11-02-sync-profiling/{baseline,device-profiling,execution-report,plan,spec,discovery}.md`, `docs/backlog/sync-performance.md`. 브리프는 무시 경로의 실행 기록이며 커밋 대상이 아니다.
-- 판정: 구현·테스트 소스 `2ccd1d5bbca1a3a2210a39f2f867c7ba03451a53`에 대한 로컬 전체 JVM 테스트·debug APK·lint는 PASS. 문서 전용 후속 head는 `fa552277c815b43f5314b19700c91e883a04eb56`이며 소스·테스트는 동일하다. 현재 XML은 core 41 + app 59 = 100건, 실패/오류/skip 0건이다. 독립 스펙 적합성 검증은 `fa55227`에서 11/11 PASS, 실제 100건 재실행도 52초에 PASS로 오케스트레이터가 확인했다. 이후 T2 테스트 이름만 정정한 소스의 최종 재확인은 대기다. hosted CI·독립 코드/보안/성능 리뷰와 최종 문서 head 판정도 별도 미완료다. 머지 가능 판정은 하지 않는다.
+- 판정: 전체 검증 PASS. 최종 구현·테스트 검토 head `f154263677bb94b5bc1cc11e7c3945e6ffe890fb`에서 독립 적합성11/11 PASS, 독립 코드/보안/성능 리뷰 APPROVE(지적 없음). 독립 검토자는100 JVM·APK·lint를 --rerun-tasks로 다시 실행해1분43초/57tasks 실제 실행·실패/오류/skip0을 확인했다. root도 전체 명령을 재확인했다(13s). 기준선 소스2ccd1d5 이후 제품/계측 하네스/Android instrumented 코드는 동일하며 core 테스트 이름 한 줄과 문서만 바뀌었다. 이후 완료 상태 문서만 갱신했으므로 최종 PR head의 문서 delta 판정은 PR 코멘트에 기록한다.
 - 자동 복구: T1 1/2·T5 1/2는 조립기가 기존 산문 계약을 누락하여 선언 주석으로 옮긴 뒤 재조립한 보정이다. 같은 유형이 재발했으며 제품 오류 복구는 아니다. T4 1/2는 취소와 중단 이력 저장 실패 시 원래 취소 동일성 검증 보완, T7 1/2는 `app/build` 출력 경로와 HTTP 503의 명시적 FAILED 통계 보정이다. 해당 보정 후 아래 검증은 PASS. T2 1/2는 성공 전용 계측 테스트의 과도한 이름을 검증 본문에 맞게 정정한 복구이며 업무 동작 변경은 없다. T8 1/2는 request 결과 의미, 종결된 0시간 정의, 테스트 증거 범위의 문서 정정으로 정적 검사 PASS다. T3/T6 0/2, 승격 없음. 복구 기록의 최종 집계는 계획 문서에서 관리한다.
 
 ## 검증
@@ -46,7 +46,7 @@
 | T1 단조 시간/JVM | 실패·취소·활성 상태 분리 | core/SyncProfilingTest.kt · `Monotonic stage timing survives wall clock changes and preserves failed cancelled and active states` | PASS |
 | T1 유계 저장/JVM | 원시 이벤트 무저장 | core/SyncProfilingTest.kt · `Profiling storage remains bounded after repeated requests and terminal snapshots` | PASS |
 | T1 계측 실패/JVM | 원래 값·예외 유지 | core/SyncProfilingTest.kt · `Clock failures preserve block return values and original exception identity` | PASS |
-| T2 성공 계측/JVM | 성공 결과·호출 순서·단계별 시간 분리 | core/SyncCoordinatorTest.kt · `Profiling preserves successful sync outcomes call order and separate stage timings` | 동일 본문은 PASS; 개명 후 최종 확인 대기. 부분 실패·취소·이력 실패를 이 테스트로 주장하지 않음 |
+| T2 성공 계측/JVM | 성공 결과·호출 순서·단계별 시간 분리 | core/SyncCoordinatorTest.kt · `Profiling preserves successful sync outcomes call order and separate stage timings` | PASS; 개명 후 독립8개 --rerun-tasks/26s 확인. 부분 실패·취소·이력 실패를 이 테스트로 주장하지 않음 |
 | T2 부분 실패/JVM | 계측 유무와 무관하게 확인된 파일만 보고 | core/SyncCoordinatorTest.kt · `Partial upload failure reports only confirmed files` | PASS |
 | T2 취소/JVM | 읽기·정규화·CSV·업로드 취소의 원래 예외 전파 | core/SyncCoordinatorTest.kt · `Cancellation propagates without reporting success` | PASS |
 | T4 시작 커밋 실패/JVM | 계측 유무와 무관하게 읽기·업로드 차단 | app/HistorySessionTest.kt · `실행 시작 저장 실패는 실제 효과 경계의 읽기와 업로드를 모두 막는다` | PASS |
@@ -62,17 +62,19 @@
 | T7 합성 기준선/local TLS | 반복 수·요청 수·nearest rank 검증 | app/SyncProfilingBaselineTest.kt · `Local TLS baseline records repeatable scenarios sample counts and nearest rank percentiles` | PASS |
 | T8 문서 | 안전한 기기 절차·실제 증거 기록 | 신규 앱 테스트 불필요; 문서 정적 검사 | PASS, 실제 기기 수집은 미실행 |
 
-- 추적성 표 갱신: T8이 계획을 편집하지 않았다. 계획 표의 최종 실제 이름 대조·갱신은 오케스트레이터 대기다.
+- 추적성 표 갱신: 오케스트레이터가 승인 기준11개 문장/계획11행의 정확한 일치와 실제 테스트명·단언을 대조했다. 성공 경로·부분 업로드·취소·이력 실패를 각 실제 테스트로 분리 매핑했고 이름 교정을 반영했다. [기준별 독립 판정](conformance-report.md).
 - skip·비활성화된 테스트: 실행 XML의 skip 0건. 이 수치만으로 미실행 기기/계정 수용을 대체하지 않는다.
 - 신규·변경된 테스트 파일: core의 SyncProfilingTest.kt, SyncCoordinatorTest.kt, PrivateDriveUploaderTest.kt; app의 HistorySessionTest.kt, ManualSyncProfilingTest.kt, GoogleDriveTransportTest.kt, SyncProfilingBaselineTest.kt. T8 신규 테스트 없음.
 - 커버리지 증감: 레포의 수치 추적 근거 없음. 추정하지 않는다.
 
 ## 남은 문제
 
-- 실행하지 못한 검증: 실제 기기·계정·TalkBack·P0 잔여 수용 및 기기 성능 측정. hosted JVM CI `41555758734`/emulator CI `41555758737`는 최종 결과 확인 대기. 독립 스펙 적합성은 `fa55227`에서 11/11 PASS(비공개 실행 보고 경로 `/workspace/tooling/pr9-conformance-report.md`)이나 테스트 이름 정정 뒤 최종 소스 재확인은 대기다. 별도 세션의 코드 품질·보안·성능 리뷰와 현 문서 head의 리뷰 코멘트/최종 판정도 대기다.
+- 실행하지 못한 검증: 실제 기기·계정·TalkBack·기기 성능 및 기존 P0 잔여 수용. 계정 없는 emulator CI [41555758737](https://github.com/nyeonu/health-app/actions/runs/41555758737)와 JVM CI [41557069392](https://github.com/nyeonu/health-app/actions/runs/41557069392)는 PASS. emulator의2ccd1d5와 현재 제품·instrumented·CI 파일이 동일함을 diff로 확인하고 artifact13194259182를 내려받아 일반48테스트/실패·오류·skip0, host복구8·실제설정4·정리8, killed-hold성공계상0, PNG60파일무결성을 검증했다. 스크린샷 전수 시각 검토를 새로 했다고 주장하지 않는다.
 - 미커버 분기: 실제 OAuth/Health Connect/Google 네트워크 지연과 기기 CPU·메모리·배터리, 인증 이력 커밋 진행 중 폐기 시 완결 실측은 합성 기준선에 없다. `active=1` 요약은 미완료로 남기며 완료로 치환하지 않는다.
-- 다시 판단할 조건: 소스 revision·harness·JDK/OS·표본/데이터량·네트워크·기기 조건 변경 시 새 기준선이 필요하다. T1/T5의 같은 산문 계약 누락 재발은 계획 복구 기록에서 추적하며 `검증 확장 필요`: `evals/assembler-check`에 재발 입력을 추가하고 추출 문제와 전달 문제를 좁히는 후속 작업을 별도로 수행한다. 최적화·목표·새 의존성/인증/목적지/영속 진단/외부 telemetry는 별도 승인 대상이다.
+- 다시 판단할 조건: 소스 revision·harness·JDK/OS·표본/데이터량·네트워크·기기 조건 변경 시 새 기준선이 필요하다. T1/T5의 같은 산문 계약 누락 재발은 계획 복구 기록에서 추적하며 로컬 `evals/assembler-check/pr9-prose`에 보정 전/후 입력과 T1/T5 계약 전달 회귀를 추가해 실행했다. 기존 조립기는 산문 계약을 전달하지 않으면서 해소 실패0을 반환했고 선언 주석으로 옮긴 후 두 계약이 전달됨을 단언했다. 원본 플러그인의 추출 정책을 수정하지는 않았다. 최적화·목표·새 의존성/인증/목적지/영속 진단/외부 telemetry는 별도 승인 대상이다.
 
 ## 다음 단계
 
-스펙 적합성 검증(spec-conformance-check)의 테스트 이름 정정 후 최종 소스 재확인을 진행한다. 별도 세션의 코드·보안·성능 리뷰와 hosted CI를 확인하고 현재 head·지적→수정→검증→verdict를 PR 코멘트에 남긴 뒤 오케스트레이터가 최종 상태를 확정한다. T8은 GitHub에 게시하지 않는다. 이후 [기기 절차](device-profiling.md)에 따라 비공개 실측을 수행하고 최적화 후보와 목표를 별도로 승인받는다.
+스펙 적합성 검증과 별도 코드·보안·성능 리뷰는 완료했다. 최종 문서 head의 독립 재검토와 병합 처분은 PR 코멘트에 남긴다. 이후 [기기 절차](device-profiling.md)에 따라 비공개 실측을 수행하고 최적화 후보와 목표를 별도로 승인받는다. 기존 P0/계정/TalkBack 미확인은 유지한다.
+
+독립 실행 상세: [스펙 적합성 보고](conformance-report.md). 최종 CI 산출물과 리뷰·수정·head 기록은 [PR #9](https://github.com/nyeonu/health-app/pull/9)의 코멘트가 감사 이력이다.

@@ -2,7 +2,7 @@
 plan_id: 2026-11-02-sync-profiling
 title: 수동 동기화 단계별 측정 실행 계획
 kind: single
-status: in_progress
+status: done
 author: Codex
 created: 2026-11-02
 target: nyeonu/health-app
@@ -477,3 +477,7 @@ T7 완료 후 시작.
 | 원인·근거 | 준비 조치 | 조치 사용/1 | 확인 명령·결과 | 확인 사용/1 | 다음 조치 |
 |---|---|---|---|---|---|
 | Gradle 시작 시 샌드박스에서 wildcard IP를 찾지 못함 | 기존 wrapper/JDK/SDK 유지, 로컬 socket 동작을 허용하는 실행 권한 선택 | 1/1 | `:core:compileKotlin :app:compileDebugKotlin` → BUILD SUCCESSFUL, 29s; 제품 코드 변경 전 확인 | 1/1 | 모든 Gradle 검증은 같은 실행 권한으로 진행 |
+
+## 완료 확인
+
+2026-11-03 T1–T8 완료. root 전체100 JVM·APK·lint PASS, 독립 적합성11/11 PASS 및 코드/보안/성능 APPROVE(f154263). 계정 없는 Android CI41555758737의 실제 산출물에서 일반48/실패·오류·skip0, host복구8·설정4·정리8 및 killed-hold성공계상0을 검증했다. T1/T5 브리프 산문 누락은 로컬 evals/assembler-check 재현 fixture에서 보정 전 누락/보정 후 전달을 모두 확인했다. 실제 Galaxy/계정/성능/P0 미확인은 완료로 바꾸지 않는다.
