@@ -32,12 +32,12 @@ tasks:
   - id: T5
     title: 실제 수동 인증 흐름 연결
     depends_on: [T4]
-    status: in_progress
+    status: done
     tier: standard
   - id: T6
     title: 실제 TLS 경계 회귀
     depends_on: [T5]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T7
     title: 반복 가능한 합성 기준선
@@ -163,7 +163,7 @@ internal class ManualSyncProfiling(clock: ProfilingClock = ProfilingClock(System
 - SyncCoordinator는 일반 예외를 FAILED로 바꾸고 CancellationException은 재전파한다. (확인: android/core/src/main/kotlin/com/ny/my/health/core/SyncCoordinator.kt)
 - uploader mutex는 전체 파일 작업을 직렬화하며 request가 HTTP/JSON, operation이 private-target 검증 실패를 감싼다. (확인: android/core/src/main/kotlin/com/ny/my/health/core/PrivateDriveUploader.kt)
 - GoogleDriveTransport는 취소 시 Call.cancel, 성공 body 읽기 후 재개한다. redirect/retry는 꺼져 있고 쓰기는 one-shot이다. (확인: android/app/src/main/java/com/ny/my/health/GoogleDriveTransport.kt)
-- debug 판정은 ApplicationInfo.FLAG_DEBUGGABLE을 사용한다. 실제 debug APK 플래그와 출력 억제는 T5에서 확인한다. (추정: 이 진단 출력 경로는 현재 없음)
+- debug 판정은 ApplicationInfo.FLAG_DEBUGGABLE을 사용한다. T5 실행자와 root가 aapt xmltree로 APK debuggable=true를 직접 확인했고 비활성/고장 출력 테스트가 통과했다. (확인: T5 지정 명령 및 root 전체 checkpoint BUILD SUCCESSFUL)
 - JVM/local TLS는 실제 Google/OAuth/Health Connect/SQLite 커밋 측정이 아니다. 기존 Android/SQLite CI는 유지한다. (확인: .github/workflows/android-debug-apk.yml, android/app/src/androidTest)
 
 ## 3. 추적성
@@ -361,7 +361,7 @@ T4 완료 후 시작.
   cd android
   python /workspace/tooling/run-health-command.py ./gradlew --offline --no-daemon :app:testDebugUnitTest --tests com.ny.my.health.ManualSyncProfilingTest :app:assembleDebug :app:lintDebug
   ```
-- **주의사항**: 추정: ApplicationInfo.FLAG_DEBUGGABLE을 APK에서 확인. 구현 전 읽기 전용 확인 후 위임 범위 안에서 구현·보고하며 기동/컴파일/검증 실패 시 blocked. 초기화·재개만으로 인증/업로드하지 않는다. 출력 고장은 업무 결과를 바꾸지 않는다.
+- **주의사항**: 확인: ApplicationInfo.FLAG_DEBUGGABLE을 APK에서 확인 완료. 구현 전 읽기 전용 확인 후 위임 범위 안에서 구현·보고하며 기동/컴파일/검증 실패 시 blocked. 초기화·재개만으로 인증/업로드하지 않는다. 출력 고장은 업무 결과를 바꾸지 않는다.
 
 체크포인트: T5 후 core+app JVM 전체, debug build/lint. 계측 유/무 결과와 비출력·보관 상한 확인.
 
