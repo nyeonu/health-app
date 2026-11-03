@@ -50,6 +50,7 @@ internal data class SyncUiState(
     val history: HistorySessionState? = null,
     val transientRemoteStatus: SyncStatus? = null,
     val transientConfirmedFiles: Int? = null,
+    val phoneProfiling: PhoneProfilingUiState = PhoneProfilingUiState(),
 ) {
     val busy: Boolean get() = refreshing || pendingConsent || syncing || history?.operation?.let { it != HistoryOperation.IDLE } == true
 }
@@ -63,13 +64,16 @@ internal fun SyncUiState.invalidateCurrentAttempt(): SyncUiState = copy(
     transientConfirmedFiles = null,
     uploadedFiles = 0,
     coverage = emptySet(),
+    phoneProfiling = PhoneProfilingUiState(enabled = phoneProfiling.enabled),
     message = "로컬 동의와 현재 시도 표시를 지웠습니다. 저장된 기록을 확인해 주세요.",
 )
 
 class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private val reader = HealthConnectReader(application)
     private val clock = Clock.systemUTC()
-    private val mutableState = MutableStateFlow(SyncUiState())
+    private val debugEnabled = application.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+    private val phoneProfilingSession = PhoneProfilingSession(debugEnabled)
+    private val mutableState = MutableStateFlow(SyncUiState(phoneProfiling = phoneProfilingSession.state))
     internal val state = mutableState.asStateFlow()
     private var foreground = false
     private var syncJob: Job? = null
@@ -81,6 +85,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         private set
     private val resolutionTickets = AuthorizationResolutionTickets()
     private val historySession = HistorySession(SqliteHistoryStore(application), viewModelScope) {
+        phoneProfilingSession.clear()
         finishProfiling(manualProfiling, ProfileOutcome.CANCELLED)
         accessToken = null
         authorizationTicket = null
@@ -153,9 +158,11 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     internal fun optIn(value: Boolean) {
         if (mutableState.value.busy) return
+        phoneProfilingSession.clear()
         finishProfiling(manualProfiling, ProfileOutcome.CANCELLED)
         accessToken = null
-        mutableState.value = mutableState.value.copy(uploadOptIn = value, readyToUpload = false)
+        mutableState.value = mutableState.value.copy(uploadOptIn = value, readyToUpload = false,
+            phoneProfiling = phoneProfilingSession.state)
         if (authorizationTicket != null) viewModelScope.launch { historySession.reload() }
     }
 
@@ -186,7 +193,9 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         val date = DayWindow.yesterday(clock)
         finishProfiling(manualProfiling, ProfileOutcome.CANCELLED)
         val profiling = ManualSyncProfiling().also { manualProfiling = it }
+        phoneProfilingSession.begin(profiling)
         mutableState.value = state.copy(pendingConsent = true, readyToUpload = false,
+            phoneProfiling = phoneProfilingSession.state,
             uploadedFiles = 0, coverage = emptySet(), date = date,
             transientRemoteStatus = null, transientConfirmedFiles = null,
             message = "Google Drive 권한 확인 중…")
@@ -276,6 +285,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         if (historySession.state.value.read.history?.attempt?.date != selectedDate) {
             finishProfiling(manualProfiling, ProfileOutcome.CANCELLED)
             mutableState.value = state.copy(readyToUpload = false,
+                phoneProfiling = phoneProfilingSession.state,
                 message = "날짜가 바뀌었습니다. Google 권한을 새로 확인하고 업로드 계속을 눌러 주세요.")
             viewModelScope.launch { historySession.reload() }
             return
@@ -365,13 +375,22 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     internal fun forget() { requestDeleteHistory() }
 
+    internal fun copyPhoneProfiling(write: (String) -> Unit) {
+        phoneProfilingSession.copy(write)
+        mutableState.value = mutableState.value.copy(phoneProfiling = phoneProfilingSession.state)
+    }
+
     private fun finishProfiling(profiling: ManualSyncProfiling?, outcome: ProfileOutcome) {
         profiling ?: return
         profiling.finish(outcome)
-        profiling.publish(getApplication<Application>().applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+        profiling.publish(debugEnabled) {
             Log.d("SyncProfiling", it)
         }
-        if (manualProfiling === profiling) manualProfiling = null
+        if (manualProfiling === profiling) {
+            phoneProfilingSession.complete(profiling)
+            mutableState.value = mutableState.value.copy(phoneProfiling = phoneProfilingSession.state)
+            manualProfiling = null
+        }
     }
 
     override fun onCleared() {

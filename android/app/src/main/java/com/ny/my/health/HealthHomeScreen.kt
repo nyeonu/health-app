@@ -38,6 +38,7 @@ internal data class HistoryUiActions(
     val continueUpload: () -> Unit, val requestDelete: () -> Unit,
     val cancelDelete: () -> Unit, val confirmDelete: () -> Unit,
     val retryDelete: () -> Unit, val keepExisting: () -> Unit, val reload: () -> Unit,
+    val copyPhoneProfiling: () -> Unit,
 )
 
 @Composable
@@ -146,6 +147,7 @@ internal fun HealthHomeScreen(state: SyncUiState, actions: HistoryUiActions) {
         Button(enabled = available && state.uploadOptIn && !state.readyToUpload, onClick = actions.authorize) { Text("Google 권한 확인") }
         if (state.readyToUpload) Button(enabled = available, onClick = actions.continueUpload) { Text("업로드 계속") }
         Text("화면을 벗어나면 중단됩니다. 일부 원격 파일은 남을 수 있으며, 다시 실행하면 같은 날짜 파일을 갱신합니다.")
+        PhoneProfilingSection(state.phoneProfiling, actions.copyPhoneProfiling)
         TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "상세·설정 접기" else "상세·설정 펼치기") }
         if (expanded) {
             Text("인증 요청 시각: ${time(attempt?.authorizationRequestedAt)}")
