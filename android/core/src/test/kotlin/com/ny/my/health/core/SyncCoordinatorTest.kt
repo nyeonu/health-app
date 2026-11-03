@@ -137,7 +137,7 @@ class SyncCoordinatorTest {
     }
 
     @Test
-    fun `Profiling preserves sync outcomes partial confirmations cancellation and history commit failures`() = runBlocking {
+    fun `Profiling preserves successful sync outcomes call order and separate stage timings`() = runBlocking {
         val populated = snapshot().copy(steps = 42)
         val observed = mutableListOf<Pair<SyncResult, List<String>>>()
         for (enabled in listOf(false, true)) {
