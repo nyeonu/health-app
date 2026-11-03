@@ -3,6 +3,7 @@ package com.ny.my.health
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ny.my.health.core.ProfileOutcome
 import com.ny.my.health.core.ProfileStage
@@ -37,7 +38,18 @@ class PhoneProfilingClipboardInstrumentedTest {
         val expected = requireNotNull(session.state.report).safeText
         val expectedLabel = "수동 동기화 성능 진단"
 
+        // Compose 유휴 상태와 별개로 OS 클립보드 접근에 필요한 전경 포커스를 기다린다.
+        compose.waitUntil(10_000) {
+            compose.runOnUiThread {
+                compose.activity.lifecycle.currentState == Lifecycle.State.RESUMED &&
+                    compose.activity.hasWindowFocus()
+            }
+        }
         compose.runOnIdle {
+            assertTrue("클립보드 작업 시 Activity가 재개 상태여야 합니다",
+                compose.activity.lifecycle.currentState == Lifecycle.State.RESUMED)
+            assertTrue("클립보드 작업 시 창 입력 포커스가 있어야 합니다",
+                compose.activity.hasWindowFocus())
             val clipboard = compose.activity.getSystemService(ClipboardManager::class.java)
             // 기존 클립보드는 읽거나 복원하지 않고 소유한 합성 자료로 시작한다.
             clipboard.setPrimaryClip(ClipData.newPlainText(markerLabel, marker))

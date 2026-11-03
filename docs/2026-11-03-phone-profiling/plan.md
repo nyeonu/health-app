@@ -17,7 +17,7 @@ tasks:
   - id: T2
     title: 실제 클립보드 쓰기 경계
     depends_on: [T1]
-    status: done
+    status: in_progress
     tier: standard
   - id: T3
     title: 선택적 진단 화면
@@ -312,6 +312,7 @@ T4 완료 후 시작.
 | T2 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립·앱/테스트 APK compile PASS; API35 CI41672143507에서 해당 OS 테스트 포함49개·host20개 실제 통과 | phone_t2 최초 구현·root 원본 산출물 대조 완료 |
 | T3 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립·앱/테스트 APK compile PASS; API35 CI41675121121 head adf71a7에서 신규5개 포함54개·host20개 실제 통과·실패/오류/skip0 | phone_t3 최초 구현·root 원본 산출물 대조 완료 |
 | T4 | 1/2 | 실행 전 D8 --min-api28 실험에서 공백 method name 거부 확인: DEX040 전 SimpleName 공백 불가 | Android 테스트명만 공백 없는 camelCase로 보정하고 추적성 반영 | minSdk28·실제 OS 검증·기대 동작과 파일 범위 유지; JVM 이름 유지 | plan의 해당 Android 테스트명만 보정 | 브리프 재조립 및 컴파일/CI 예정 | 해당 실행자에 최초 위임 전 전달 |
+| T2 | 2/2 | 통합 CI41678564632 head fc47a01:55개 중 clipboard 고정 label 단언1개 실패·오류/skip0. 같은 writer/test는 T2·T3 CI에서 통과했고 T4는 이를 수정하지 않음. 원본 합성 log에서 RESUMED와 첫 표시 사이 지연 확인; runOnIdle만으로 window focus를 보장하지 않음 | 테스트가 요구하는 전경/입력 focus를 쓰기 전에 명시적으로 기다리고 실제 쓰기 직전에도 단언한다. focus 미확인을 원인 가설로 한정하며 production 성공으로 추정하지 않는다 | 같은 label·동일24행·한 항목·명시적1회 쓰기·소유 fixture만 정리 기준 유지. 단언 완화/재쓰기 반복/권한·OS 설정 변경 없음 | T2 clipboard instrumentation 파일만 보정; 검증된 T1/T3 및 T4 배선 보존 | 앱/테스트 APK compile 후 전체 API35 CI 재검증 예정; 실제 결과 전 T2/T4 완료 금지 | phone_t2 부분 복구 위임; 잔여0/2 |
 
 ## 환경 준비 기록
 
