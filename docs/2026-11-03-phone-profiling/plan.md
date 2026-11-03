@@ -17,12 +17,12 @@ tasks:
   - id: T2
     title: 실제 클립보드 쓰기 경계
     depends_on: [T1]
-    status: in_progress
+    status: done
     tier: standard
   - id: T3
     title: 선택적 진단 화면
     depends_on: [T2]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T4
     title: 수동 동기화 흐름 연결
@@ -317,4 +317,4 @@ T4 완료 후 시작.
 
 | 원인·근거 | 준비 조치 | 조치 사용/1 | 확인 명령·결과 | 확인 사용/1 | 다음 조치 |
 |---|---|---|---|---|---|
-| 로컬 에뮬레이터/KVM 없음; 실제 OS 검증은 로컬에서 실행 불가 | 승인된 기존 API35 CI로 T2 실제 검증; source/테스트 APK 컴파일로 대체하지 않음 | 1/1 | 기존 source preflight43s PASS 및 T2 APK/테스트 APK compile PASS; 실제 CI 검증 예정 | 0/1 | T2 실제 결과 확인 후 종속 작업 진행 |
+| 로컬 에뮬레이터/KVM 없음; 실제 OS 검증은 로컬에서 실행 불가 | 승인된 기존 API35 CI로 T2 실제 검증; source/테스트 APK 컴파일로 대체하지 않음 | 1/1 | API35 CI41672143507 head bc044e8 실제 Android49개·host20개 통과, 실패/오류/skip0; 원본 XML·60PNG·artifact SHA256 확인 | 1/1 | T2 완료, T3 진행 |
