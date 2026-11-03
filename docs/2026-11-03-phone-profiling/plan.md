@@ -154,14 +154,14 @@ internal fun copyPhoneProfiling(write: (String) -> Unit)
 | 스펙 기준 | 테스트 이름 (출처/층) | 충족 위치 |
 |---|---|---|
 | 디버그 앱에서 수동 시도 뒤 PC·ADB 없이 진단 보기를 열 수 있고, 진단이 없거나 아직 수집 중이면 과거 성공 또는 측정된 0으로 표시하지 않는다. | 진단 없음과 수집 중에는 복사와 과거 측정 표시가 없다; missingAndCollectingDiagnosticsNeverShowPreviousMeasurementsOrEnableCopy; opensDiagnosticsExplicitlyAndCallsCopyOnlyOnClick (①④/유닛·Compose) | T1·T3·T4 |
-| 표시 시간은 인증/계속 대기와 실행을 분리하고 중첩 구간을 합산하지 않으며, 미관측·진행 중·종결된 실제 0과 표시 단위 때문에 작게 보이는 비영(非零) 시간을 구별한다. | 미관측 미완료 실제 영과 작은 양수 시간은 서로 다르게 표시한다; 단계별 표시와 복사 요약에는 고정 안전 정보만 있다 (①②/유닛) | T1 |
-| 사용자의 명시적 복사 동작만 기존 고정 24행 safe summary를 클립보드에 쓰고, 표시/복사 자체는 권한 요청·건강 읽기·업로드·자동 재시도·외부 전송을 시작하지 않는다. | opensDiagnosticsExplicitlyAndCallsCopyOnlyOnClick; explicitForegroundWritePlacesTheSameSafeSummaryOnSystemClipboard; openingEmptyDiagnosticsAndRecreationNeverStartConsentOrUpload (①④/Compose·OS 통합) | T2·T3·T4 |
-| 복사 성공/실패는 별도 안내하고 실패해도 SyncResult·부분 확인 수·이력·원래 취소 전파와 이후 수동 동기화 가능 여부를 바꾸지 않는다. | 복사 실패는 안전한 안내만 남기고 명시적 재시도만 허용한다; 복사 중 무효화 뒤 늦은 결과는 새 상태를 덮지 않는다; 기존100개 회귀 (①③④/유닛·기존 통합) | T1·T4·전체 검증1 |
+| 표시 시간은 인증/계속 대기와 실행을 분리하고 중첩 구간을 합산하지 않으며, 미관측·진행 중·종결된 실제 0과 표시 단위 때문에 작게 보이는 비영(非零) 시간을 구별한다. | 미관측 미완료 실제 영과 작은 양수 시간은 서로 다르게 표시한다; 단계별 표시와 복사 요약에는 고정 안전 정보만 있다; 기존 Authorization and continuation waits never contribute to execution elapsed (①②/유닛) | T1 |
+| 사용자의 명시적 복사 동작만 기존 고정 24행 safe summary를 클립보드에 쓰고, 표시/복사 자체는 권한 요청·건강 읽기·업로드·자동 재시도·외부 전송을 시작하지 않는다. | 단계별 표시와 복사 요약에는 고정 안전 정보만 있다; opensDiagnosticsExplicitlyAndCallsCopyOnlyOnClick; explicitForegroundWritePlacesTheSameSafeSummaryOnSystemClipboard; openingEmptyDiagnosticsAndRecreationNeverStartConsentOrUpload (①④/유닛·Compose·OS 통합) | T2·T3·T4 |
+| 복사 성공/실패는 별도 안내하고 실패해도 SyncResult·부분 확인 수·이력·원래 취소 전파와 이후 수동 동기화 가능 여부를 바꾸지 않는다. | 복사 실패는 안전한 안내만 남기고 명시적 재시도만 허용한다; 복사 중 무효화 뒤 늦은 결과는 새 상태를 덮지 않는다; diagnosticsExplainSafeSharingAndSeparateClipboardLifetime; 기존100개 회귀 (①③④/유닛·Compose·기존 통합) | T1·T4·전체 검증1 |
 | 진단 표시와 복사에는 고정 단계/작업 라벨과 안전한 통계만 사용하고, 제외 범위의 건강 값·날짜/시각·개인 식별자·자격 정보·공급자 원문을 입력하거나 포함하지 않는다. | 단계별 표시와 복사 요약에는 고정 안전 정보만 있다; 기존 Safe profiling summary contains only fixed enums and numeric statistics (①②③/유닛) | T1·전체 검증1 |
 | 진단은 최근 시도 1건의 제한된 불변 요약으로만 메모리에 보관하고 디스크·저장된 상태·복원 번들·이력 DB·공유 파일에 기록하지 않는다. | 최근 한 건의 불변 요약만 유지하고 새 세션은 비어 있다; restorationDoesNotRestoreDiagnosticPayload (①②④/유닛·Compose); 새 영속 경로 없음은 정적 확인 | T1·T3·전체 검증3 |
 | 유효한 새 시도 또는 로컬 상태 무효화 시 이전 요약을 지우고, 늦은 이전 콜백이 이를 다시 표시하거나 새 시도의 진단을 덮지 않는다. | 새 시도와 무효화는 이전 요약과 늦은 완료를 폐기한다; 복사 중 무효화 뒤 늦은 결과는 새 상태를 덮지 않는다 (①④/유닛) | T1·T4 |
 | 화면 재생성 시 같은 화면 모델이 유지되면 진단을 유지할 수 있지만 새 화면 모델·새 프로세스에서는 진단 없음으로 시작하며, release 앱에는 진단 보기·복사 경로를 노출하지 않는다. | 최근 한 건의 불변 요약만 유지하고 새 세션은 비어 있다; 비디버그에서는 진단과 복사 경로가 없다; nonDebugDiagnosticsExposeNoViewOrCopyControls; restorationDoesNotRestoreDiagnosticPayload; openingEmptyDiagnosticsAndRecreationNeverStartConsentOrUpload (①④/유닛·Compose·Activity) | T1·T3·T4 |
-| 진단 경로를 추가해도 기존 동의·권한·명시적 계속·private Drive·동일 파일 갱신·순차 요청·취소·이력 커밋 및 삭제 계약을 유지한다. | 기존 coordinator/uploader/transport/reader/history 회귀 및 실제 Android/복구 CI; openingEmptyDiagnosticsAndRecreationNeverStartConsentOrUpload (①③④⑤/유닛·통합) | T4·전체 검증1·2 |
+| 진단 경로를 추가해도 기존 동의·권한·명시적 계속·private Drive·동일 파일 갱신·순차 요청·취소·이력 커밋 및 삭제 계약을 유지한다. | 기존 SyncCoordinatorTest: Partial upload failure reports only confirmed files; Cancellation propagates without reporting success; Profiling preserves successful sync outcomes call order and separate stage timings; PrivateDriveUploaderTest: Existing private date file is updated without creating duplicates; Ambiguous or shared targets are rejected before upload; 기존 coordinator/uploader/transport/reader/history 회귀 및 실제 Android/복구 CI; openingEmptyDiagnosticsAndRecreationNeverStartConsentOrUpload (①③④⑤/유닛·통합) | T4·전체 검증1·2 |
 | 합성 JVM/Compose 검증으로 정상·실패·취소·빈 진단·새 시도·무효화·지연 콜백·복사 실패·비디버그 조건을 확인하고, 실제 기기에서 수행하지 않은 수집이나 클립보드 동작은 미확인으로 남긴다. | 종결 정상 실패 취소와 미완료를 업무 결과와 혼동하지 않는다; 위 상태/복사/UI 테스트 전체 (①②③④/유닛·Compose); 한계 문서 대조 | T1·T2·T3·T5 |
 | 사용자에게 공유 전 안전한 요약만 확인하도록 안내하고 클립보드/프로세스 수명 한계를 명시하며, 원시 로그·건강 화면 첨부나 진단의 자동 외부 전송을 요구하지 않는다. | diagnosticsExplainSafeSharingAndSeparateClipboardLifetime (①/Compose); 실제 절차·자동 전송 부재는 문서/정적 확인 | T3·T5·전체 검증3 |
 
@@ -324,3 +324,5 @@ T4 완료 후 시작.
 ## 구현 검증 체크포인트
 
 T1–T5는 완료했다. 문서 완료 뒤 root 전체 Gradle 검증37초 PASS, core41/app68=109개 실패/오류/skip0, debug 앱/테스트 APK·lint PASS다. Android 및 workflow는 실제 OS 검증 source4a061cb와 byte 차이가 없고, CI41681123691의55개·host20개 통과를 원본으로 확인했다. 전체 검증3의 독립 스펙 적합성·코드/보안/성능 검토와 PR 처분은 아직 남아 plan은 in_progress로 유지한다. 실제 Galaxy·계정·TalkBack·성능 수집 및 기존 P0 미확인은 이 체크포인트로 닫지 않는다.
+
+독립 스펙 적합성 검증: e8191ef에서11/11 PASS, 자체 JVM109개·debug/release 빌드 통과 및 원본 Android55/host20 대조 완료. [PR 검증 기록](https://github.com/nyeonu/health-app/pull/12#issuecomment-6611111570). root는 기준 문장11개·신규16개 테스트명의 source/XML·skip0을 대조했고, 독립 검증에서 사용한 기존 테스트 이름도 추적성에 명시했다. 코드/보안/성능 검토는 다음 단계다.
