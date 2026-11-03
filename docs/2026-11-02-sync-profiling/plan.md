@@ -37,12 +37,12 @@ tasks:
   - id: T6
     title: 실제 TLS 경계 회귀
     depends_on: [T5]
-    status: in_progress
+    status: done
     tier: standard
   - id: T7
     title: 반복 가능한 합성 기준선
     depends_on: [T6]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T8
     title: 증거와 기기 절차 정리
