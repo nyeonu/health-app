@@ -2,7 +2,7 @@
 plan_id: 2026-11-03-phone-profiling
 title: PC 없는 진단 보기·복사 실행 계획
 kind: single
-status: in_progress
+status: done
 author: Codex
 created: 2026-11-03
 target: nyeonu/health-app
@@ -323,6 +323,12 @@ T4 완료 후 시작.
 
 ## 구현 검증 체크포인트
 
-T1–T5는 완료했다. 문서 완료 뒤 root 전체 Gradle 검증37초 PASS, core41/app68=109개 실패/오류/skip0, debug 앱/테스트 APK·lint PASS다. Android 및 workflow는 실제 OS 검증 source4a061cb와 byte 차이가 없고, CI41681123691의55개·host20개 통과를 원본으로 확인했다. 전체 검증3의 독립 스펙 적합성·코드/보안/성능 검토와 PR 처분은 아직 남아 plan은 in_progress로 유지한다. 실제 Galaxy·계정·TalkBack·성능 수집 및 기존 P0 미확인은 이 체크포인트로 닫지 않는다.
+T1–T5는 완료했다. 문서 완료 뒤 root 전체 Gradle 검증37초 PASS, core41/app68=109개 실패/오류/skip0, debug 앱/테스트 APK·lint PASS다. Android 및 workflow는 실제 OS 검증 source4a061cb와 byte 차이가 없고, CI41681123691의55개·host20개 통과를 원본으로 확인했다. 이 체크포인트 당시 전체 검증3의 독립 스펙 적합성·코드/보안/성능 검토가 남아 plan을 in_progress로 유지했다. 실제 Galaxy·계정·TalkBack·성능 수집 및 기존 P0 미확인은 이 체크포인트로 닫지 않는다.
 
-독립 스펙 적합성 검증: e8191ef에서11/11 PASS, 자체 JVM109개·debug/release 빌드 통과 및 원본 Android55/host20 대조 완료. [PR 검증 기록](https://github.com/nyeonu/health-app/pull/12#issuecomment-6611111570). root는 기준 문장11개·신규16개 테스트명의 source/XML·skip0을 대조했고, 독립 검증에서 사용한 기존 테스트 이름도 추적성에 명시했다. 코드/보안/성능 검토는 다음 단계다.
+독립 스펙 적합성 검증: e8191ef에서11/11 PASS, 자체 JVM109개·debug/release 빌드 통과 및 원본 Android55/host20 대조 완료. [PR 검증 기록](https://github.com/nyeonu/health-app/pull/12#issuecomment-6611111570). root는 기준 문장11개·신규16개 테스트명의 source/XML·skip0을 대조했고, 독립 검증에서 사용한 기존 테스트 이름도 추적성에 명시했다. 이후 코드/보안/성능 검토를 진행했다.
+
+## 최종 검증 상태
+
+독립 스펙 적합성11/11 PASS 후, f11f988에서 별도 fresh-context 코드·보안·성능 리뷰 모두 APPROVE, Critical/Important/Suggestion 지적0이다. 코드 리뷰어는 JVM109개를 강제 재실행해 실패/오류/skip0 및 debug/release·테스트 APK·lint 통과를 확인했고, 보안 리뷰어는 현재 소스/변경 이력 gitleaks 탐지0 및 동일 Maven121개 OSV 일치0/조회오류0을 확인했다. 성능 리뷰는 한정된 작업량과 추가 동기화 IO 부재를 확인하며 실제 UI/OS/기기 오버헤드 미측정을 명시했다. 작업5/5와 전체 검증을 완료해 status는 done이다.
+
+이 완료 상태는 소프트웨어 구현·검증 기록이며 실제 Galaxy·계정·TalkBack·성능 측정/P0 gate 완료가 아니다. 최종 문서 상태만 반영한 head의 재검토와 실제 병합 처분은 [PR #12 코멘트](https://github.com/nyeonu/health-app/pull/12)에 기록한다. 새 권한·의존성·영속 진단·자동 전송·최적화·상단 가림 수정은 추가하지 않았다.
