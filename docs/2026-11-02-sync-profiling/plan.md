@@ -27,12 +27,12 @@ tasks:
   - id: T4
     title: 로컬 이력 커밋 계측
     depends_on: [T3]
-    status: in_progress
+    status: done
     tier: standard
   - id: T5
     title: 실제 수동 인증 흐름 연결
     depends_on: [T4]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T6
     title: 실제 TLS 경계 회귀
@@ -135,6 +135,9 @@ class SyncProfiling(clock: ProfilingClock = ProfilingClock(System::nanoTime)) {
 
 ```kotlin
 // ManualSyncProfiling — app의 신규 ManualSyncProfiling.kt, Android IO와 분리
+// 임의 문자열/Throwable/SyncResult.errorCode/날짜/파일수/건강 기록 건수를 받지 않는다.
+// 고정 enum과 정수만 고정 순서로 최대8192자, 종료 시1회 출력.
+// publish(false)는 출력0, sink 고장은 업무 결과를 바꾸지 않는다.
 internal class ManualSyncProfiling(clock: ProfilingClock = ProfilingClock(System::nanoTime)) {
     val collector: SyncProfiling
     fun authorizationStarted()
@@ -172,7 +175,7 @@ internal class ManualSyncProfiling(clock: ProfilingClock = ProfilingClock(System
 | 인증·사용자 대기와 실제 동기화 실행이 구분되어 대기 시간을 upload-only latency로 보고하지 않는다. | Authorization and continuation waits never contribute to execution elapsed (①④/유닛) | T5 |
 | 실행된 읽기·변환·Drive 작업·로컬 이력 저장의 경과 시간과 요청 작업별 횟수를 구분하고, 실행하지 않은 단계는 측정된0과 구분한다. | Unstarted stages are absent while completed zero duration stages remain present; Drive request counts match warm cold and paginated calls (①②/유닛) | T1·T3 |
 | 경과 시간은 벽시계 변경에 영향을 받지 않는 단조 시계로 측정하며 오류·취소 시 완료한 구간과 미완료 구간을 구분한다. | Monotonic stage timing survives wall clock changes and preserves failed cancelled and active states (①②③/유닛) | T1·T2 |
-| 진단은 기존 SyncResult, 부분 업로드 수, 취소 전파, 권한/비공개 대상 판정 및 이력의 커밋·실패 보장을 바꾸거나 새 실행·재시도를 만들지 않는다. | Profiling preserves sync outcomes partial confirmations cancellation and history commit failures (①③④/유닛 + 기존 SQLite 통합) | T2·T4·T6, 전체 검증2 |
+| 진단은 기존 SyncResult, 부분 업로드 수, 취소 전파, 권한/비공개 대상 판정 및 이력의 커밋·실패 보장을 바꾸거나 새 실행·재시도를 만들지 않는다. | SyncCoordinatorTest · Profiling preserves sync outcomes partial confirmations cancellation and history commit failures; HistorySessionTest · 계측은 동기화 결과와 부분 확인을 보존하고 시작 및 종결 커밋을 측정한다; 중단 이력 저장이 실패해도 원래 취소와 이전 성공을 보존한다 (①③④/유닛 + 기존 SQLite 통합) | T2·T4·T6, 전체 검증2 |
 | 진단에는 건강 수치·건강 기록 건수·보고 날짜·CSV·계정/파일/레코드 식별자·토큰·URL/query·공급자 오류 원문을 포함하지 않는다. | Safe profiling summary contains only fixed enums and numeric statistics (①②③/유닛) | T1·T5 |
 | 공개 산출물은 고정 합성 fixture만 사용하고 실제 기기 진단은 명시적으로 공유한 안전한 결과 외에는 비공개로 유지한다. | — (문서/fixture 일치와 비공개 경계는 코드·문서 리뷰) | T7·T8, 전체 검증3 |
 | 계측 상태는 제한된 작업 종류의 요약으로 관리하며 페이지·기록마다 무제한 로그나 새 영속 사용자 이력을 만들지 않는다. | Profiling storage remains bounded after repeated requests and terminal snapshots (①②/유닛) | T1·T5 |
@@ -312,6 +315,7 @@ T3 완료 후 시작.
   3. 취소 시 기존 중단 커밋 관찰 뒤 원래 취소 재전파.
   ```
 - **작성할 테스트**: 신규: Profiling preserves sync outcomes partial confirmations cancellation and history commit failures의 저장 부분. 기존 HistorySessionTest의 시작/종결 저장 실패, 취소, remoteConfirmed 순서 회귀를 계측 유/무로 재사용.
+- **보완 검증** (③④/유닛): `중단 이력 저장이 실패해도 원래 취소와 이전 성공을 보존한다` — effect 취소와 interruption 저장 실패를 함께 주입하고 원래 CancellationException 객체 identity, TERMINAL_HISTORY 실패, START_HISTORY 완료, 기존 성공 보존, 읽기/업로드 재실행0을 검증한다.
 - **완료 기준**: 선택 인자 기본값으로 기존 호출 호환. 시작/종결/중단 시간 획득, 저장 실패를 성공으로 바꾸지 않는다.
 - **검증 방법**:
 
@@ -461,6 +465,8 @@ T7 완료 후 시작.
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
 | T1 | 1/2 | 조립된 브리프가2절 산문 불변식(중복 시작/종료·진행 중 경과 의미)을 전달하지 못해 실행자가 확인 요청 | 원래 중복 집계 금지 규칙을 선언 주석으로 옮겨 전달하고 종료 구간 합/active 별도 의미를 명시 | 기존 고정 map·단조 시계·실패 격리 유지; 새 동작/의존성 없음 | plan2절 표기 및 T1 두 파일; 기존 코드 보존 | 브리프 재조립 후 해소 실패0; 실행자4개 테스트 통과, root 동일 명령 BUILD SUCCESSFUL·XML4/0실패/0오류/0skip | profiling_t1 부분 지시 후 검증 |
+| T4 | 1/2 | 실행자30개 테스트 PASS 후 취소+중단 저장 실패 조합 및 취소 객체 단언 누락 보고 | 승인된 취소 전파·이력 실패 보장 조합을 기존 테스트 기반으로 검증 | 기대값/스펙/업무 흐름 유지; T4 보완 테스트와 추적성 추가 | HistorySessionTest만 보완; 구현과 이전 증거 보존 | 실행자31개·실패/오류/skip0; root 동일 명령 BUILD SUCCESSFUL 및 XML 확인 | profiling_t4 부분 보완 |
+| T5 | 1/2 | 실행 전 브리프 점검에서 ManualSyncProfiling 산문 출력 계약이 Shared design에 빠짐(T1과 같은 유형 재발) | 기존8192자/고정 출력/고장 격리 규칙을 선언 주석으로 옮겨 재조립 | 새 규칙 없이 원래2절 계약 전달; 스펙/파일 범위 유지 | plan2절 표기만 보정 | 재조립 성공·Shared design52줄에 계약 포함 확인 | profiling_t5 최초 실행 전에 전달; 조립기 추출/전달 검증 확장 필요 |
 
 ## 환경 준비 기록
 

@@ -271,28 +271,71 @@ internal class HistoryEffects(private val session: HistorySession) {
         ticket: Long, date: LocalDate, at: Instant, now: () -> Instant,
         foreground: () -> Boolean,
         remoteConfirmed: (HistoryExecutionResult) -> Unit,
+        profiling: SyncProfiling? = null,
         effect: suspend (LocalDate) -> HistoryExecutionResult,
     ): HistoryExecutionResult? {
         // 시작 커밋과 종결 커밋은 전경 작업의 취소와 독립적으로 끝낸다.
         var started = false
+        var terminalFinished = false
         try {
-            withContext(NonCancellable) { started = session.beginExecution(ticket, date, at) }
+            withContext(NonCancellable) {
+                started = observeCommit(profiling, ProfileStage.START_HISTORY) {
+                    session.beginExecution(ticket, date, at)
+                }
+            }
             if (!started) return null
             currentCoroutineContext().ensureActive()
             if (!foreground()) throw CancellationException("전경 실행 중단")
             val outcome = effect(date)
             remoteConfirmed(outcome)
             withContext(NonCancellable) {
-                session.finishExecution(ticket, outcome.result, outcome.coverage, now())
+                observeCommit(profiling, ProfileStage.TERMINAL_HISTORY) {
+                    session.finishExecution(ticket, outcome.result, outcome.coverage, now())
+                    session.state.value.error == null
+                }
+                terminalFinished = true
             }
             return outcome
         } catch (cancelled: CancellationException) {
-            if (started) withContext(NonCancellable) { session.interruptExecution(ticket, now()) }
-            throw cancelled
+            try {
+                if (started) withContext(NonCancellable) {
+                    if (terminalFinished) {
+                        session.interruptExecution(ticket, now())
+                    } else {
+                        observeCommit(profiling, ProfileStage.TERMINAL_HISTORY) {
+                            session.interruptExecution(ticket, now())
+                            session.state.value.error == null
+                        }
+                    }
+                }
+            } finally {
+                throw cancelled
+            }
         } catch (_: Exception) {
             val outcome = HistoryExecutionResult(SyncResult(SyncStatus.FAILED, errorCode = "SYNC_FAILED"), emptySet())
-            if (started) withContext(NonCancellable) { session.finishExecution(ticket, outcome.result, outcome.coverage, now()) }
+            if (started) withContext(NonCancellable) {
+                observeCommit(profiling, ProfileStage.TERMINAL_HISTORY) {
+                    session.finishExecution(ticket, outcome.result, outcome.coverage, now())
+                    session.state.value.error == null
+                }
+            }
             return outcome
+        }
+    }
+
+    // 저장소는 예외를 상태로 바꾸므로 정상 반환과 커밋 성공을 따로 관찰한다.
+    private suspend fun observeCommit(
+        profiling: SyncProfiling?, stage: ProfileStage, commit: suspend () -> Boolean,
+    ): Boolean {
+        profiling?.start(stage)
+        var outcome = ProfileOutcome.FAILED
+        try {
+            return commit().also { if (it) outcome = ProfileOutcome.COMPLETED }
+        } catch (cancelled: CancellationException) {
+            outcome = ProfileOutcome.CANCELLED
+            throw cancelled
+        } finally {
+            profiling?.finish(stage, outcome)
         }
     }
 }
