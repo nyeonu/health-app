@@ -2,7 +2,7 @@
 plan_id: 2026-11-02-sync-profiling
 title: 수동 동기화 단계별 측정 실행 계획
 kind: single
-status: draft
+status: in_progress
 author: Codex
 created: 2026-11-02
 target: nyeonu/health-app
@@ -12,7 +12,7 @@ tasks:
   - id: T1
     title: 제한된 계측 기반
     depends_on: []
-    status: pending
+    status: in_progress
     tier: standard
   - id: T2
     title: 코어 실행 구간 계측
@@ -52,6 +52,8 @@ tasks:
 ---
 
 # 수동 동기화 단계별 측정 실행 계획
+
+승인 기록: 2026-11-03 소유자가 “좋아 구현 시작해”로 계획 실행을 승인했다.
 
 ## 1. 선택한 방식과 이유
 
@@ -453,6 +455,7 @@ T7 완료 후 시작.
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| Gradle 시작 시 샌드박스에서 wildcard IP를 찾지 못함 | 기존 wrapper/JDK/SDK 유지, 로컬 socket 동작을 허용하는 실행 권한 선택 | 1/1 | `:core:compileKotlin :app:compileDebugKotlin` → BUILD SUCCESSFUL, 29s; 제품 코드 변경 전 확인 | 1/1 | 모든 Gradle 검증은 같은 실행 권한으로 진행 |
 
 ## 환경 준비 기록
 
