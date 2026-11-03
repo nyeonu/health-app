@@ -12,12 +12,12 @@ tasks:
   - id: T1
     title: 제한된 계측 기반
     depends_on: []
-    status: in_progress
+    status: done
     tier: standard
   - id: T2
     title: 코어 실행 구간 계측
     depends_on: [T1]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T3
     title: Drive 작업별 요청 계측
@@ -91,6 +91,11 @@ tasks:
 
 ```kotlin
 // SyncProfiling — core의 신규 SyncProfiling.kt
+// 고정 enum map만 보관. 중복 start와 대응하지 않는 finish는 중복 집계하지 않는다.
+// elapsedNanos는 종료된 호출의 합이며 active=true인 미완료 호출 시간은 포함하지 않는다.
+// 시계 실패/음수 차분은 관찰된0으로 만들지 않고 해당 측정을 버린다.
+// snapshot은 복사본, count/elapsed는 비음수 포화 합, block 예외/취소 identity 보존.
+// 단계/operation/request는 별도 집계하며 중첩 시간을 합산하지 않는다.
 fun interface ProfilingClock { fun nowNanos(): Long }
 enum class ProfileStage {
     AUTHORIZATION_HISTORY, AUTHORIZATION_WAIT, CONTINUE_WAIT,
@@ -455,9 +460,10 @@ T7 완료 후 시작.
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
-| Gradle 시작 시 샌드박스에서 wildcard IP를 찾지 못함 | 기존 wrapper/JDK/SDK 유지, 로컬 socket 동작을 허용하는 실행 권한 선택 | 1/1 | `:core:compileKotlin :app:compileDebugKotlin` → BUILD SUCCESSFUL, 29s; 제품 코드 변경 전 확인 | 1/1 | 모든 Gradle 검증은 같은 실행 권한으로 진행 |
+| T1 | 1/2 | 조립된 브리프가2절 산문 불변식(중복 시작/종료·진행 중 경과 의미)을 전달하지 못해 실행자가 확인 요청 | 원래 중복 집계 금지 규칙을 선언 주석으로 옮겨 전달하고 종료 구간 합/active 별도 의미를 명시 | 기존 고정 map·단조 시계·실패 격리 유지; 새 동작/의존성 없음 | plan2절 표기 및 T1 두 파일; 기존 코드 보존 | 브리프 재조립 후 해소 실패0; 실행자4개 테스트 통과, root 동일 명령 BUILD SUCCESSFUL·XML4/0실패/0오류/0skip | profiling_t1 부분 지시 후 검증 |
 
 ## 환경 준비 기록
 
 | 원인·근거 | 준비 조치 | 조치 사용/1 | 확인 명령·결과 | 확인 사용/1 | 다음 조치 |
 |---|---|---|---|---|---|
+| Gradle 시작 시 샌드박스에서 wildcard IP를 찾지 못함 | 기존 wrapper/JDK/SDK 유지, 로컬 socket 동작을 허용하는 실행 권한 선택 | 1/1 | `:core:compileKotlin :app:compileDebugKotlin` → BUILD SUCCESSFUL, 29s; 제품 코드 변경 전 확인 | 1/1 | 모든 Gradle 검증은 같은 실행 권한으로 진행 |
