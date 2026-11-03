@@ -1,11 +1,13 @@
 ---
 spec_id: 2026-11-03-phone-profiling
 title: PC 없이 수동 동기화 성능 진단 확인
-status: draft
+status: approved
 created: 2026-11-03
 ---
 
 # PC 없이 수동 동기화 성능 진단 확인
+
+승인 기록: 2026-11-03 소유자가 “승인할게. 그리고 pr은 한글로 작성해”로 이 스펙을 승인했다.
 
 ## 1. 한눈에 보기
 
@@ -39,8 +41,8 @@ created: 2026-11-03
 | 확인값 | 계측 구현은 master에 병합됐으나 요약 전달 경로는 debug logcat뿐이다. | PR #9; `ManualSyncProfiling.publish`, `SyncViewModel.finishProfiling` |
 | 확인값 | 종결 시 현재 collector는 폐기되며 화면 상태에 진단 필드는 없다. | `SyncViewModel.kt`, `SyncUiState` |
 | 확인값 | 기존 summary는 고정 stage 10행, operation 7행, request 7행 및 숫자 열로 제한된다. 중첩 시간은 합산할 수 없다. | `ManualSyncProfiling.safeSummary`, `SyncProfiling.kt`, 기존 기기 절차 |
-| 추정값 | 선택적 보기/명시적 복사로 PC 없는 사용자의 진단 전달 문제를 해결한다. | 이 초안의 사용자 승인으로 확인 |
-| 추정값 | 디버그 한정·최근 1건 메모리 보관으로 충분하며 영속 진단이나 공유 파일은 필요하지 않다. | 이 초안의 사용자 승인으로 확인 |
+| 확인값 | 선택적 보기/명시적 복사로 PC 없는 사용자의 진단 전달 문제를 해결하는 범위를 승인받았다. | 2026-11-03 소유자 스펙 승인 |
+| 확인값 | 디버그 한정·최근 1건 메모리 보관 범위를 승인받았으며 영속 진단이나 공유 파일은 범위 밖이다. | 2026-11-03 소유자 스펙 승인 |
 | 위험값 | 클립보드는 OS 정책과 다른 앱의 영향을 받으며 복사 실패·미리보기가 가능하다. 앱은 외부 앱의 접근이나 사용자 전송 완료를 보장하지 않는다. | 플랫폼 경계와 실제 기기 확인; 구현 계획에서 사용 API 확인 |
 | 깨지는 조건 | release 노출, 원시 로그 수집, 영속 진단, 외부 자동 전송 또는 새 권한이 필요해지면 범위를 재검토한다. | 관련 source/manifest/dependency diff |
 | 확인값 | 전제 환경: Kotlin/JVM·JUnit·Compose UI 및 API35 instrumentation CI가 있고 safe summary/취소/이력 테스트를 재사용할 수 있다. | `android/{core,app}/build.gradle.kts`, `ManualSyncProfilingTest.kt`, `HistorySessionTest.kt`, `.github/workflows/android-emulator-tests.yml` |
@@ -94,5 +96,5 @@ flowchart TD
 
 ## 7. 미해결 사항
 
-- 앱 내 진단 보기·명시적 복사 및 메모리 수명 범위의 사용자 승인.
+- 이 스펙은 승인됐다. 후속 실행 계획은 작성·검토 후 별도 승인이 필요하다.
 - 구현 후 Galaxy에서 실제 안전한 요약을 전달할 수 있는지와 반복 측정 조건. 기존 기기/계정 미확인은 유지한다.
