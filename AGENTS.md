@@ -41,6 +41,8 @@ Build a minimal, reliable, privacy-first Android app that reads user-authorized 
 
 ## Independent PR review (owner instruction, 2026-11-02)
 
+- Write PR titles, descriptions, and agent-authored review/fix/validation comments in Korean (owner instruction, 2026-11-03). Preserve exact code/API identifiers, file paths, commands, hashes and necessary literal output.
+
 - Every PR, including documentation/specification PRs and PR #9, requires review in a separate session from its author and fixer. Use a fresh-context reviewer for each PR; for specification conformance, provide the approved spec and implementation, not the plan or earlier review conclusions.
 - Review the current head and full relevant diff. Record the reviewed commit, scope, findings and severity, actual validation evidence and limits, and verdict in the PR's comments. An explicit no-findings result still needs a comment. Chat replies or local reports alone do not satisfy this requirement.
 - Correct blocking findings, record the fix commit(s) and checks in PR comments, and obtain independent re-review of the updated head before merge. Preserve previous findings and explain their disposition rather than replacing the review history.
