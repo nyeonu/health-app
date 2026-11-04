@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollTo
@@ -119,6 +120,20 @@ class HealthAppInstrumentedTest {
         }
     }
 
+    private fun waitForHomeReady() {
+        lateinit var model: SyncViewModel
+        compose.activityRule.scenario.onActivity {
+            model = androidx.lifecycle.ViewModelProvider(it)[SyncViewModel::class.java]
+        }
+        compose.waitUntil(10_000) {
+            !model.state.value.refreshing && model.state.value.history?.operation == HistoryOperation.IDLE
+        }
+        compose.waitForIdle()
+    }
+
+    private fun currentScrollPosition(): Float = compose.onNode(hasScrollAction())
+        .fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+
     /** 계정 없는 CI 전용: 네이티브 앱 바까지 포함한 합성 화면만 보관한다. */
     private fun captureNativeLayout(name: String) {
         compose.waitUntil(10_000) {
@@ -139,6 +154,7 @@ class HealthAppInstrumentedTest {
 
     @Test
     fun nativeScreenKeepsContentBoundaryWhileScrollingAndReturningToTop() {
+        waitForHomeReady()
         compose.onNodeWithText("Health App · 수동 동기화").performScrollTo()
         assertWholeHeadingAtTop()
         captureNativeLayout("initial")
@@ -155,9 +171,14 @@ class HealthAppInstrumentedTest {
 
     @Test
     fun nativeScreenKeepsContentBoundaryAfterRecreationAtScrolledPosition() {
+        waitForHomeReady()
         compose.onNodeWithText("상세·설정 펼치기").performScrollTo()
+        val positionBefore = currentScrollPosition()
+        org.junit.Assert.assertTrue("재생성 전에 본문이 실제로 스크롤되어 있어야 합니다", positionBefore > 0f)
         compose.activityRule.scenario.recreate()
-        compose.waitForIdle()
+        waitForHomeReady()
+        org.junit.Assert.assertEquals("재생성은 기존 스크롤 위치를 보존해야 합니다",
+            positionBefore, currentScrollPosition(), 1f)
         captureNativeLayout("recreated-scrolled")
         assertFixedContentBoundary()
         compose.onNodeWithText("Health App · 수동 동기화").performScrollTo()
