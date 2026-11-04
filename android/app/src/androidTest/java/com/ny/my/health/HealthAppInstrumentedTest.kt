@@ -312,7 +312,8 @@ class HealthAppInstrumentedTest {
         assertWholeHeadingAtTop()
         assertFixedContentBoundary()
         captureNativeLayout("initial")
-        compose.onNodeWithText("상세·설정 펼치기").performScrollTo().assertIsDisplayed()
+        scrollToSettingsBottom()
+        org.junit.Assert.assertTrue("본문을 실제로 스크롤해야 합니다", currentScrollPosition() > 0f)
         captureNativeLayout("scrolled")
         assertFixedContentBoundary()
         compose.onNodeWithText("Health App · 수동 동기화").performScrollTo()
@@ -326,12 +327,13 @@ class HealthAppInstrumentedTest {
     @Test
     fun nativeScreenKeepsContentBoundaryAfterRecreationAtScrolledPosition() {
         waitForHomeReady()
-        compose.onNodeWithText("상세·설정 펼치기").performScrollTo()
+        scrollToSettingsBottom()
         val positionBefore = currentScrollPosition()
         val boundsBefore = nativeContent().fetchSemanticsNode().boundsInWindow
         org.junit.Assert.assertTrue("재생성 전에 본문이 실제로 스크롤되어 있어야 합니다", positionBefore > 0f)
         compose.activityRule.scenario.recreate()
         waitForHomeReady()
+        compose.onNodeWithText("상세·설정 접기").assertExists()
         org.junit.Assert.assertEquals("재생성 전후의 안전한 본문 경계는 같아야 합니다",
             boundsBefore, nativeContent().fetchSemanticsNode().boundsInWindow)
         org.junit.Assert.assertEquals("재생성은 기존 스크롤 위치를 보존해야 합니다",
@@ -344,6 +346,12 @@ class HealthAppInstrumentedTest {
         captureNativeLayout("recreated-top")
         compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("업로드 계속").assertDoesNotExist()
+    }
+
+    private fun scrollToSettingsBottom() {
+        // 큰 창에서도 실제 긴 화면을 사용해 스크롤/복원을 검증한다. 외부 동작은 호출하지 않는다.
+        compose.onNodeWithText("상세·설정 펼치기").performScrollTo().performClick()
+        compose.onNodeWithText("권한 철회:", substring = true).performScrollTo().assertIsDisplayed()
     }
 }
 

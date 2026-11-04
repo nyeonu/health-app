@@ -63,7 +63,10 @@ class MainActivity : ComponentActivity() {
             val state by model.state.collectAsState()
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    Box(Modifier.safeDrawingPadding().testTag("health-window-content")) {
+                    Box(
+                        Modifier.safeDrawingPadding().testTag("health-window-content"),
+                        propagateMinConstraints = true,
+                    ) {
                         HealthHomeScreen(state, HistoryUiActions(
                             requestHealthConsent = {
                                 if (model.beginHealthConsent()) {

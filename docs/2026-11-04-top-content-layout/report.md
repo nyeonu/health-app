@@ -69,3 +69,5 @@ CI41928069684 attempt2 원본 XML은57개 중1개 실패, 오류/skip0이다. �
 CI는 API35/36에서 각각 전체 Android/host 검증과 별도 artifact를 남긴다. 컴파일 후 connected 테스트 직전에 확인된 `com.google.android.apps.nexuslauncher`만 force-stop한다. Health App 등 임의 앱의 ANR를 숨기거나 실패 단언을 재시도/무시하지 않는다. 앞선 Launcher ANR 원본은 보존한다.
 
 현재 교정의 전체 검증과 독립 재검토는 대기다. Box receiver 추가로 Context 컴파일 오류가 발생했으며 명시적 MainActivity receiver로 수정해 재검증한다. 기존 Important와 실제 Galaxy 미확인은 유지한다. 앞 절의 pending 기록은 각 당시 상태이며 최종 처분은 PR 코멘트와 이 절의 후속 결과로 구분한다.
+
+경계 교정의 로컬 JVM109개·앱/테스트 APK·lint는1분18초 통과했다. 정적 재검토에서 새 Critical/Important는 없었다. 새 Box는 기존 Surface의 최소 높이를 본문까지 전달하도록 명시한다. native 제목바 제거 후 넓어진 화면에서도 비영 스크롤을 실제 검증하도록 상세 설정을 펼친 뒤 하단 정적 문구까지 이동한다. 최초 캡처는 접힌 상태를 유지하고 재생성 후에는 펼친 상태와 스크롤 복원도 확인한다. 화면 동작·단언을 우회하지 않는 fixture 보강이며 별도 리뷰어가 방향을 확인했다. 최신 소스의 OS 검증과 최종 재검토는 여전히 대기다.
