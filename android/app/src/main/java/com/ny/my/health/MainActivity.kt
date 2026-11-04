@@ -3,10 +3,13 @@ package com.ny.my.health
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -14,6 +17,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
@@ -51,35 +55,40 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 본문 제목을 사용하고 시스템 바 경계는 Compose에서 일관되게 처리한다.
+        requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        enableEdgeToEdge()
         model = ViewModelProvider(this)[SyncViewModel::class.java]
         setContent {
             val state by model.state.collectAsState()
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    HealthHomeScreen(state, HistoryUiActions(
-                        requestHealthConsent = {
-                            if (model.beginHealthConsent()) {
-                                try {
-                                    healthConsent.launch(HealthConnectReader.permissions)
-                                } catch (_: Exception) {
-                                    model.healthConsentLaunchFailed()
+                    Box(Modifier.safeDrawingPadding().testTag("health-window-content")) {
+                        HealthHomeScreen(state, HistoryUiActions(
+                            requestHealthConsent = {
+                                if (model.beginHealthConsent()) {
+                                    try {
+                                        healthConsent.launch(HealthConnectReader.permissions)
+                                    } catch (_: Exception) {
+                                        model.healthConsentLaunchFailed()
+                                    }
                                 }
-                            }
-                        },
-                        refreshPermissions = model::refreshPermissions,
-                        changeOptIn = model::optIn,
-                        authorize = ::authorizeDrive,
-                        continueUpload = model::continueUpload,
-                        requestDelete = model::requestDeleteHistory,
-                        cancelDelete = model::cancelDeleteHistory,
-                        confirmDelete = model::confirmDeleteHistory,
-                        retryDelete = model::retryDeleteHistory,
-                        keepExisting = model::keepExistingHistory,
-                        reload = model::reloadHistory,
-                        copyPhoneProfiling = {
-                            model.copyPhoneProfiling { text -> writePhoneProfilingClipboard(this, text) }
-                        },
-                    ))
+                            },
+                            refreshPermissions = model::refreshPermissions,
+                            changeOptIn = model::optIn,
+                            authorize = ::authorizeDrive,
+                            continueUpload = model::continueUpload,
+                            requestDelete = model::requestDeleteHistory,
+                            cancelDelete = model::cancelDeleteHistory,
+                            confirmDelete = model::confirmDeleteHistory,
+                            retryDelete = model::retryDeleteHistory,
+                            keepExisting = model::keepExistingHistory,
+                            reload = model::reloadHistory,
+                            copyPhoneProfiling = {
+                                model.copyPhoneProfiling { text -> writePhoneProfilingClipboard(this@MainActivity, text) }
+                            },
+                        ))
+                    }
                 }
             }
         }

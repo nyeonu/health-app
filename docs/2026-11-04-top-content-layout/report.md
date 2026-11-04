@@ -6,7 +6,7 @@
 
 master 기준은 `c8e72795d5c14ad375ee0087f005a0d80d65b44c`다. 별도 읽기 전용 진단 세션이 기존 계정 없는 API35 native 합성 캡처에서도 스크롤된 본문의 얇은 글자 조각을 확인했다. 이는 최초 진입의 inset 결함을 입증하지 않는다. 기존 `verticalScroll(...).padding(24.dp)`는 여백도 본문과 함께 이동한다. 이번 수정은 여백을 스크롤 바깥에 배치해 바와 본문 사이 간격을 유지한다.
 
-한 줄의 modifier 순서를 바꾸는 국소 버그 수정이므로 testing-policy로 처리한다. 새 고정 헤더·앱 바 교체·테마/inset 정책·스크롤 위치 초기화는 선택하지 않는다. 기존 implemented 스펙은 변경하지 않는다. 일반적인 스크롤 경계의 문장 잘림 전체를 없애거나 Galaxy 최초 화면 문제를 해결했다고 주장하지 않는다. 동의·권한·수동 계속·취소·이력·진단 복사 계약은 유지한다.
+처음에는 한 줄의 modifier 순서를 바꾸는 국소 버그 수정으로 testing-policy를 적용했다. 이후 원본 재현에서 이것만으로 최초 가림이 해결되지 않음을 확인해 아래 '실제 native 경계 확인 후 교정'으로 보완했다. 기존 implemented 스펙은 변경하지 않는다. 일반적인 스크롤 경계의 문장 잘림 전체를 없애거나 Galaxy 최초 화면 문제를 해결했다고 주장하지 않는다. 동의·권한·수동 계속·취소·이력·진단 복사 계약은 유지한다.
 
 ## 검증 기준
 
@@ -56,4 +56,16 @@ d404c80의 별도 fresh-context 중간 리뷰에서 생산 코드 차단 결함�
 
 CI41928069684 attempt2 원본 XML은57개 중1개 실패, 오류/skip0이다. 포커스 실패는 재현되지 않았고 기존 클립보드 테스트도 통과했다. 초기 화면 캡처의 여백 픽셀 단언이 실패했고 host 검증은 미실행이다. initial의 semantic root는 창 전체 크기이고 native 제목바가 root 캡처에도 포함된다. 재생성 후에는 root가 제목바 아래로 이동해 제목/대상 문구가 실제로 보인다. 독립 리뷰어도 원본 이미지를 대조했다. drawing 전후 상태가 모두 true여서 이번 재현을 drawing-disabled 가설로 설명하지 않는다.
 
-아직 native View의 실제 위치/측정 크기가 없어 실제 content fitting과 Compose 좌표 문제를 구분하지 못한다. 제품의 테마/inset 정책을 추측으로 바꾸기 전에 decor/content/ComposeView/owner의 위치·크기·layout 상태와 system bar/cutout inset을 같은 프레임에서 기록한다. 포커스 실패가 반복될 때는 teardown 전에 잠금/전원/포커스 숫자와 합성 전체 화면1장을 남기고 원래 예외를 유지한다. 단언과 timeout은 보존하며 Important와 Galaxy 미확인은 그대로 유지한다.
+아직 native View의 실제 위치/측정 크기가 없어 실제 content fitting과 Compose 좌표 문제를 구분하지 못한다. 제품의 테마/inset 정책을 추측으로 바꾸기 전에 decor/content/ComposeView/owner의 위치·크기·layout 상태와 system bar/cutout inset을 캡처 전후에 기록한다. 두 snapshot을 하나의 원자적 프레임이라고 간주하지 않는다. 포커스 실패가 반복될 때는 teardown 전에 잠금/전원/포커스 숫자와 합성 전체 화면1장을 남기고 원래 예외를 유지한다. 단언과 timeout은 보존하며 Important와 Galaxy 미확인은 그대로 유지한다.
+
+## 실제 native 경계 확인 후 교정
+
+`3a49b0a`의 CI41932282264 원본은57개 중3개 focus timeout, 오류/skip0이며 host 미실행이다. 이번에는 실제 native content/ComposeView/owner도 최초에는 창 전체, 재생성 후에는 제목바 아래에 배치됨을 확인했다. 따라서 cached semantic 좌표만의 문제는 아니다. focus 실패 화면에는 Pixel Launcher ANR dialog가 앱을 가리고 있다. interactive=true, keyguard/locked=false였다. 별도 리뷰어도 원본 로그와 이미지를 확인했다. 같은 head APK/JVM/lint CI41932282110은 성공했다.
+
+이 증거에 따라 중복 native 제목바를 제거하고 기존 본문 제목을 유지하는 국소 교정으로 보완한다. MainActivity는 no-title window와 `enableEdgeToEdge()`를 사용하고 시스템 안전 영역은 `safeDrawingPadding()`으로 처리한다. 바 높이 하드코딩이나 edge-to-edge opt-out은 추가하지 않는다. [공식 inset 적용](https://developer.android.com/develop/ui/compose/system/insets-ui)과 [Android15 정책](https://developer.android.com/about/versions/15/behavior-changes-15)을 확인했다. 새 toolbar·기능·의존성·권한·스크롤 초기화는 추가하지 않는다. 기본 decor 내부 분기 전체나 Galaxy의 원인까지 확정하지 않는다.
+
+회귀 검증은 명시적인 safe-content container가 실제 시스템 bar/cutout 안에 있는지 확인한 뒤 그 안쪽24dp 경계·여백 픽셀·문구 전체 높이·root/Window 픽셀 비교를 유지한다. 재생성 전후 안전 영역과 비영 스크롤 위치도 대조한다. 전체 window와 안전 영역을 혼동해24dp 단언을 제거하지 않는다.
+
+CI는 API35/36에서 각각 전체 Android/host 검증과 별도 artifact를 남긴다. 컴파일 후 connected 테스트 직전에 확인된 `com.google.android.apps.nexuslauncher`만 force-stop한다. Health App 등 임의 앱의 ANR를 숨기거나 실패 단언을 재시도/무시하지 않는다. 앞선 Launcher ANR 원본은 보존한다.
+
+현재 교정의 전체 검증과 독립 재검토는 대기다. Box receiver 추가로 Context 컴파일 오류가 발생했으며 명시적 MainActivity receiver로 수정해 재검증한다. 기존 Important와 실제 Galaxy 미확인은 유지한다. 앞 절의 pending 기록은 각 당시 상태이며 최종 처분은 PR 코멘트와 이 절의 후속 결과로 구분한다.

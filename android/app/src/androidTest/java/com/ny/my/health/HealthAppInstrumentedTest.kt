@@ -7,6 +7,7 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
@@ -105,8 +106,11 @@ class HealthAppInstrumentedTest {
     }
 
     /** 실제 Activity의 스크롤 뷰포트와 텍스트 전체 높이를 확인한다. */
+    private fun nativeContent() = compose.onNodeWithTag("health-window-content")
+
     private fun assertFixedContentBoundary() {
-        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val content = nativeContent().fetchSemanticsNode()
+        val root = content.boundsInRoot
         val viewport = compose.onNode(hasScrollAction()).fetchSemanticsNode().boundsInRoot
         org.junit.Assert.assertTrue("본문 위쪽 여백은 스크롤과 무관하게 유지되어야 합니다",
             viewport.top > root.top + 1f)
@@ -115,6 +119,18 @@ class HealthAppInstrumentedTest {
         val inset = 24f * compose.density.density
         org.junit.Assert.assertEquals("상단 고정 여백은 24dp여야 합니다", inset, viewport.top - root.top, 1f)
         org.junit.Assert.assertEquals("하단 고정 여백은 24dp여야 합니다", inset, root.bottom - viewport.bottom, 1f)
+        val safeWindow = compose.runOnUiThread {
+            val decor = compose.activity.window.decorView
+            val insets = checkNotNull(androidx.core.view.ViewCompat.getRootWindowInsets(decor))
+                .getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or
+                    androidx.core.view.WindowInsetsCompat.Type.displayCutout())
+            Triple(insets, decor.width, decor.height)
+        }
+        val bounds = content.boundsInWindow
+        val (safe, width, height) = safeWindow
+        org.junit.Assert.assertTrue("본문은 시스템 바와 cutout의 안전 영역 안에 있어야 합니다",
+            bounds.left >= safe.left - 1f && bounds.top >= safe.top - 1f &&
+                bounds.right <= width - safe.right + 1f && bounds.bottom <= height - safe.bottom + 1f)
     }
 
     private fun assertWholeHeadingAtTop() {
@@ -212,12 +228,12 @@ class HealthAppInstrumentedTest {
         val window = compose.runOnUiThread { compose.activity.window }
         val beforeDrawing = HardwareRendererCompat.isDrawingEnabled()
         val beforeScroll = currentScrollPosition()
-        val beforeRoot = compose.onRoot().fetchSemanticsNode().boundsInWindow
-        val content = compose.onRoot().captureToImage().asAndroidBitmap()
+        val beforeRoot = nativeContent().fetchSemanticsNode().boundsInWindow
+        val content = nativeContent().captureToImage().asAndroidBitmap()
         var native: android.graphics.Bitmap? = null
         try {
             compose.waitForIdle()
-            val root = compose.onRoot().fetchSemanticsNode().boundsInWindow
+            val root = nativeContent().fetchSemanticsNode().boundsInWindow
             val viewport = compose.onNode(hasScrollAction()).fetchSemanticsNode().boundsInWindow
             val bitmap = kotlinx.coroutines.runBlocking {
                 kotlinx.coroutines.withTimeout(10_000) {
@@ -228,7 +244,7 @@ class HealthAppInstrumentedTest {
             }
             native = bitmap
             compose.waitForIdle()
-            val afterRoot = compose.onRoot().fetchSemanticsNode().boundsInWindow
+            val afterRoot = nativeContent().fetchSemanticsNode().boundsInWindow
             val afterScroll = currentScrollPosition()
             val afterDrawing = HardwareRendererCompat.isDrawingEnabled()
             logNativeGeometry("after-$name")
@@ -294,6 +310,7 @@ class HealthAppInstrumentedTest {
         waitForHomeReady()
         compose.onNodeWithText("Health App · 수동 동기화").performScrollTo()
         assertWholeHeadingAtTop()
+        assertFixedContentBoundary()
         captureNativeLayout("initial")
         compose.onNodeWithText("상세·설정 펼치기").performScrollTo().assertIsDisplayed()
         captureNativeLayout("scrolled")
@@ -311,9 +328,12 @@ class HealthAppInstrumentedTest {
         waitForHomeReady()
         compose.onNodeWithText("상세·설정 펼치기").performScrollTo()
         val positionBefore = currentScrollPosition()
+        val boundsBefore = nativeContent().fetchSemanticsNode().boundsInWindow
         org.junit.Assert.assertTrue("재생성 전에 본문이 실제로 스크롤되어 있어야 합니다", positionBefore > 0f)
         compose.activityRule.scenario.recreate()
         waitForHomeReady()
+        org.junit.Assert.assertEquals("재생성 전후의 안전한 본문 경계는 같아야 합니다",
+            boundsBefore, nativeContent().fetchSemanticsNode().boundsInWindow)
         org.junit.Assert.assertEquals("재생성은 기존 스크롤 위치를 보존해야 합니다",
             positionBefore, currentScrollPosition(), 1f)
         captureNativeLayout("recreated-scrolled")

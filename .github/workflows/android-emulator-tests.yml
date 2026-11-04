@@ -12,7 +12,11 @@ permissions:
 
 jobs:
   emulator-instrumentation:
-    name: Android 15 emulator / account-free UI tests
+    name: Android API ${{ matrix.api-level }} / account-free UI tests
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [35, 36]
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -40,7 +44,7 @@ jobs:
       - name: Run account-free Android UI and lifecycle instrumentation
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: ${{ matrix.api-level }}
           target: google_apis
           arch: x86_64
           profile: pixel_6
@@ -48,6 +52,10 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           # Host-only hold methods must never enter normal discovery (no suite skips).
           script: |
+            (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest)
+            # Fresh synthetic images can show a Pixel Launcher ANR during compilation.
+            # Clear only that launcher before tests; never suppress Health App failures.
+            adb shell am force-stop com.google.android.apps.nexuslauncher
             (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.ny.my.health.HistoryProcessRecoveryInstrumentedTest)
             bash android/ci/verify-history-process-recovery.sh
 
@@ -55,7 +63,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-emulator-test-reports
+          name: android-emulator-test-reports-api${{ matrix.api-level }}
           path: |
             android/app/build/outputs/androidTest-results/connected/
             android/app/build/reports/androidTests/connected/
