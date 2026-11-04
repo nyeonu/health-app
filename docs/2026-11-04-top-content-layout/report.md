@@ -17,7 +17,7 @@ master 기준은 `c8e72795d5c14ad375ee0087f005a0d80d65b44c`다. 별도 읽기 �
 
 ## 현재 실행 기록
 
-수정 전 테스트 커밋은 `af4cde1da1dde2a55ac674238455b3d50bed7e4b`이며 앱/테스트 APK 컴파일은 통과했다. 실제 API35 재현은 CI41910732134에서 진행 중이다. 새 테스트 두 개는 실제 Activity에서 실행되며 합성 native 화면만 캡처한다.
+수정 전 테스트 커밋은 `af4cde1da1dde2a55ac674238455b3d50bed7e4b`이며 앱/테스트 APK 컴파일은 통과했다. 실제 API35 CI41910732134 원본 XML에서57개 중 새 경계 테스트2개만 같은 상단 여백 단언으로 실패했고 기존55개는 통과했다(오류/skip0). 호스트 검증은 실행되지 않았다. 새 테스트 두 개는 실제 Activity에서 실행되며 합성 native 화면만 캡처한다.
 
 - `nativeScreenKeepsContentBoundaryWhileScrollingAndReturningToTop`
 - `nativeScreenKeepsContentBoundaryAfterRecreationAtScrolledPosition`
@@ -33,3 +33,7 @@ master 기준은 `c8e72795d5c14ad375ee0087f005a0d80d65b44c`다. 별도 읽기 �
 ## 독립 리뷰와 교정
 
 d404c80의 별도 fresh-context 중간 리뷰에서 생산 코드 차단 결함은 발견되지 않았고, 재생성 후 스크롤 값도 대조하자는 Suggestion1개를 받았다. 이를 수용해 로딩 완료 후 비영 스크롤 값을 기록하고 같은 방향/크기 재생성 후1px 허용 오차로 비교한다. 생산 코드는 그대로 보존했으며, 테스트 APK 재컴파일21초 PASS다. 실제 OS에서 추가 단언의 통과 및 새 head 독립 재검토는 아직 대기다. 기존 실패/지적 기록은 PR 코멘트에 보존한다.
+
+## 캡처 증거 보강
+
+독립 리뷰에서 수정 전 native PNG의 initial/recreated 이름과 실제 화면 상태가 맞지 않는 사례를 확인했다. 해당 이미지는 최초 진입/복원 프레임의 정확한 배치 증거로 사용하지 않는다. XML의 같은 경계 단언 실패와 별도로 구분한다. 현재 Activity 창의 frame commit을 기다린 뒤 Window PixelCopy를 수행하도록 테스트만 교정했다. native 앱 바는 포함하고 다른 창/전체 디스플레이 합성 상태에 의존하지 않는다. SDK36 메타데이터에서 Window PixelCopy API26 및 frame callback API29를 확인했으며 캡처는 계정 없는 API35 CI에서만 검증한다. 제품 minSdk28/창 설정/의존성은 유지한다. 테스트 APK 컴파일24초 PASS, 실제 새 캡처와 최신 테스트 단언 검증은 대기다.

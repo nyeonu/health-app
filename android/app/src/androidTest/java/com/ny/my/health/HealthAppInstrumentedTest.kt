@@ -134,15 +134,37 @@ class HealthAppInstrumentedTest {
     private fun currentScrollPosition(): Float = compose.onNode(hasScrollAction())
         .fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
 
-    /** 계정 없는 CI 전용: 네이티브 앱 바까지 포함한 합성 화면만 보관한다. */
+    /** 계정 없는 API35 CI 전용: 그리기가 끝난 현재 창과 네이티브 앱 바만 캡처한다. */
     private fun captureNativeLayout(name: String) {
+        check(android.os.Build.VERSION.SDK_INT >= 29) { "창 프레임 캡처는 API29 이상 CI에서 실행합니다" }
         compose.waitUntil(10_000) {
             compose.runOnUiThread { compose.activity.hasWindowFocus() }
         }
         compose.waitForIdle()
-        val bitmap = checkNotNull(androidx.test.platform.app.InstrumentationRegistry
-            .getInstrumentation().uiAutomation.takeScreenshot())
+        val window = compose.runOnUiThread { compose.activity.window }
+        val committed = java.util.concurrent.CountDownLatch(1)
+        val size = compose.runOnUiThread {
+            val decor = window.decorView
+            check(decor.isHardwareAccelerated && decor.width > 0 && decor.height > 0)
+            decor.viewTreeObserver.registerFrameCommitCallback { committed.countDown() }
+            decor.invalidate()
+            decor.width to decor.height
+        }
+        org.junit.Assert.assertTrue("현재 Activity 프레임이 제출되어야 합니다",
+            committed.await(10, java.util.concurrent.TimeUnit.SECONDS))
+        val bitmap = android.graphics.Bitmap.createBitmap(size.first, size.second,
+            android.graphics.Bitmap.Config.ARGB_8888)
         try {
+            val copied = java.util.concurrent.CountDownLatch(1)
+            var copyResult = android.view.PixelCopy.ERROR_UNKNOWN
+            android.view.PixelCopy.request(window, bitmap, { result ->
+                copyResult = result
+                copied.countDown()
+            }, android.os.Handler(android.os.Looper.getMainLooper()))
+            org.junit.Assert.assertTrue("현재 Activity 창을 복사해야 합니다",
+                copied.await(10, java.util.concurrent.TimeUnit.SECONDS))
+            org.junit.Assert.assertEquals("창 픽셀 복사가 성공해야 합니다",
+                android.view.PixelCopy.SUCCESS, copyResult)
             androidx.test.platform.io.PlatformTestStorageRegistry.getInstance()
                 .openOutputFile("v1-synthetic-ui/top-boundary-$name.png").use { output ->
                     check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output))
