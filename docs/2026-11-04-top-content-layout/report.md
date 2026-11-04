@@ -71,3 +71,11 @@ CI는 API35/36에서 각각 전체 Android/host 검증과 별도 artifact를 남
 현재 교정의 전체 검증과 독립 재검토는 대기다. Box receiver 추가로 Context 컴파일 오류가 발생했으며 명시적 MainActivity receiver로 수정해 재검증한다. 기존 Important와 실제 Galaxy 미확인은 유지한다. 앞 절의 pending 기록은 각 당시 상태이며 최종 처분은 PR 코멘트와 이 절의 후속 결과로 구분한다.
 
 경계 교정의 로컬 JVM109개·앱/테스트 APK·lint는1분18초 통과했다. 정적 재검토에서 새 Critical/Important는 없었다. 새 Box는 기존 Surface의 최소 높이를 본문까지 전달하도록 명시한다. native 제목바 제거 후 넓어진 화면에서도 비영 스크롤을 실제 검증하도록 상세 설정을 펼친 뒤 하단 정적 문구까지 이동한다. 최초 캡처는 접힌 상태를 유지하고 재생성 후에는 펼친 상태와 스크롤 복원도 확인한다. 화면 동작·단언을 우회하지 않는 fixture 보강이며 별도 리뷰어가 방향을 확인했다. 최신 소스의 OS 검증과 최종 재검토는 여전히 대기다.
+
+## 안전 영역 교정 후 복원 실패와 첫 inset 전달
+
+`c3aca36451f599b85abcecb1626191ab3ed20cbd`의 JVM/APK/lint CI41935229502 원본109개는 실패/오류/skip0이다. API35 CI41935229440은57개 중1개 실패, 오류/skip0이다. 최초·스크롤·상단 복귀의 안전 영역/24dp/제목 전체 높이/쌍 캡처 픽셀 검사는 통과했고 실제 그림에도 제목과 대상 문구가 보인다. 별도 리뷰어도3쌍 전체 픽셀 일치를 확인했다. 다만 동일 안전 영역으로 재생성한 뒤 scroll1511이1320으로 낮아져 정확한 복원 단언이 실패했다. 이 새 Important와 기존 복원 경로의 미확인을 유지한다. host 검증은 미실행이다.
+
+설치된 Compose1.9.2는 inset holder를 처음에 null로 만들고 listener를 설치한다. ScrollState는 첫 측정의 max가 작으면 즉시 value를 낮추므로 초기 inset0의 viewport가 먼저 측정되는 경로가 가능하다. 실제 차이는 system bar inset 합계와 같지만 수치 일치만으로 이번 원인을 확정하지 않는다. setContent가 만든 host의 attach 직후 현재 rootWindowInsets를 기존 inset listener에 전달하는 최소 교정을 추가했다. 고정 픽셀 보정·지연·재스크롤·기대값 변경은 없다. 테스트는 attach 시점의 실제 inset/뷰 크기를 기록하며 기존 최대 offset의 정확한 복원 단언을 유지한다. 새 실행으로 검증 전에는 해결 완료로 표시하지 않는다.
+
+API36은 부팅 전 userdata 공간 부족 FATAL로 테스트 미실행이며 artifact가 없다. [실행 action의 공식 입력](https://github.com/ReactiveCircus/android-emulator-runner/blob/v2/action.yml)에서 확인한 `disk-size`를 합성 AVD에2048M으로 명시한다. 이미지나 테스트 실패를 건너뛰지 않는다. 첫 inset 전달 교정의 로컬 JVM109개·앱/테스트 APK·lint는1분21초 통과했다. 최신 API35/36 실행과 새 독립 검토를 대기한다.

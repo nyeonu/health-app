@@ -18,6 +18,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.core.view.ViewCompat
+import androidx.core.view.doOnAttach
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
@@ -94,6 +96,11 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+        // 첫 측정 전에 현재 inset을 전달해 복원된 스크롤이 임시 큰 viewport에 잘리지 않게 한다.
+        val host = findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)
+        host.doOnAttach { view ->
+            ViewCompat.getRootWindowInsets(view)?.let { ViewCompat.dispatchApplyWindowInsets(view, it) }
         }
     }
 

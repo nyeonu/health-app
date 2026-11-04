@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.test.core.view.captureRegionToBitmap
 import androidx.test.platform.graphics.HardwareRendererCompat
+import androidx.core.view.doOnAttach
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -157,6 +158,25 @@ class HealthAppInstrumentedTest {
 
     private fun currentScrollPosition(): Float = compose.onNode(hasScrollAction())
         .fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+
+    private fun recreateWithAttachDiagnostics() {
+        val monitor = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+        val observer = androidx.test.runner.lifecycle.ActivityLifecycleCallback { activity, stage ->
+            if (activity is MainActivity && stage == androidx.test.runner.lifecycle.Stage.RESUMED) {
+                activity.findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)
+                    .doOnAttach { host ->
+                        val insets = androidx.core.view.ViewCompat.getRootWindowInsets(host)
+                            ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or
+                                androidx.core.view.WindowInsetsCompat.Type.displayCutout())
+                        println("TOP_LAYOUT_ATTACH width=${host.width} height=${host.height} " +
+                            "left=${insets?.left} top=${insets?.top} right=${insets?.right} bottom=${insets?.bottom}")
+                    }
+            }
+        }
+        compose.runOnUiThread { monitor.addLifecycleCallback(observer) }
+        try { compose.activityRule.scenario.recreate() }
+        finally { compose.runOnUiThread { monitor.removeLifecycleCallback(observer) } }
+    }
 
     private fun saveLayoutBitmap(name: String, bitmap: android.graphics.Bitmap) {
         androidx.test.platform.io.PlatformTestStorageRegistry.getInstance()
@@ -331,7 +351,7 @@ class HealthAppInstrumentedTest {
         val positionBefore = currentScrollPosition()
         val boundsBefore = nativeContent().fetchSemanticsNode().boundsInWindow
         org.junit.Assert.assertTrue("재생성 전에 본문이 실제로 스크롤되어 있어야 합니다", positionBefore > 0f)
-        compose.activityRule.scenario.recreate()
+        recreateWithAttachDiagnostics()
         waitForHomeReady()
         compose.onNodeWithText("상세·설정 접기").assertExists()
         org.junit.Assert.assertEquals("재생성 전후의 안전한 본문 경계는 같아야 합니다",
