@@ -3,7 +3,9 @@ package com.ny.my.health
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.isToggleable
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -94,6 +96,76 @@ class HealthAppInstrumentedTest {
         compose.onNodeWithText("표시할 진단이 없습니다.").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("안전한 진단 요약 복사").performScrollTo().assertIsNotEnabled()
         assertNoConsentOrUpload()
+    }
+
+    /** 실제 Activity의 스크롤 뷰포트와 텍스트 전체 높이를 확인한다. */
+    private fun assertFixedContentBoundary() {
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val viewport = compose.onNode(hasScrollAction()).fetchSemanticsNode().boundsInRoot
+        org.junit.Assert.assertTrue("본문 위쪽 여백은 스크롤과 무관하게 유지되어야 합니다",
+            viewport.top > root.top + 1f)
+        org.junit.Assert.assertTrue("본문 아래쪽 여백은 스크롤과 무관하게 유지되어야 합니다",
+            viewport.bottom < root.bottom - 1f)
+    }
+
+    private fun assertWholeHeadingAtTop() {
+        val viewport = compose.onNode(hasScrollAction()).fetchSemanticsNode().boundsInRoot
+        for (label in listOf("Health App · 수동 동기화", "이번 동기화 대상:")) {
+            val node = compose.onNodeWithText(label, substring = true).fetchSemanticsNode()
+            val visible = node.boundsInRoot
+            org.junit.Assert.assertTrue("상단 제목과 대상 문구 전체가 보여야 합니다",
+                node.size.height > 0 && visible.height >= node.size.height - 1f &&
+                    visible.top >= viewport.top - 1f && visible.bottom <= viewport.bottom + 1f)
+        }
+    }
+
+    /** 계정 없는 CI 전용: 네이티브 앱 바까지 포함한 합성 화면만 보관한다. */
+    private fun captureNativeLayout(name: String) {
+        compose.waitUntil(10_000) {
+            compose.runOnUiThread { compose.activity.hasWindowFocus() }
+        }
+        compose.waitForIdle()
+        val bitmap = checkNotNull(androidx.test.platform.app.InstrumentationRegistry
+            .getInstrumentation().uiAutomation.takeScreenshot())
+        try {
+            androidx.test.platform.io.PlatformTestStorageRegistry.getInstance()
+                .openOutputFile("v1-synthetic-ui/top-boundary-$name.png").use { output ->
+                    check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output))
+                }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    @Test
+    fun nativeScreenKeepsContentBoundaryWhileScrollingAndReturningToTop() {
+        compose.onNodeWithText("Health App · 수동 동기화").performScrollTo()
+        assertWholeHeadingAtTop()
+        captureNativeLayout("initial")
+        compose.onNodeWithText("상세·설정 펼치기").performScrollTo().assertIsDisplayed()
+        captureNativeLayout("scrolled")
+        assertFixedContentBoundary()
+        compose.onNodeWithText("Health App · 수동 동기화").performScrollTo()
+        assertWholeHeadingAtTop()
+        assertFixedContentBoundary()
+        captureNativeLayout("returned-top")
+        compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("업로드 계속").assertDoesNotExist()
+    }
+
+    @Test
+    fun nativeScreenKeepsContentBoundaryAfterRecreationAtScrolledPosition() {
+        compose.onNodeWithText("상세·설정 펼치기").performScrollTo()
+        compose.activityRule.scenario.recreate()
+        compose.waitForIdle()
+        captureNativeLayout("recreated-scrolled")
+        assertFixedContentBoundary()
+        compose.onNodeWithText("Health App · 수동 동기화").performScrollTo()
+        assertWholeHeadingAtTop()
+        assertFixedContentBoundary()
+        captureNativeLayout("recreated-top")
+        compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("업로드 계속").assertDoesNotExist()
     }
 }
 
