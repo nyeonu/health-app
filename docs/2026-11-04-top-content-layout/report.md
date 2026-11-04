@@ -37,3 +37,11 @@ d404c80의 별도 fresh-context 중간 리뷰에서 생산 코드 차단 결함�
 ## 캡처 증거 보강
 
 독립 리뷰에서 수정 전 native PNG의 initial/recreated 이름과 실제 화면 상태가 맞지 않는 사례를 확인했다. 해당 이미지는 최초 진입/복원 프레임의 정확한 배치 증거로 사용하지 않는다. XML의 같은 경계 단언 실패와 별도로 구분한다. 현재 Activity 창의 frame commit을 기다린 뒤 Window PixelCopy를 수행하도록 테스트만 교정했다. native 앱 바는 포함하고 다른 창/전체 디스플레이 합성 상태에 의존하지 않는다. SDK36 메타데이터에서 Window PixelCopy API26 및 frame callback API29를 확인했으며 캡처는 계정 없는 API35 CI에서만 검증한다. 제품 minSdk28/창 설정/의존성은 유지한다. 테스트 APK 컴파일24초 PASS, 실제 새 캡처와 최신 테스트 단언 검증은 대기다.
+
+## 새 독립 리뷰의 시각 증거 차단 지적
+
+이전 리뷰 세션의 사용량 제한으로 새 fresh-context 세션에서 head5e8dbc8과 전체 diff/원본을 다시 검토했다. CI41913326597 원본은 Android57개·host20개 모두 실패/오류/skip0이지만, 픽셀과 단언한 상단 상태가 불일치해 REQUEST CHANGES(Important1)를 받았다. 이전 캡처5개는 최초/복원 배치가 정확하다는 증거에서 제외한다. 픽셀 일치를 확인하기 전에는 green CI만으로 병합하지 않는다.
+
+설치된 Compose ui-test1.9.2와 AndroidX Test core1.6.1 구현을 대조한 결과 공식 캡처는 drawing 상태를 저장하고 켠 뒤 redraw/PixelCopy를 수행하고 복구한다. 원래 helper에는 drawing scope가 없었다. 당시 상태가 기록되지 않아 확정 원인으로 단정하지 않고, 기존 의존성의 공식 Window 캡처와 Compose-root 캡처를 동일 상태에서 쌍으로 검증하도록 교정했다. Async API의 ListenableFuture 노출 타입이 현재 컴파일 경로에 없어 컴파일20초 실패했고, 새 의존성을 추가하지 않고 기존 coroutine의 Main context에서 공개 suspend helper를 호출하는 방식으로 바꿔 컴파일25초 PASS했다.
+
+새 검증은 root/window/viewport 좌표·밀도·스크롤·drawing 전후 상태만 숫자로 기록한다. 공식 helper는 테스트 스레드에서 기다리고 drawing 상태 복구와 스크롤 불변을 확인한다. 상·하단24dp 오차, 여백 중앙 픽셀의 surface 배경, 상단 제목/대상 영역의 background/foreground, 두 캡처의 해당 영역 픽셀 일치를 검사한다. 새 실제 OS 결과와 캡처의 독립 재검토는 아직 대기다. 생산 modifier 외 추가 창/테마/inset 변경은 하지 않았다.

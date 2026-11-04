@@ -7,6 +7,11 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.toArgb
+import androidx.test.core.view.captureRegionToBitmap
+import androidx.test.platform.graphics.HardwareRendererCompat
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -107,6 +112,9 @@ class HealthAppInstrumentedTest {
             viewport.top > root.top + 1f)
         org.junit.Assert.assertTrue("본문 아래쪽 여백은 스크롤과 무관하게 유지되어야 합니다",
             viewport.bottom < root.bottom - 1f)
+        val inset = 24f * compose.density.density
+        org.junit.Assert.assertEquals("상단 고정 여백은 24dp여야 합니다", inset, viewport.top - root.top, 1f)
+        org.junit.Assert.assertEquals("하단 고정 여백은 24dp여야 합니다", inset, root.bottom - viewport.bottom, 1f)
     }
 
     private fun assertWholeHeadingAtTop() {
@@ -134,43 +142,100 @@ class HealthAppInstrumentedTest {
     private fun currentScrollPosition(): Float = compose.onNode(hasScrollAction())
         .fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
 
-    /** 계정 없는 API35 CI 전용: 그리기가 끝난 현재 창과 네이티브 앱 바만 캡처한다. */
+    private fun saveLayoutBitmap(name: String, bitmap: android.graphics.Bitmap) {
+        androidx.test.platform.io.PlatformTestStorageRegistry.getInstance()
+            .openOutputFile("v1-synthetic-ui/$name.png").use { output ->
+                check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output))
+            }
+    }
+
+    private fun closeColor(first: Int, second: Int, tolerance: Int): Boolean =
+        listOf(0, 8, 16).all { shift ->
+            kotlin.math.abs(((first ushr shift) and 255) - ((second ushr shift) and 255)) <= tolerance
+        }
+
+    /** 계정 없는 CI 전용: 공식 drawing scope로 root/현재 창을 같은 상태에서 대조한다. */
     private fun captureNativeLayout(name: String) {
-        check(android.os.Build.VERSION.SDK_INT >= 29) { "창 프레임 캡처는 API29 이상 CI에서 실행합니다" }
         compose.waitUntil(10_000) {
             compose.runOnUiThread { compose.activity.hasWindowFocus() }
         }
         compose.waitForIdle()
         val window = compose.runOnUiThread { compose.activity.window }
-        val committed = java.util.concurrent.CountDownLatch(1)
-        val size = compose.runOnUiThread {
-            val decor = window.decorView
-            check(decor.isHardwareAccelerated && decor.width > 0 && decor.height > 0)
-            decor.viewTreeObserver.registerFrameCommitCallback { committed.countDown() }
-            decor.invalidate()
-            decor.width to decor.height
-        }
-        org.junit.Assert.assertTrue("현재 Activity 프레임이 제출되어야 합니다",
-            committed.await(10, java.util.concurrent.TimeUnit.SECONDS))
-        val bitmap = android.graphics.Bitmap.createBitmap(size.first, size.second,
-            android.graphics.Bitmap.Config.ARGB_8888)
+        val beforeDrawing = HardwareRendererCompat.isDrawingEnabled()
+        val beforeScroll = currentScrollPosition()
+        val beforeRoot = compose.onRoot().fetchSemanticsNode().boundsInWindow
+        val content = compose.onRoot().captureToImage().asAndroidBitmap()
+        var native: android.graphics.Bitmap? = null
         try {
-            val copied = java.util.concurrent.CountDownLatch(1)
-            var copyResult = android.view.PixelCopy.ERROR_UNKNOWN
-            android.view.PixelCopy.request(window, bitmap, { result ->
-                copyResult = result
-                copied.countDown()
-            }, android.os.Handler(android.os.Looper.getMainLooper()))
-            org.junit.Assert.assertTrue("현재 Activity 창을 복사해야 합니다",
-                copied.await(10, java.util.concurrent.TimeUnit.SECONDS))
-            org.junit.Assert.assertEquals("창 픽셀 복사가 성공해야 합니다",
-                android.view.PixelCopy.SUCCESS, copyResult)
-            androidx.test.platform.io.PlatformTestStorageRegistry.getInstance()
-                .openOutputFile("v1-synthetic-ui/top-boundary-$name.png").use { output ->
-                    check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output))
+            compose.waitForIdle()
+            val root = compose.onRoot().fetchSemanticsNode().boundsInWindow
+            val viewport = compose.onNode(hasScrollAction()).fetchSemanticsNode().boundsInWindow
+            val bitmap = kotlinx.coroutines.runBlocking {
+                kotlinx.coroutines.withTimeout(10_000) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        window.captureRegionToBitmap()
+                    }
                 }
+            }
+            native = bitmap
+            compose.waitForIdle()
+            val afterRoot = compose.onRoot().fetchSemanticsNode().boundsInWindow
+            val afterScroll = currentScrollPosition()
+            val afterDrawing = HardwareRendererCompat.isDrawingEnabled()
+            // 건강 값/날짜/문구를 출력하지 않고 합성 화면 좌표와 렌더링 상태만 남긴다.
+            println("TOP_LAYOUT_CAPTURE name=$name drawingBefore=$beforeDrawing drawingAfter=$afterDrawing " +
+                "scrollBefore=$beforeScroll scrollAfter=$afterScroll rootBefore=$beforeRoot root=$root " +
+                "rootAfter=$afterRoot viewport=$viewport density=${compose.density.density}")
+            saveLayoutBitmap("top-content-root-$name", content)
+            saveLayoutBitmap("top-boundary-$name", bitmap)
+            org.junit.Assert.assertEquals("캡처는 drawing 상태를 복구해야 합니다", beforeDrawing, afterDrawing)
+            org.junit.Assert.assertEquals("캡처는 스크롤을 바꾸지 않아야 합니다", beforeScroll, afterScroll, 1f)
+            org.junit.Assert.assertEquals("캡처 중 root 위치는 유지되어야 합니다", beforeRoot, root)
+            org.junit.Assert.assertEquals("두 캡처는 같은 root 위치를 사용해야 합니다", root, afterRoot)
+            org.junit.Assert.assertEquals(root.width.toInt(), content.width)
+            org.junit.Assert.assertEquals(root.height.toInt(), content.height)
+            val offsetX = root.left.toInt()
+            val offsetY = root.top.toInt()
+            org.junit.Assert.assertTrue("root 픽셀은 현재 창 범위 안에 있어야 합니다",
+                offsetX >= 0 && offsetY >= 0 && offsetX + content.width <= bitmap.width &&
+                    offsetY + content.height <= bitmap.height)
+            val dark = compose.runOnUiThread {
+                compose.activity.resources.configuration.uiMode and
+                    android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
+            }
+            val colors = if (dark) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()
+            val background = colors.surface.toArgb()
+            val foreground = colors.onSurface.toArgb()
+            // 여백 중앙 행은 native 앱 바의 경계 shadow와 구분해 본문 paint 침범을 검사한다.
+            val guardY = ((viewport.top - root.top) / 2).toInt()
+            org.junit.Assert.assertTrue("상단 여백 픽셀 행이 있어야 합니다", guardY > 0)
+            for (x in 0 until content.width) {
+                org.junit.Assert.assertTrue("고정 여백에 본문 픽셀이 침범하면 안 됩니다",
+                    closeColor(content.getPixel(x, guardY), background, 4))
+                org.junit.Assert.assertTrue("root와 현재 창의 여백 프레임이 일치해야 합니다",
+                    closeColor(content.getPixel(x, guardY), bitmap.getPixel(offsetX + x, offsetY + guardY), 2))
+            }
+            if (name in setOf("initial", "returned-top", "recreated-top")) {
+                for ((index, label) in listOf("Health App · 수동 동기화", "이번 동기화 대상:").withIndex()) {
+                    val node = compose.onNodeWithText(label, substring = true).fetchSemanticsNode()
+                    val box = node.boundsInWindow
+                    println("TOP_LAYOUT_HEADING index=$index bounds=$box size=${node.size}")
+                    var hasBackground = false
+                    var hasForeground = false
+                    for (y in box.top.toInt() until box.bottom.toInt()) for (x in box.left.toInt() until box.right.toInt()) {
+                        val pixel = content.getPixel(x - offsetX, y - offsetY)
+                        hasBackground = hasBackground || closeColor(pixel, background, 4)
+                        hasForeground = hasForeground || closeColor(pixel, foreground, 8)
+                        org.junit.Assert.assertTrue("제목 영역의 root/창 픽셀이 같은 프레임이어야 합니다",
+                            closeColor(pixel, bitmap.getPixel(x, y), 2))
+                    }
+                    org.junit.Assert.assertTrue("제목과 대상 문구가 실제 본문 배경에 그려져야 합니다",
+                        hasBackground && hasForeground)
+                }
+            }
         } finally {
-            bitmap.recycle()
+            content.recycle()
+            native?.recycle()
         }
     }
 
