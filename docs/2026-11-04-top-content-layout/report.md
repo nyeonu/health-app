@@ -45,3 +45,15 @@ d404c80의 별도 fresh-context 중간 리뷰에서 생산 코드 차단 결함�
 설치된 Compose ui-test1.9.2와 AndroidX Test core1.6.1 구현을 대조한 결과 공식 캡처는 drawing 상태를 저장하고 켠 뒤 redraw/PixelCopy를 수행하고 복구한다. 원래 helper에는 drawing scope가 없었다. 당시 상태가 기록되지 않아 확정 원인으로 단정하지 않고, 기존 의존성의 공식 Window 캡처와 Compose-root 캡처를 동일 상태에서 쌍으로 검증하도록 교정했다. Async API의 ListenableFuture 노출 타입이 현재 컴파일 경로에 없어 컴파일20초 실패했고, 새 의존성을 추가하지 않고 기존 coroutine의 Main context에서 공개 suspend helper를 호출하는 방식으로 바꿔 컴파일25초 PASS했다.
 
 새 검증은 root/window/viewport 좌표·밀도·스크롤·drawing 전후 상태만 숫자로 기록한다. 공식 helper는 테스트 스레드에서 기다리고 drawing 상태 복구와 스크롤 불변을 확인한다. 상·하단24dp 오차, 여백 중앙 픽셀의 surface 배경, 상단 제목/대상 영역의 background/foreground, 두 캡처의 해당 영역 픽셀 일치를 검사한다. 새 실제 OS 결과와 캡처의 독립 재검토는 아직 대기다. 생산 modifier 외 추가 창/테마/inset 변경은 하지 않았다.
+
+## 공식 캡처 검증의 포커스 실패
+
+`cbed5d97aa415d23a79ada6a92d446d79f8556da`의 JVM/APK/lint CI41928069820은 성공했고 원본 XML109개는 실패/오류/skip0이다. 같은 head의 emulator CI41928069684 첫 실행은57개 중3개 실패, 오류/skip0이다. 새 native 테스트2개는 공식 캡처 전 `hasWindowFocus()` 대기10초에서 종료됐으며 기존 시스템 클립보드 테스트도 같은 포커스 대기에서 실패했다. 새 캡처·픽셀 단언과 host 검증은 실행되지 않았다.
+
+별도 리뷰 세션도 원본 XML·logcat을 대조했다. Activity의 RESUMED·Displayed는 확인되지만 실제 포커스 소유 창·잠금·전원 상태 증거가 없어 원인은 미확정이다. CI는 부팅 뒤 keyevent82와 화면 timeout 증가를 이미 수행한다. 소스·단언·timeout 변경 없이 같은 head를1회 재실행해 재현성을 확인한다. 첫 실패는 보존하고 Important는 미해결로 유지한다. 현재 코드까지의 별도 시크릿 검사도 발견0건이다.
+
+## 동일 head 재실행에서 확인한 초기 배치 불일치
+
+CI41928069684 attempt2 원본 XML은57개 중1개 실패, 오류/skip0이다. 포커스 실패는 재현되지 않았고 기존 클립보드 테스트도 통과했다. 초기 화면 캡처의 여백 픽셀 단언이 실패했고 host 검증은 미실행이다. initial의 semantic root는 창 전체 크기이고 native 제목바가 root 캡처에도 포함된다. 재생성 후에는 root가 제목바 아래로 이동해 제목/대상 문구가 실제로 보인다. 독립 리뷰어도 원본 이미지를 대조했다. drawing 전후 상태가 모두 true여서 이번 재현을 drawing-disabled 가설로 설명하지 않는다.
+
+아직 native View의 실제 위치/측정 크기가 없어 실제 content fitting과 Compose 좌표 문제를 구분하지 못한다. 제품의 테마/inset 정책을 추측으로 바꾸기 전에 decor/content/ComposeView/owner의 위치·크기·layout 상태와 system bar/cutout inset을 같은 프레임에서 기록한다. 포커스 실패가 반복될 때는 teardown 전에 잠금/전원/포커스 숫자와 합성 전체 화면1장을 남기고 원래 예외를 유지한다. 단언과 timeout은 보존하며 Important와 Galaxy 미확인은 그대로 유지한다.

@@ -154,12 +154,61 @@ class HealthAppInstrumentedTest {
             kotlin.math.abs(((first ushr shift) and 255) - ((second ushr shift) and 255)) <= tolerance
         }
 
+    /** 합성 CI 화면만 진단한다. View 텍스트나 계정 상태는 출력하지 않는다. */
+    private fun logNativeGeometry(name: String) = compose.runOnUiThread {
+        val activity = compose.activity
+        val decor = activity.window.decorView
+        val content = activity.findViewById<android.view.View>(android.R.id.content)
+        fun logView(label: String, view: android.view.View) {
+            val location = IntArray(2)
+            view.getLocationInWindow(location)
+            val parent = view.parent as? android.view.View
+            println("TOP_LAYOUT_VIEW name=$name label=$label x=${location[0]} y=${location[1]} " +
+                "width=${view.width} height=${view.height} measuredWidth=${view.measuredWidth} " +
+                "measuredHeight=${view.measuredHeight} scrollY=${view.scrollY} " +
+                "layoutRequested=${view.isLayoutRequested} parentTop=${parent?.top} parentHeight=${parent?.height}")
+        }
+        logView("decor", decor)
+        logView("content", content)
+        fun visit(view: android.view.View) {
+            when (view.javaClass.name) {
+                "androidx.compose.ui.platform.ComposeView" -> logView("compose", view)
+                "androidx.compose.ui.platform.AndroidComposeView" -> logView("owner", view)
+            }
+            if (view is android.view.ViewGroup) for (index in 0 until view.childCount) visit(view.getChildAt(index))
+        }
+        visit(content)
+        val insets = androidx.core.view.ViewCompat.getRootWindowInsets(decor)
+        val bars = insets?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        val cutout = insets?.getInsets(androidx.core.view.WindowInsetsCompat.Type.displayCutout())
+        val power = activity.getSystemService(android.os.PowerManager::class.java)
+        val keyguard = activity.getSystemService(android.app.KeyguardManager::class.java)
+        println("TOP_LAYOUT_WINDOW name=$name lifecycle=${activity.lifecycle.currentState.ordinal} " +
+            "systemUiVisibility=${decor.systemUiVisibility} actionBarOverlay=${activity.window.hasFeature(android.view.Window.FEATURE_ACTION_BAR_OVERLAY)} " +
+            "activityFocus=${activity.hasWindowFocus()} decorFocus=${decor.hasWindowFocus()} shown=${decor.isShown} " +
+            "interactive=${power.isInteractive} keyguard=${keyguard.isKeyguardLocked} locked=${keyguard.isDeviceLocked} " +
+            "barsLeft=${bars?.left} barsTop=${bars?.top} barsRight=${bars?.right} barsBottom=${bars?.bottom} " +
+            "cutoutLeft=${cutout?.left} cutoutTop=${cutout?.top} cutoutRight=${cutout?.right} cutoutBottom=${cutout?.bottom}")
+    }
+
     /** 계정 없는 CI 전용: 공식 drawing scope로 root/현재 창을 같은 상태에서 대조한다. */
     private fun captureNativeLayout(name: String) {
-        compose.waitUntil(10_000) {
-            compose.runOnUiThread { compose.activity.hasWindowFocus() }
+        try {
+            compose.waitUntil(10_000) {
+                compose.runOnUiThread { compose.activity.hasWindowFocus() }
+            }
+        } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {
+            runCatching {
+                logNativeGeometry("focus-timeout-$name")
+                androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                    .uiAutomation.takeScreenshot()?.let { bitmap ->
+                        try { saveLayoutBitmap("focus-failure-$name", bitmap) } finally { bitmap.recycle() }
+                    }
+            }
+            throw timeout
         }
         compose.waitForIdle()
+        logNativeGeometry("before-$name")
         val window = compose.runOnUiThread { compose.activity.window }
         val beforeDrawing = HardwareRendererCompat.isDrawingEnabled()
         val beforeScroll = currentScrollPosition()
@@ -182,6 +231,7 @@ class HealthAppInstrumentedTest {
             val afterRoot = compose.onRoot().fetchSemanticsNode().boundsInWindow
             val afterScroll = currentScrollPosition()
             val afterDrawing = HardwareRendererCompat.isDrawingEnabled()
+            logNativeGeometry("after-$name")
             // 건강 값/날짜/문구를 출력하지 않고 합성 화면 좌표와 렌더링 상태만 남긴다.
             println("TOP_LAYOUT_CAPTURE name=$name drawingBefore=$beforeDrawing drawingAfter=$afterDrawing " +
                 "scrollBefore=$beforeScroll scrollAfter=$afterScroll rootBefore=$beforeRoot root=$root " +
