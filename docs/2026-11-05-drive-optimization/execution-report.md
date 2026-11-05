@@ -11,7 +11,8 @@
 - 전체 결과: `BUILD SUCCESSFUL in 1m 29s`, 84 actionable tasks(12 executed, 72 up-to-date). 테스트 XML 16개에서 core 55 + app 74 = 129개, 실패 0·오류 0·skip 0을 확인했다. APK·lint·테스트 APK 빌드 통과. Gradle 작업의 UP-TO-DATE/SKIPPED 표시는 테스트 XML의 skip 수와 다르다.
 - 실행 환경 내부 원본: `/workspace/tooling/v1-drive-whole-root.log`, `/workspace/tooling/v1-drive-fdda-evidence/{core,app}/` 및 `performance-summary.csv`. 이 경로는 로컬 증거 보관 위치이며 저장소에 원본 덤프를 추가하지 않는다.
 - [JVM/APK/lint CI 41953996190](https://github.com/nyeonu/health-app/actions/runs/41953996190): 성공. artifact `13381514892`의 ZIP SHA256 `25771b599d7f2a4b07853c0f484bde7534c47ef7d1731e6f709284ad7697a8cf`를 확인했고 XML은 129개·실패/오류/skip 0이다. 로컬 보관 위치는 `/workspace/tooling/v1-drive-fdda-ci-jvm`이다.
-- [API35/36 instrumentation CI 41953996200](https://github.com/nyeonu/health-app/actions/runs/41953996200): 진행 중, PASS 미확인. 로컬 테스트 APK 빌드는 emulator 실행 증거가 아니다.
+- [API35/36 instrumentation CI 41953996200](https://github.com/nyeonu/health-app/actions/runs/41953996200): 실패. ZIP digest 확인 후 양쪽 XML 각각57개/3실패/0오류·skip, native 경계2개와 clipboard1개의 focus timeout을 확인했다. initial 원본 PNG는 양쪽 모두 Pixel Launcher ANR dialog이며 host는 미실행이다. 로컬 테스트 APK 빌드는 emulator 실행 증거가 아니다.
+- PLAN 복구1/2에서 APK 컴파일을 emulator boot 전 step으로 옮겼다. 같은 SDK/이미지/자원/전체 테스트/timeout/단언/host를 유지하고 Android 소스는 fdda와 동일하다. 자원 경합은 교정 가설이며 ANR 원인이나 영구 해결을 확정하지 않는다. 새 workflow CI는 대기다. Health App/System UI 종료·package 비활성화·ANR 무시·테스트 재시도/skip은 추가하지 않는다.
 
 T1은 중복 대상 및 실제 transport 계약에 맞는 루트 fixture의 한정 교정을 거쳤다. T2 첫 실행은 14개 중 6개가 실패했다. 빈 응답의 `onResponseStart CloseSocket`이 의도한 NETWORK 대신 RESPONSE_INVALID를 만들었고, 승인된 한정 복구에서 비어 있지 않은 body와 `onResponseBody CloseStream(2)`를 사용했다. 기대 오류 분류와 단언을 유지한 재실행은 14개 전부 통과(43초)했다. 최종 판단은 이 중간 결과나 dirty 측정값이 아닌 위 clean 소스의 전체 129개 결과와 아래 clean 요약에 따른다.
 
@@ -50,7 +51,7 @@ T1은 중복 대상 및 실제 transport 계약에 맞는 루트 fixture의 한�
 
 ## 독립 검토와 남은 수용
 
-PR #15의 현재 head·전체 diff에 대한 별도 fresh-context 세션의 적합성/품질/보안/성능 판정과 공개 PR 댓글은 pending이다. 이 문서 작성자는 이를 승인으로 대체하지 않는다. 차단 지적이 있으면 수정·정확한 수정 head 검증·독립 재검토 후 결과를 갱신한다.
+별도 fresh-context 적합성 세션은 d82 head에서 배치13+coordinator9+TLS6=28개를 --rerun-tasks로 직접 실행해0실패·오류·skip,1분5초 PASS와 전체 보존 XML129개를 확인했다. 요청12→10·최대활성1→2와 합성 p50/p95 감소도 재현했다. 기능·경계·문서 기준19개 PASS이며 공개 댓글 기준도 [코멘트6648000963](https://github.com/nyeonu/health-app/pull/15#issuecomment-6648000963) 원문 확인으로 PASS다. 전체 적합성은 Android CI 실패 게이트로 FAIL이며 품질/보안/성능 및 최종 workflow head 재검토는 대기다. 이 문서 작성자는 이를 승인으로 대체하지 않는다. 차단 지적이 있으면 수정·정확한 수정 head 검증·독립 재검토 후 결과를 갱신한다.
 
 - 실제 Google 계정에서 변경 후 latency·private sharing·same-ID/no-duplicate 확인: pending.
 - 변경 후 Galaxy의 실제 성능과 기기 수용: pending. merge 후 고정 서명 APK의 package/certificate를 확인하고 전달해야 하며 아직 확인하지 않았다.

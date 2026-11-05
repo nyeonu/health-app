@@ -48,6 +48,20 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: 컴파일용 Android SDK 36 준비
+        shell: bash
+        run: |
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0"
+
+      - name: 에뮬레이터 부팅 전 테스트 APK 빌드
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+
       - name: Run account-free Android UI and lifecycle instrumentation
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -61,9 +75,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           # Host-only hold methods must never enter normal discovery (no suite skips).
           script: |
-            (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest)
-            # Fresh synthetic images can show a Pixel Launcher ANR during compilation.
-            # Clear only that launcher before tests; never suppress Health App failures.
+            # 테스트 전 기존 launcher 종료를 유지하며 ANR 대화상자 해소는 보장하지 않는다.
             adb shell am force-stop com.google.android.apps.nexuslauncher
             (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.ny.my.health.HistoryProcessRecoveryInstrumentedTest)
             bash android/ci/verify-history-process-recovery.sh

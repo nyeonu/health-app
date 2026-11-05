@@ -26,6 +26,11 @@ tasks:
     depends_on: [T2]
     status: done
     tier: light
+  - id: T4
+    title: 에뮬레이터 부팅과 컴파일 자원 분리
+    depends_on: [T2, T3]
+    status: done
+    tier: light
 ---
 
 # 하루 Drive 배치 최적화 실행 계획
@@ -56,6 +61,7 @@ tasks:
 | `docs/2026-11-04-top-content-layout/report.md` | 수정 | PR14 상단 표시의 소유자 실기기 확인만 반영 | T3 |
 | `docs/backlog/layout-refinement.md` | 수정 | 상단 표시 user-reported PASS와 나머지 기기 미확인 분리 | T3 |
 | `AGENTS.md` | 수정 | 2026-11-05 소유자 자동 승인 위임과 한계 기록 | T3 |
+| `.github/workflows/android-emulator-tests.yml` | 수정 | APK 사전 빌드 후 기존 두 API 테스트 실행 | T4 |
 
 ### 인터페이스
 
@@ -263,6 +269,23 @@ T2 완료 후 시작.
   ```
 - **주의사항**: 실행 안 한 결과를 작성하지 않는다. 공개 보고서에 건강값·원격 ID·계정 링크·토큰·CSV·예외 원인을 넣지 않는다. 독립 리뷰는 아래 전체 검증의 별도 읽기 전용 세션에서 수행한다.
 
+### T4: 에뮬레이터 부팅과 컴파일 자원 분리
+
+T2/T3 완료 후 시작. PLAN 복구1/2의 CI 환경 교정이며 앱 코드/테스트 기준을 바꾸지 않는다.
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `.github/workflows/android-emulator-tests.yml` | 수정 | compile SDK 준비와 APK 빌드를 emulator-runner 전으로 이동 |
+
+- **인터페이스**: 없음.
+- **결정 로직**: 없음.
+- **작업**: 기존 runner 직전 별도 step에서 현재 ANDROID_HOME의 sdkmanager 실행 가능 여부를 검사하고 compile SDK36/build-tools36.0.0을 준비한 뒤 기존 assembleDebug/assembleDebugAndroidTest 명령을 실행한다. runner script의 중복 assemble 줄은 제거하되 connected 전체 테스트와 host 검증은 그대로 실행한다. 기존 launcher force-stop은 유지하되 ANR dialog를 무조건 닫는다고 설명하지 않는다. Google APIs 이미지·API35/36·KVM·4코어/4GiB·기존 timeout/단언/skip 없는 discovery를 유지한다. System UI/Health App 종료·비활성화·ANR 무시·재시도·테스트 완화는 추가하지 않는다.
+- **완료 기준**: YAML 유효, Android tree가 fdda와 동일, 새 CI의 양API 전체 결과를 별도 확인한다. cold compile/boot 자원 경합은 교정 가설이며 ANR의 확정 원인/영구 해결로 쓰지 않는다.
+- **검증 방법**: `git diff --check`, YAML parser, 새 head CI. 로컬 JVM129는 Android tree 동일성을 확인해 보존하고 동일 코드 테스트를 이유 없이 반복하지 않는다.
+- **주의사항**: 기존 PLAN1 실패57개 중3focus/각API·host 미실행을 보존한다. 성공한 것으로 숨기지 않는다. 신규 step 자체가 실패하면 다음 복구 지시 전 멈춰 보고한다.
+
 ## 5. 전체 검증
 
 1. 저장소 android/에서 아래를 실행하고 결과를 기록한다. 기존 core CSV/날짜/permission, app 수동 동의/별도 계속/로컬 이력 회귀는 전체 suite로 재사용한다. 오래된 증거는 새 실행과 구별한다.
@@ -285,6 +308,7 @@ T2 완료 후 시작.
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| PLAN | 1/2 | fdda CI41953996200 양API 각각57/3실패·오류/skip0, native2+clipboard1 focus timeout; 원본 initial PNG 모두 Pixel Launcher ANR, host 미실행 | 부팅된 emulator와 cold Gradle 컴파일의 동시 자원 사용을 줄이도록 기존 APK 빌드를 boot 전 이동. 실제 원인 확정은 아님 | T4 환경 교정 추가; 전체 테스트/원본/timeout/4core4GiB/Google이미지 보존 | workflow만; Android source/test 전체 보존 | YAML/diff검사 PASS, Android tree fdda 동일; 새 양API CI 대기 | 독립 T4 실행 후 원본 확인 |
 | T2 | 1/2 | target TLS14개 중 새6개 실패: NETWORK 기대가 RESPONSE_INVALID, empty response+CloseSocket fixture. 성공만 memoize하여 실패 때 campaign 반복 | 실제 nonempty body 중단+단일 HTTP2 stream reset으로 IO 오류를 유발; 설치5.3.0 javap에서 SocketEffect.CloseStream(int)·onResponseBody 확인 | NETWORK 기대값/HTTP·취소·privacy·요청/분포 단언 유지; 실패 Result도 memoize하여 같은 표본 재수집 금지 | DriveBatchPerformanceTest.kt만; production·기존 baseline/transport 전부 보존 | target14개/0실패·오류·skip,43초 PASS; root 전체 JVM129개·APK·lint·testAPK 1분29초 PASS | drive_batch_t2 부분 교정 후 root 확인 |
 | T1 | 1/2 | root 읽기 검토: batch의 중복 relativePath 입력이 같은 날짜의 병렬 POST를 허용할 수 있고 root 변화 fixture는 malformed 응답과 검색 미노출을 구분하지 않았다. 기존53개 PASS는 이 입력 경계를 검증하지 않음 | 승인된 unique-file 전제와 같은-instance 중복 방지 경계를 요청 전 검증하고 실제 검색 의미의 fixture 추가 | 기존 입력 경로·보안 검사·cold 생성 보존; duplicate-input 거부/filtered-old-ID 미재사용을 보강 | PrivateDriveUploader.kt, PrivateDriveBatchTest.kt; 기존 모든 단언/파일 보존 | prefix 미실행; core55개/0실패·오류·skip, 실행자22초/root7초 PASS | drive_batch_t1 부분 보완 후 root 재검증 |
 
