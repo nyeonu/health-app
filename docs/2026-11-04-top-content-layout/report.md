@@ -36,6 +36,7 @@
 | 진단 `66694ee`, subset CI41942086574 | API35는6개 중 복원 안전 영역 중복128..2337→256..2274로1개 실패. 실제 owner 높이2209와 max1702/value1511을 관찰했다. 이 후보를 최종 구현으로 사용하지 않는다. |
 | 진단 `793f12b`, subset CI41944722470 | API35는6개 중 복원1개 실패. native owner/frame은0,0/1080×2400/padding0으로 정상화됐지만 value1320/max1511로 위치 손실은 남았다. 단독 후보를 해결 완료로 표시하지 않는다. |
 | `bddfc29` 전체 CI41945124863 | fitting 단독 소스의 전체 실행이며 결합 후보의 통과 근거로 세지 않는다. |
+| 진단 `384aa8b`, subset CI41946158204 | API35/36 각각6개 중 capture 전 focus2개 실패, 오류/skip0. 두 버전 모두 global-layout에서 value1511/max1511/owner2400/viewport191..2274를 관측했고 복원 경계/offset 단언 뒤 capture 진입에서 실패했다. 실제 화면은 API35 Launcher ANR, API36 Process system ANR다. 픽셀/전체 회귀 통과로 표시하지 않는다. |
 | 현재 결합 후보의 기능 테스트 | 임시 관찰자가 없는 소스로 정확한 offset/안전 영역/픽셀 단언을 유지하고 로컬 전체 검증 및 API35/36 각각 Android57개·host20개 검증·독립 재검토를 진행한다. |
 
 원본 JVM CI41938627257의 XML14파일은109개(core41/app68), 실패/오류/skip0이다. 별도 fresh-context 리뷰어가 직접 읽었다. fitting 단독 후보의 로컬 전체 검증1분17초 및 임시 관찰자 제거 후1분14초는 통과했다. 결합 후보의 실제 결과는 후속으로 기록한다. 이전 취소/superseded 실행은 성공으로 세지 않는다.
@@ -45,5 +46,7 @@
 ## CI와 남은 확인
 
 API35/36 Google APIs·Pixel6 합성 환경을 각각 실행한다. API36 이미지의 최소 userdata 크기는2048M 설정으로 줄지 않아, disposable runner의 이 Kotlin/JVM 빌드에 미사용인 .NET/NDK 공간을 확보한다. 실제 부팅 성공을 확인했다. Launcher/System UI ANR는 앱 결함과 구분해 원본을 보존하며 가상 기기에4코어/4096M RAM을 명시한다. 확인된 Launcher만 테스트 전 정리하며 Health App/System UI의 ANR를 숨기거나 실패를 재시도하지 않는다. [action 입력 계약](https://github.com/ReactiveCircus/android-emulator-runner/blob/v2/action.yml)을 확인했다.
+
+결합 진단에도 플랫폼 ANR가 남아 cold Gradle 컴파일을 가상 기기 부팅 전 별도 step으로 옮긴다. compile SDK36/build-tools를 먼저 준비하고 앱/테스트 APK를 빌드하며 실패하면 그 step에서 job이 실패한다. 이후 runner에서는 기존 connected 전체 테스트와 host 검증을 실행한다. 초기 시스템과 cold 컴파일의 자원 경합을 줄이는 교정 후보이며 실제 ANR 원인을 자원 경합으로 확정한 것은 아니다. package 비활성화·System UI/시스템 프로세스 종료·ANR 무시·테스트 재시도는 추가하지 않는다.
 
 로컬 emulator/KVM은 없어 OS 실행은 CI에서 검증한다. API35/36 합성 결과는 실제 Galaxy Android16 설치·같은 상단 영역·회전/navigation mode·TalkBack을 대신하지 않는다. 해당 기기 확인과 기존 P0/계정/별도 키 백업 미확인은 그대로 유지한다. 업로드 성능 개선은 별도 후속이다.
