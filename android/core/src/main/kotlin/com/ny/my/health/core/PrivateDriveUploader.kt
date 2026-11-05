@@ -4,6 +4,15 @@ import java.io.IOException
 import java.net.URLEncoder
 import java.time.LocalDate
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -27,6 +36,53 @@ class PrivateDriveUploader(
     private val fields = "id,name,mimeType,parents,ownedByMe,shared,trashed,appProperties,driveId"
 
     override suspend fun upsert(file: CsvFile): String = mutex.withLock {
+        currentCoroutineContext().ensureActive()
+        val (dataset, name, bytes) = prepare(file)
+        val root = appFolder()
+        val parent = folder(dataset, root, DriveOperation.DATASET_FOLDER_LOOKUP, DriveOperation.DATASET_FOLDER_CREATE)
+        uploadFile(name, parent, bytes)
+    }
+
+    override suspend fun upsertBatch(files: List<CsvFile>, onConfirmed: suspend (String) -> Unit) = mutex.withLock {
+        currentCoroutineContext().ensureActive()
+        val prepared = files.map(::prepare)
+        require(files.map { it.relativePath }.toSet().size == files.size) { "Duplicate export path" }
+        if (prepared.isEmpty()) return@withLock
+        val root = appFolder()
+        val parents = mutableMapOf<String, String>()
+        for ((dataset) in prepared) {
+            if (dataset !in parents) {
+                parents[dataset] = folder(dataset, root, DriveOperation.DATASET_FOLDER_LOOKUP, DriveOperation.DATASET_FOLDER_CREATE)
+            }
+        }
+        val slots = Semaphore(2)
+        val confirmations = Mutex()
+        val failure = AtomicReference<Throwable?>(null)
+        coroutineScope {
+            prepared.map { (dataset, name, bytes) ->
+                async(start = CoroutineStart.UNDISPATCHED) {
+                    slots.withPermit {
+                        currentCoroutineContext().ensureActive()
+                        if (failure.get() != null) return@withPermit
+                        try {
+                            val confirmed = uploadFile(name, parents.getValue(dataset), bytes)
+                            confirmations.withLock {
+                                currentCoroutineContext().ensureActive()
+                                if (failure.get() == null) onConfirmed(confirmed)
+                            }
+                        } catch (error: Throwable) {
+                            // 대기 파일이 permit을 얻기 전에 실패를 게시한다.
+                            failure.compareAndSet(null, error)
+                            throw error
+                        }
+                    }
+                }
+            }.awaitAll()
+        }
+        Unit
+    }
+
+    private fun prepare(file: CsvFile): Triple<String, String, ByteArray> {
         require(Regex("(daily|workouts|heart-rate|sleep)/[0-9]{4}-[0-9]{2}-[0-9]{2}\\.csv").matches(file.relativePath)) {
             "Invalid export path"
         }
@@ -34,10 +90,12 @@ class PrivateDriveUploader(
         require(runCatching { LocalDate.parse(name.removeSuffix(".csv")) }.isSuccess) { "Invalid export date" }
         val bytes = file.content.toByteArray(Charsets.UTF_8)
         require(bytes.size <= 5_000_000) { "Export exceeds simple upload limit" }
-        val root = appFolder()
-        val parent = folder(dataset, root, DriveOperation.DATASET_FOLDER_LOOKUP, DriveOperation.DATASET_FOLDER_CREATE)
+        return Triple(dataset, name, bytes)
+    }
+
+    private suspend fun uploadFile(name: String, parent: String, bytes: ByteArray): String {
         val existing = operation(DriveOperation.FILE_LOOKUP) { find(DriveOperation.FILE_LOOKUP, name, parent, "text/csv") }
-        if (existing != null) operation(DriveOperation.FILE_UPDATE) {
+        return if (existing != null) operation(DriveOperation.FILE_UPDATE) {
             val remoteId = id(existing)
             val confirmed = request(DriveOperation.FILE_UPDATE, "PATCH", "$upload/$remoteId?uploadType=media&fields=${encode(fields)}", "text/csv; charset=UTF-8", bytes)
             validate(confirmed, name, parent, "text/csv")
