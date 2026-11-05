@@ -1,7 +1,7 @@
 ---
 spec_id: 2026-11-05-drive-optimization
 title: 하루 CSV 배치의 비공개 Drive 왕복과 직렬 대기 개선
-status: approved
+status: implemented
 created: 2026-11-05
 approved: 2026-11-05
 owner: repository-owner

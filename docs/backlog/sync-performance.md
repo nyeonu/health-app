@@ -1,10 +1,12 @@
 ---
-status: measurement_implemented_device_pending
+status: bounded_optimization_implemented_actual_device_pending
 requested_by: user
 scope: profiling and evidence-based sync optimization
 ---
 
 # 수동 동기화 지연 조사
+
+2026-11-05: 소유자의 V1 자동승인 위임 아래 [Drive 배치 한정 개선](../2026-11-05-drive-optimization/execution-report.md)을 구현했다. 하루 root 조회를 배치 내 공유하고 파일 작업을 최대2개로 제한해 warm3 요청12→10을 검증했다. 실제 client/local TLS의 같은40ms 지연·예열3·성공10회 비교에서 p50/p95 감소, core55+app74=129, 양API 각각Android57+host20과 독립 스펙 적합성 PASS를 확인했다. 품질/보안/성능 및 최종 head 검토·개발 병합은 PR #15에서 계속 확인한다. 실제 기기의 새 latency·private sharing·same-ID 확인은 대기이며 아래 이전 문단은 당시 측정 단계의 이력이다. 합성 uploader-only 시간을 실제 전체 동기화 개선율로 해석하지 않는다.
 
 2026-11-03: 승인된 측정 범위의 단계별 진단과 합성 local TLS 기준선이 구현되었다. 구현·테스트 소스는 `2ccd1d5bbca1a3a2210a39f2f867c7ba03451a53`다. [실행 보고](../2026-11-02-sync-profiling/execution-report.md), [합성 기준선](../2026-11-02-sync-profiling/baseline.md), [실제 기기 절차](../2026-11-02-sync-profiling/device-profiling.md)를 함께 본다. 독립 적합성11/11 PASS, 코드·보안·성능 APPROVE와 계정 없는 Android CI를 완료했다. 현재 문서 head와 병합 처분은 PR #9 코멘트에 남기며 실제 기기 성능 측정은 여전히 별도 대기다.
 

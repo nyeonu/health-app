@@ -2,7 +2,7 @@
 plan_id: 2026-11-05-drive-optimization
 title: 하루 Drive 배치 최적화 실행 계획
 kind: single
-status: in_progress
+status: done
 author: Codex
 created: 2026-11-05
 target: /workspace/health-app-top-layout
@@ -308,7 +308,7 @@ T2/T3 완료 후 시작. PLAN 복구1/2의 CI 환경 교정이며 앱 코드/테
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
-| PLAN | 1/2 | fdda CI41953996200 양API 각각57/3실패·오류/skip0, native2+clipboard1 focus timeout; 원본 initial PNG 모두 Pixel Launcher ANR, host 미실행 | 부팅된 emulator와 cold Gradle 컴파일의 동시 자원 사용을 줄이도록 기존 APK 빌드를 boot 전 이동. 실제 원인 확정은 아님 | T4 환경 교정 추가; 전체 테스트/원본/timeout/4core4GiB/Google이미지 보존 | workflow만; Android source/test 전체 보존 | YAML/diff검사 PASS, Android tree fdda 동일; 새 양API CI 대기 | 독립 T4 실행 후 원본 확인 |
+| PLAN | 1/2 | fdda CI41953996200 양API 각각57/3실패·오류/skip0, native2+clipboard1 focus timeout; 원본 initial PNG 모두 Pixel Launcher ANR, host 미실행 | 부팅된 emulator와 cold Gradle 컴파일의 동시 자원 사용을 줄이도록 기존 APK 빌드를 boot 전 이동. 실제 원인 확정은 아님 | T4 환경 교정 추가; 전체 테스트/원본/timeout/4core4GiB/Google이미지 보존 | workflow만; Android source/test 전체 보존 | YAML/diff검사 PASS, Android tree fdda 동일; 새684 CI 양API 각57+host20 PASS, 독립 원본 확인 PASS | 독립 T4 실행 후 원본 확인 |
 | T2 | 1/2 | target TLS14개 중 새6개 실패: NETWORK 기대가 RESPONSE_INVALID, empty response+CloseSocket fixture. 성공만 memoize하여 실패 때 campaign 반복 | 실제 nonempty body 중단+단일 HTTP2 stream reset으로 IO 오류를 유발; 설치5.3.0 javap에서 SocketEffect.CloseStream(int)·onResponseBody 확인 | NETWORK 기대값/HTTP·취소·privacy·요청/분포 단언 유지; 실패 Result도 memoize하여 같은 표본 재수집 금지 | DriveBatchPerformanceTest.kt만; production·기존 baseline/transport 전부 보존 | target14개/0실패·오류·skip,43초 PASS; root 전체 JVM129개·APK·lint·testAPK 1분29초 PASS | drive_batch_t2 부분 교정 후 root 확인 |
 | T1 | 1/2 | root 읽기 검토: batch의 중복 relativePath 입력이 같은 날짜의 병렬 POST를 허용할 수 있고 root 변화 fixture는 malformed 응답과 검색 미노출을 구분하지 않았다. 기존53개 PASS는 이 입력 경계를 검증하지 않음 | 승인된 unique-file 전제와 같은-instance 중복 방지 경계를 요청 전 검증하고 실제 검색 의미의 fixture 추가 | 기존 입력 경로·보안 검사·cold 생성 보존; duplicate-input 거부/filtered-old-ID 미재사용을 보강 | PrivateDriveUploader.kt, PrivateDriveBatchTest.kt; 기존 모든 단언/파일 보존 | prefix 미실행; core55개/0실패·오류·skip, 실행자22초/root7초 PASS | drive_batch_t1 부분 보완 후 root 재검증 |
 
