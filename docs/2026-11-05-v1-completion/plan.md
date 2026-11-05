@@ -1,0 +1,246 @@
+---
+plan_id: 2026-11-05-v1-completion
+title: V1 날짜별 복구·목적지·자동 실행 에픽 계획
+kind: epic
+status: approved
+author: Codex
+created: 2026-11-05
+target: /workspace/health-app-v1-completion
+spec: spec.md
+spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
+work_plans:
+  - id: core-store
+    title: 날짜별 복구와 내구성 상태
+    path: core-store/plan.md
+    depends_on: []
+    status: pending
+  - id: manual-drive
+    title: 계정에 연결된 전경 수동 복구
+    path: manual-drive/plan.md
+    depends_on: [core-store]
+    status: pending
+  - id: saf-local
+    title: 검증된 local tree 수동 내보내기
+    path: saf-local/plan.md
+    depends_on: [manual-drive]
+    status: pending
+  - id: automation-ui
+    title: 자동 실행과 통합 상태 화면
+    path: automation-ui/plan.md
+    depends_on: [saf-local]
+    status: pending
+---
+
+# V1 날짜별 복구·목적지·자동 실행 에픽 계획
+
+## 1. 선택한 방식과 이유
+
+소유자의 “병목 개선부터 V1 끝까지 자동승인” 위임에 따라 approved로 작성했다. task-breakdown·structure-rules·testing-policy의 템플릿을 적용한다. 구현은 별도 plan-executor 세션에서 수행하며 이 문서는 구현 결과를 뜻하지 않는다. 승인된 [스펙](spec.md)이 범위와 성공 기준의 원본이다.
+
+네 PR로 분리한다. SDK-free core와 실제 SQLite 복구를 먼저 검증하고, 계정을 고른 전경 Drive 실행, local SAF 실행, 자동 실행과 통합 UI를 순서대로 연결한다. 각 PR은 하나의 검토 가능한 기능 경로이고 하위 T 하나당 1~5개 제품/테스트 파일을 변경한다(PR 전체를 5파일로 제한하지 않는다). 새 test 기반 도입은 그 기반을 사용하는 기능 테스트와 별도 T로 둔다. 에픽에서는 하위 T를 작성하지 않는다. 이 파일을 먼저 커밋하고 그 revision을 parent_rev로 고정한 뒤 첫 core-store/plan.md만 작성한다. 후속 plan은 선행 병합 head를 직접 조사해 하나씩 작성한다.
+
+coverage는 foundation history와 분리한 versioned SQLite DB에 둔다. 기존 history DB를 확장하면 지원하지 않는 schema·reset 계약을 바꾸게 되므로 기각했다. 단일 큰 JSON 봉투보다 날짜/파일별 행과 transaction을 선택하여 날짜가 늘어날 때 매번 전체 상태를 복제하지 않는다. 설정과 generation CAS를 같은 DB에 두는 비용을 감수한다. ADR-006 대상이다.
+
+Drive는 기존 선택 없는 authorization을 유지하지 않고 AccountPicker의 선택 계정만 사용한다. credential은 실행 메모리에만 있고 최소 name/type만 private 구성에 저장한다. worker는 foreground resolution을 재사용하지 않고 매 실행 bound account로 fresh authorize한다. ADR-007 대상이다.
+
+WorkManager 2.11.0의 work-runtime과 work-testing을 같은 버전으로 도입한다. CoroutineWorker는 runtime에 있으므로 빈 ktx artifact와 multiprocess 의존성은 넣지 않는다. 기존 Kotlin/SDK/coroutines를 일괄 올리지 않는다. 자체 polling/foreground service는 배터리·복구 계약에 맞지 않아 기각했다. unique work만으로 manual 중복을 막을 수 없으므로 모든 trigger가 공용 gate를 사용한다. ADR-008 대상이다.
+
+기존 확인 재사용을 위해 모든 CSV를 media download하는 대안은 추가 전송량과 transport 변경 비용 때문에 선택하지 않았다. 공식 Drive SHA-256 metadata가 있는 경우 재사용하고 없으면 현재 safe target에 기존 upsert로 확인하는 비용을 감수한다.
+
+선행 PR #15의 승인 plan을 읽었다. 실제 병합 전 API를 현재 코드로 간주하지 않는다. 구현 착수 전 그 PR의 reviewed merge head로 rebase하고 Ports/PrivateDriveUploader/SyncCoordinator/test의 변경을 다시 대조한다. 예상 batch API가 다르면 하위 plan과 본 공통 설계를 먼저 보정한다. 성능·원격 privacy 검증을 약화하거나 별도 캐시/병렬화를 추가하지 않는다.
+
+## 2. 공통 설계
+
+### 변경 파일
+
+경로 접두어: C=`android/core/src/main/kotlin/com/ny/my/health/core/`, CT=`android/core/src/test/kotlin/com/ny/my/health/core/`, A=`android/app/src/main/java/com/ny/my/health/`, AT=`android/app/src/test/java/com/ny/my/health/`, AI=`android/app/src/androidTest/java/com/ny/my/health/`. 접두어는 실제 존재하는 디렉터리이며 신규 파일명도 여기서 고정한다. 같은 파일을 여러 PR이 수정하면 frontmatter 순차 의존성이 적용된다. 아래는 PR별 소유 파일 목록이며 하위 plan에서 1~5파일 T로 분해한다.
+
+| 파일 | 신규/수정 | 변경 요지 | 작업 |
+|---|---|---|---|
+| C/SyncState.kt, C/SyncStateCodec.kt | 신규 | 메타데이터 모델·검증·version 계약 | core-store |
+| C/SyncPlanner.kt, C/SyncRevision.kt | 신규 | bounded 날짜 계획·semantic digest·coverage 판정 | core-store |
+| C/DestinationSync.kt | 신규 | source 재읽기·reconciliation·파일 확인 실행 | core-store |
+| C/Ports.kt | 수정 | store/destination/tracked confirmation 포트 | core-store; manual-drive |
+| A/SyncStateDatabase.kt, A/SqliteSyncStateStore.kt | 신규 | 별도 DB·atomic CAS·명시적 reset | core-store |
+| A/SyncExecutionSession.kt | 신규 | process 공용 gate·pending merge·중단 복구 | core-store; manual-drive; automation-ui |
+| CT/SyncStateTest.kt, CT/SyncPlannerTest.kt, CT/SyncRevisionTest.kt, CT/DestinationSyncTest.kt | 신규 | 의미·경계·실패·동시성 baseline | core-store |
+| AI/SqliteSyncStateStoreInstrumentedTest.kt, AI/SyncStateProcessRecoveryInstrumentedTest.kt | 신규 | 실제 재열기·schema·commit 중단·generation | core-store |
+| android/ci/verify-sync-state-process-recovery.sh | 신규 | 기존 history host harness와 분리한 강제종료 검사 | core-store |
+| A/BoundDriveAuthorization.kt, A/DriveApiDestination.kt | 신규 | 계정 고정·fresh credential·file reconciliation | manual-drive |
+| C/PrivateDriveUploader.kt | 수정 | 현재 metadata SHA-256 reconciliation·typed 확인 배치 | manual-drive |
+| A/MainActivity.kt, A/SyncViewModel.kt, A/HealthHomeScreen.kt | 수정 | picker·명시적 consent/continue·destination 수동 경로 | manual-drive; saf-local; automation-ui |
+| A/HealthConnectReader.kt | 수정 | current grant/access 조회·background gate·공유 page/sample budget | manual-drive; automation-ui |
+| A/AutomaticHealthReader.kt, AT/AutomaticHealthReaderTest.kt | 신규 | 운동 bounded HR·요약 Aggregate·scope와 불명확 BLOCKED | automation-ui |
+| AT/BoundDriveAuthorizationTest.kt, AT/DriveApiDestinationTest.kt | 신규 | 계정·ticket/generation·TLS 실패/재조정 | manual-drive |
+| CT/PrivateDriveBatchTest.kt | 수정(선행 PR 신설) | typed ack와 기존 callback 호환·privacy 회귀 | manual-drive |
+| AI/DestinationConfigurationInstrumentedTest.kt | 신규 | 선택·취소·설정 저장/실패·명시적 복구 | manual-drive; saf-local |
+| A/SafTreeConfiguration.kt, A/SafDestination.kt | 신규 | 실제 flags·grant·probe·정확한 overwrite/readback | saf-local |
+| AI/SyntheticDocumentsProvider.kt, AI/SyntheticProviderStarterTest.kt | 신규 | 합성 provider·failure injection·기반 기동 | saf-local |
+| android/app/src/androidTest/AndroidManifest.xml | 신규 | test APK 전용 provider 등록 | saf-local |
+| AI/SafDestinationInstrumentedTest.kt | 신규 | 짧은 overwrite·중단·중복·회수·reconciliation | saf-local |
+| android/app/build.gradle.kts | 수정 | WorkManager runtime/test 의존성 | automation-ui |
+| A/SyncWorker.kt, A/SyncWorkScheduler.kt | 신규 | unique periodic/catch-up·gate·bounded retry | automation-ui |
+| A/SyncApplication.kt | 신규 | application 단일 session 소유·worker injection | automation-ui |
+| android/app/src/main/AndroidManifest.xml | 수정 | background HC·WorkManager 초기화/application | automation-ui |
+| AI/WorkManagerStarterInstrumentedTest.kt, AI/SyncWorkerInstrumentedTest.kt | 신규 | test 기반 기동·constraints·취소·worker 복구 | automation-ui |
+| A/SyncCoverageUi.kt, AT/SyncCoverageUiTest.kt | 신규 | IO 없는 화면 상태 projection·의미 검사 | automation-ui |
+| AI/V1CompletionScreenInstrumentedTest.kt | 신규 | theme·large text·semantics·모든 복구 동작 | automation-ui |
+| AI/HealthHomeScreenInstrumentedTest.kt | 수정 | 기존 foundation/상단 layout 회귀 유지 | automation-ui |
+| .github/workflows/android-emulator-tests.yml | 수정 | 신규 host-only hold 테스트 일반 discovery 제외·host 실행 | core-store; automation-ui |
+| docs/2026-11-05-v1-completion/execution-report.md | 신규 | PR별 실제 명령·head·독립 검토·한계 | 각 PR 순차 |
+| docs/2026-11-05-v1-completion/dependency-audit.json | 신규 | 실제 resolved 좌표·OSV 결과와 한계 | automation-ui |
+| docs/2026-11-05-v1-completion/completion-roadmap.md, docs/implementation-plan.md, docs/architecture.md, README.md | 수정 | 검증된 개발 상태만 반영 | automation-ui |
+| docs/V1/device-acceptance.md, docs/V1/storage-destinations.md | 수정 | 실제 수용 절차·수행/대기 분리 | automation-ui |
+
+### 인터페이스
+
+아래는 내부 계약이다. 기존 P0 API와 SyncHistory/HistoryStore는 유지한다. 세부 SQLite schema SQL과 codec field/size 상한은 core-store 하위 plan에서 이 계약에 맞춰 확정한다. Android account/URI binding은 app store adapter 내부에만 있고 core에는 opaque generation/destination handle만 전달한다.
+
+```kotlin
+// SyncState — C/SyncState.kt; credential/payload 없는 metadata
+@JvmInline value class DestinationGeneration(val value: String)
+enum class SyncTrigger { MANUAL, SCHEDULED, CATCH_UP }
+enum class SyncStrategy { DAILY_SNAPSHOT }
+enum class Dataset { DAILY, WORKOUTS, HEART_RATE, SLEEP }
+enum class ReadScope { EXPLICIT_DAY, SUMMARY, WORKOUT_SCOPED, BLOCKED }
+data class ScopedSnapshot(val snapshot: HealthSnapshot, val scopeByType: Map<DataType, ReadScope>, val blockedTypes: Set<DataType>)
+enum class FilePhase { PENDING, RUNNING, CONFIRMED, INDETERMINATE, REMOTE_STALE, BLOCKED }
+data class RevisionKey(val digest: String, val generatedAt: Instant)
+data class FileKey(val generation: DestinationGeneration, val date: LocalDate, val dataset: Dataset, val revision: String)
+data class FileConfirmation(val key: FileKey, val targetHandle: String, val confirmedAt: Instant)
+// SyncPlanner — C/SyncPlanner.kt; current state contains enrolled day and durable gaps
+object SyncPlanner {
+    fun plan(state: SyncState, todayInSeoul: LocalDate, access: ReadAccess): PlannedBatch
+    fun coverage(state: SyncState, todayInSeoul: LocalDate): CoverageSummary
+}
+// SyncRevision — C/SyncRevision.kt
+object SyncRevision {
+    fun identify(snapshot: ScopedSnapshot, previous: DayState?, observedAt: Instant): DayRevision
+}
+// SyncStateStore — C/Ports.kt; mutations validate generation and durable journal identity
+interface SyncStateStore {
+    suspend fun load(): SyncStateRead
+    suspend fun transact(expected: DestinationGeneration?, mutation: SyncMutation): SyncCommit
+    suspend fun reset(expected: DestinationGeneration?): SyncCommit
+}
+// StorageDestination — C/Ports.kt; CsvFile is memory-only; reconciliation never blind-creates
+interface StorageDestination {
+    suspend fun reconcile(files: List<PlannedFile>): ReconciledFiles
+    suspend fun writePending(files: List<PlannedFile>, onConfirmed: suspend (FileConfirmation) -> Unit)
+}
+// DriveUploader — C/Ports.kt; additive API after actual performance PR merge
+interface DriveUploader {
+    suspend fun upsert(file: CsvFile): String
+    suspend fun upsertBatch(files: List<CsvFile>, onConfirmed: suspend (String) -> Unit)
+    suspend fun upsertTracked(files: List<CsvFile>, onConfirmed: suspend (CsvFile, String) -> Unit)
+}
+// SyncExecutionSession — A/SyncExecutionSession.kt; process singleton, no Activity ownership
+class SyncExecutionSession {
+    suspend fun detectPending(): CoverageSummary
+    suspend fun run(trigger: SyncTrigger, generation: DestinationGeneration): BatchOutcome
+    suspend fun invalidate(generation: DestinationGeneration): SyncCommit
+}
+```
+
+`SyncStateRead`는 ABSENT/READY/CORRUPT/UNSUPPORTED/UNAVAILABLE을 구분한다. ABSENT만 새 설정으로 들어갈 수 있다. load/reopen은 데이터를 덮지 않고 invalid schema/reset-marker는 admission을 차단한다. transaction은 기대 generation과 attempt identity를 검사하고 settings·pending·day/file confirmation·retry budget을 한 commit 경계에서 바꾼다. DB는 noBackupFilesDir/sync-state.db의 별도 version1 schema(config/day/dataset/attempt)이며 foundation history DB를 열거나 migration하지 않는다. date와 dataset 키 uniqueness, hash/enum/시각/허용 category 및 크기 제한을 검증하고 예상 밖 값은 fail closed한다. 모든 날짜 행을 한 JSON으로 읽지 않고 필요한 range를 조회한다. codec은 행별 크기 상한·필드 allowlist를 갖는다. reset은 현재 generation 무효화와 새 자동 off 상태를 원자적으로 확인하고 unknown schema/corrupt DB 교체는 별도 확인·marker/재열기 검증 경계를 사용한다. 실패를 ABSENT나 reset 성공으로 쓰지 않는다.
+
+`upsertTracked`의 default는 순차 upsert로 각 file/ID를 짝지어 callback한다. PrivateDriveUploader는 PR #15 배치 구현의 동일 예약/validation/mutex/최대2 concurrency/직렬 callback 경계를 공유하여 typed pair를 전달한다. 기존 upsertBatch는 ID projection으로 보존하고 positional callback 추론이나 ID만으로 dataset을 추측하지 않는다. callback은 file의 pending journal을 commit한 뒤 완료된다. callback 실패·취소 후 자식 종료와 gate 반환 규칙을 유지한다.
+
+Drive reconciliation은 매 실행 root/dataset/file의 현재 private/owned/My Drive/marker/name/parent/identity/완전한 조회를 검증한다. 동일 semantic revision도 과거 성공만으로 skip하지 않는다. 현재 target ID가 같고 metadata sha256Checksum이 고정 generated_at으로 재생성한 실제 UTF-8 CSV bytes의 SHA-256과 같을 때에만 확인을 재사용한다. semantic revision digest와 remote byte digest는 목적이 달라 혼용하지 않는다. Drive v3 공식 discovery File schema의 sha256Checksum은 output-only이며 Drive에 content가 있는 파일에서 가용할 때 제공된다(2026-11-05 https://www.googleapis.com/discovery/v1/apis/drive/v3/rest 직접 조회). 기존 list/write fields에 이 optional field를 추가하고 missing/invalid/mismatch는 현재 확인 재사용을 거절하여 기존 검증된 deterministic upsert를 수행한다. MD5로 보안 확인을 대신하거나 전 파일 media GET을 추가하지 않는다. 기존 GoogleDriveTransport의 metadata 1MiB cap/JSON Accept/no redirect/no retry는 유지한다.
+
+삭제/이동/공유/중복된 기존 target은 BLOCKED로 명시적 복구를 요구하며 suffix나 새 create로 숨기지 않는다. 미확인 create는 lookup과 현재 checksum 대조 후 기존 파일을 채택한다. exact safe existing target의 checksum이 없으면 새 create 대신 같은 ID에 검증된 PATCH로 현재 내용을 확인하고, 명백한 부재가 확인된 경우에만 신규 create를 허용한다. 불명확 조회는 재전송하지 않는다. 현재 metadata+checksum으로 건강함이 확인된 파일은 쓰지 않는다. scope가 BLOCKED이거나 좁아진 read는 원본 dataset 소멸의 증거가 아니다. populated→empty는 REMOTE_STALE로 남기며 자동 삭제하지 않는다.
+
+### 결정 로직 위치
+
+- SyncPlanner.kt의 object 함수: enrollment/today/floor 경계, recent2 예약 후 oldest gap 채움(max7, unique, ascending), blocked 보존, continuous checked/uploaded coverage. IO 없음.
+- SyncRevision.kt의 object 함수: 기존 DefaultNormalizer와 VersionedCsvExporter로 generatedAt=Instant.EPOCH인 semantic projection을 만들고 schema/category/read-scope 정렬 범위와 dataset bytes에 길이 구분자를 붙여 SHA-256한다. 저장한 최초 revision 시각으로 실제 CSV를 재생성한다. generated_at 문자열 replace나 raw source 순서 hash를 쓰지 않는다. EMPTY/사라진 dataset/허용 범위 변경은 별도 판정한다. raw/CSV를 저장하지 않는다. 날짜별 checked 범위·revision에 EXPLICIT_DAY/SUMMARY/WORKOUT_SCOPED와 BLOCKED를 기록하여 manual과 자동을 합쳐 전체 확인으로 만들지 않는다.
+- SyncState.kt의 함수: 확인·중단·generation·attempt/retry 상태 전이의 유효성. store는 이 판정에 SQL 원자성을 제공하고 HealthReader/Drive를 호출하지 않는다.
+- DestinationSync.kt: source 재읽기→revision 결정→durable pending→reconcile→pending write→파일별 commit→day 결과의 IO orchestration. 단순 상태 판정을 IO 사이에 숨기지 않는다.
+- AutomaticHealthReader.kt의 IO 없는 query-plan 함수: 허용된 운동 interval을 날짜와 교차시키고 명시적 bounded HR query를 산출한다. IO adapter는 운동/심박 grant를 각각 확인하고 세션이 없으면 HR query를 하지 않는다. query/page/sample 상한은 날짜 전체에서 기존 budget을 공유한다. source/provider의 record start-time 선택으로 운동 구간의 sample 포함을 안전하게 판정할 근거가 없으면 WORKOUT_SCOPED 상세 결과를 BLOCKED/미확인으로 남긴다. broad before(end)/whole-history 우회는 금지한다. 다른 허용 category는 계속 처리하며 요약은 지원되는 Aggregate만 사용한다. 기존 manual HealthConnectReader의 explicit day/CSV 동작은 보존한다.
+- BoundDriveAuthorization.kt의 IO 없는 결과 판정: mode/hasResolution/token/scope/ticket/generation/account 유효성. raw SDK 예외는 allowlist 오류로 바꾼다.
+- SafTreeConfiguration.kt의 IO 없는 capability 판정: 받은 flags·persisted grant·probe 결과·명시적 수용 capability. 실제 provider IO는 SafDestination에 둔다.
+- SyncWorkScheduler.kt의 IO 없는 retry 결정: durable batch/revision budget과 오류 종류에 따라 retry/blocked 판정. runAttemptCount만 쓰지 않는다.
+- SyncCoverageUi.kt의 pure projection: 과거 성공/현재 stale/EMPTY/partial grants/gap/recent freshness/queued/blocked와 다음 허용 동작을 따로 계산한다.
+
+### 관련된 암묵적 동작
+
+- 현재 HistoryDatabase pathLock은 store 호출만 보호한다. 전체 sync gate가 아니며 새 session singleton의 Mutex는 모든 foreground/worker 실행에서 공유한다. 실제 살아 있는 실행을 timeout으로 탈취하지 않는다. (확인: A/HistoryDatabase.kt transaction/pathLock, A/SyncViewModel.kt continueUpload)
+- 현재 Activity onPause는 model.pause로 전경 실행을 취소한다. worker 소유 실행과 UI collector 수명은 분리하고 기존 명시적 수동 continuation은 보존한다. (확인: A/MainActivity.kt onPause, A/SyncViewModel.kt pause)
+- HC1.1.0 source HealthConnectFeatures.kt:41에 FEATURE_READ_HEALTH_DATA_IN_BACKGROUND, HealthPermission.kt:163에 PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND, PermissionController.kt:36에 getGrantedPermissions가 있다. worker마다 feature available+grant와 현재 category grant를 확인한다. 단일 runtime에 포함된 foreground-service 권한/service 선언은 library metadata이며 앱은 setForeground/상시 서비스를 호출하지 않는다. WorkManager 기본 diagnostics의 식별자 노출을 줄이기 위해 merged manifest의 DiagnosticsReceiver도 제거하고 app custom diagnostics는 allowlist만 쓴다. 실제 최초 grant 시각 API는 만들지 않는다. (확인: /workspace/tooling/health-connect-source/sources.jar 2026-11-05 직접 읽기)
+- auth21.4.0의 setAccount(Account), Context authorization client, hasResolution/accessToken/grantedScopes와 basement18.5.0의 AccountPicker/allowable account types가 설치 AAR javap로 확인됐다. 계정 제거 감지에 broad GET_ACCOUNTS를 추가하지 않는다. callback/result account가 선택 계정과 연결되었음을 확인할 수 없으면 blocked로 처리한다. (확인: 2026-11-05 JDK21 javap; app 기존 dependency)
+- 공식 WorkManager release notes는 2.11.0 stable(2025-10-22), minSdk23, CoroutineWorker의 runtime 포함을 확인한다. Google Maven runtime/testing 2.11.0 AAR의 실제 minCompileSdk는35, minAGP는8.6.0이며 runtime manifest minSdk23이다. POM Kotlin BOM은2.1.20, runtime coroutines-android는1.9.0이다. 현재 min28/compile36/AGP8.13.2/Kotlin2.2.20/coroutines1.10.2는 이 요구보다 높다. (확인: Context7 공식 release notes 및 https://dl.google.com/dl/android/maven2/androidx/work/ 아래 해당 POM/AAR를 2026-11-05 읽기 전용 조회)
+- 공식 POM/AAR 하한은 확인했지만 앱의 실제 resolved transitive graph·startup merger는 아직 실행 검증 전이다. 최초 default sandbox 조회 실패 후 network read 권한으로 같은 공식 Maven 조회가 성공했으며 서비스 장애는 아니다. automation-ui 첫 도입 T가 dependency audit와 starter 통합 기동을 통과해야 하며 실패 시 기능 구현을 시작하지 않는다. (추정: 앱 resolved graph/manifest merger, standard 작업)
+- unique periodic와 one-time은 별도 이름으로 enqueue되고 서로/manual을 배타화하지 않는다. WorkManager OS timing은 불확정이며 stop 뒤에도 remote writes가 이미 나갔을 수 있다. (확인: 공식 unique work/persistent work 문서; 스펙 6절)
+- custom Application Configuration.Provider + WorkerFactory를 사용하고 AndroidX Startup의 WorkManagerInitializer만 manifest merger remove하여 중복 초기화를 막는다. 일반 application/UI와 worker가 같은 SyncExecutionSession 인스턴스를 받는다. 정확한 merged manifest/초기화는 starter test에서 검증한다. (추정: 아직 dependency 미도입, standard 작업)
+- SAF의 실제 returned flags만 persist하고 provider의 w/wt 의미는 구현별 차이가 있으므로 truncation+close+readback probe 성공 전 활성화하지 않는다. test provider는 test APK에만 등록한다. 실제 reboot/background capability 미확인은 별도 disabled 상태다. (확인: 스펙 4절, 공식 ContentResolver/DocumentsContract 계약)
+
+## 3. 추적성
+
+아래 23행의 기준은 스펙 5절 원문이다. 테스트 이름은 실제 backtick Kotlin 함수 이름으로 사용한다. 한 행의 복합 기준은 해당 이름의 여러 fixture/경계 시나리오로 검증하고 하위 plan은 자기 행만 인용한다. ⑤는 기존 reader pagination/overlap·Drive root/privacy·history/layout regression을 재사용하며 새 과거 결함을 꾸며내지 않는다. 테스트 대역은 실제 계정/provider/배터리 수용 증거가 아니다.
+
+| 스펙 기준 | 테스트 이름 (출처/층) | 충족 위치 |
+|---|---|---|
+| 새 목적지 구성은 한국 시간 어제를 등록일로 저장하고 기존 foundation 이력을 coverage로 사용하지 않으며 등록 전·오늘·미래 날짜를 읽거나 enqueue하지 않는다. | `Enrollment at KST midnight excludes old history today future and pre-enrollment days` (①·②/유닛 및 SQLite 통합) | core-store 완료 기준 |
+| planner는 등록 이후 recent 두 날짜를 포함해 가장 오래된 eligible 누락으로 채운 최대 7개 고유 날짜를 오름차순으로 만들고 남은 gap·history blocker를 내구성 pending으로 유지한다. | `Recent two days reserve slots before oldest eligible gaps and retain blocked pending days` (①·②·④/유닛 및 SQLite 통합) | core-store 완료 기준 |
+| 앱 시작은 자동 opt-in이 없으면 감지·표시만 수행하고 자동 opt-in이 있으면 같은 planner의 unique catch-up을 enqueue하며 읽기/업로드를 UI 복원 부수효과로 직접 실행하지 않는다. | `Opening with automatic off only displays gaps and automatic on enqueues one catch up` (①·④/통합 및 Compose E2E) | automation-ui 완료 기준 |
+| EMPTY·제한된 category 확인·upload confirmation·연속 checked-through·uploaded-through를 구분하고 일부 허용 범위나 worker 실행 성공만으로 5종 전체 완료·현재성·gap 없는 coverage를 주장하지 않는다. | `Empty and partial grants never claim five categories upload success or continuous uploaded coverage` (①·②·④/유닛 및 Compose E2E) | core-store; automation-ui 완료 기준 |
+| 매 실행 한국 시간 오늘에서 30일을 뺀 보수적 HC read floor 이전 또는 가용성/권한이 불명확한 날짜를 HISTORY_ACCESS_REQUIRED와 미확인 gap으로 유지하고 추정 최초 grant 시각을 저장하거나 원본 제한·오류·page/sample 초과를 빈 데이터로 처리하지 않는다. | `Dates below the conservative history floor and unknown access remain blocked instead of empty` (①·②·③/유닛 및 HC adapter 통합) | core-store; manual-drive 완료 기준 |
+| 자동 실행은 하루 전체 원시 심박 스캔을 재사용하지 않고 운동 구간의 bounded 상세 조회와 지원되는 요약 Aggregate를 사용하며 권한·세션·조회 의미가 불명확한 심박 범위는 BLOCKED/미확인으로 표시하고 수동 대상 조회와 coverage를 혼합하지 않는다. | `Automatic workout heart queries stay bounded and uncertain scopes block without mixing manual coverage` (①·②·③·④/HC adapter 통합 및 유닛) | automation-ui 완료 기준 |
+| destination generation/date/dataset/revision과 시도·시작·확인 시각을 원자적으로 저장하고 저장 실패·강제 종료 전후 재열기에서 확인되지 않은 파일/날짜의 성공을 만들지 않는다. | `Reopening around atomic commits never confirms an unacknowledged file or date` (①·③·④/실제 SQLite·host process 통합) | core-store 완료 기준 |
+| canonical content가 같으면 generated_at 차이로 새 revision을 만들지 않고 원본 재읽기로 revision을 확인한 뒤에만 이전 확인을 재사용하며 달라진 snapshot은 새 revision으로 전환한다. | `Source reread reuses canonical revision despite generated time and advances changed snapshots` (①·②·④/유닛) | core-store 완료 기준 |
+| 부분 실패·취소·결과불명 후 대상 reconciliation을 거쳐 pending 파일만 다시 처리하고 이미 확인된 동일 revision의 건강한 파일을 중복 create하거나 prior success를 지우지 않는다. | `After partial failure cancellation or unknown create reconciliation retries only pending files` (①·③·④/유닛 및 local TLS·provider 통합) | core-store; manual-drive; saf-local 완료 기준 |
+| 이전 populated dataset이 비게 되면 잔존 원격 파일을 REMOTE_STALE로 표시하여 새 revision의 full-current를 막고 원격 삭제·완료를 꾸며내지 않는다. | `Disappearing populated datasets retain remote stale and prevent full current without deletion` (①·④/유닛 및 Compose E2E) | core-store; automation-ui 완료 기준 |
+| 전경·주기·catch-up·중복 UI가 동시에 진입해도 공용 gate로 단일 실행만 시작하고 프로세스 손실 후 durable journal을 복구하며 설정 generation 변경 뒤 지연 결과가 새 coverage를 덮지 못한다. | `Concurrent manual periodic and catch up requests admit once and reject old generation callbacks after restart` (①·③·④/유닛 및 SQLite·worker 통합) | core-store; automation-ui 완료 기준 |
+| 자동 기능은 기본 off이고 전경에서 목적지·범위·지연 가능성 설명과 별도 opt-in 후에만 약 24시간 unique periodic CoroutineWorker를 connected/battery-not-low 제약으로 구성하며 exact-time·당일 완료를 보장하지 않는다. | `Explicit automatic opt in creates one constrained daily CoroutineWorker without exact time promises` (①·②·④/worker 통합 및 Compose E2E) | automation-ui 완료 기준 |
+| Drive 계정은 전경 AccountPicker로 명시적으로 선택하고 모든 authorization을 저장된 Account로 제한하며 계정 변경/제거 시 새 generation·동의를 요구하고 다른 계정으로 조용히 fallback하지 않는다. | `Account picker selection binds all authorization and account removal never falls back` (①·③·④/adapter 통합 및 Compose E2E) | manual-drive 완료 기준 |
+| worker는 background HC feature/permission과 현재 category grant를 재확인하고 authorize resolution·누락 token/scope·계정 오류는 BLOCKED로 남기며 interactive UI를 시작하거나 token·auth code를 저장하지 않는다. | `Worker missing background health grant token scope or account records blocked without interactive launches` (①·③/worker 통합) | automation-ui 완료 기준 |
+| 일시 네트워크/허용된 service 실패만 exponential backoff로 최초 실행 외 최대 3회 재시도하고 영구 실패·불명확 create는 맹목 재전송하지 않으며 retry 소진은 다음 명시적 trigger까지 visible pending/blocked로 남긴다. | `Only transient batch failures retry at most three times and uncertain creates reconcile first` (①·②·③·④/유닛 및 worker·TLS 통합) | automation-ui; manual-drive 완료 기준 |
+| 자동 opt-out·설정 변경·reset은 queued work와 현재 generation의 admission을 무효화하고 이미 발행된 원격 쓰기를 취소로 rollback했다고 표시하지 않으며 기존 이력 삭제와 설정/coverage reset 범위를 각각 정확히 안내한다. | `Opt out configuration change and confirmed reset invalidate old admission while preserving history reset scope` (①·③·④/SQLite·worker 통합 및 Compose E2E) | manual-drive; automation-ui 완료 기준 |
+| Drive destination은 기존 drive.file·marked private owned My Drive·ambiguous target 거부·deterministic same-file 갱신·확인 응답 계약과 CSV v0.1을 유지한다. | `Drive tracked batches preserve private target validation deterministic same file and CSV schema` (①·③·⑤/기존 core 회귀 및 local TLS 통합) | manual-drive 완료 기준 |
+| SAF local 구성은 별도 privacy/tree 동의·실제 granted flags·persisted permission·합성 probe가 확인된 capability만 활성화하고 미검증 provider/background capability는 disabled 또는 BLOCKED로 유지한다. | `SAF configuration enables only consented persisted granted and successfully probed local capabilities` (①·②·③/합성 DocumentsProvider 통합 및 Compose E2E) | saf-local 완료 기준 |
+| SAF 동일 날짜의 더 짧은 재내보내기는 같은 대상에 정확히 truncation/readback되고 duplicate·moved/deleted·grant 철회·write interruption은 suffix 재생성이나 false success 없이 reconciliation/명시적 복구로 연결된다. | `SAF shorter overwrite reads back exact bytes and ambiguous revoked moved deleted interrupted targets require recovery` (①·②·③·④/합성 DocumentsProvider 통합) | saf-local 완료 기준 |
+| home은 현재 목적지·등록 이후 gap·연속 확인 범위·마지막 업로드·recent freshness·queued/blocked 사유와 다음 허용 동작을 구분하고 stale/영구 실패가 과거 성공에 가려지지 않으며 EMPTY를 업로드 완료로 쓰지 않는다. | `Home shows gaps coverage freshness last upload blockers and stale separately from prior success and empty` (①·③·④/유닛 및 Compose E2E) | automation-ui 완료 기준 |
+| light/dark·큰 글자·Compose semantics 검증에서 동의·계정/폴더 선택·자동 설정·수동 실행·재시도·reset 확인에 도달할 수 있고 실제 TalkBack·Galaxy 관찰은 별도 미확인으로 남긴다. | `Consent account tree automatic manual retry and reset remain reachable in dark light and large text semantics` (①·②·⑤/Compose E2E) | automation-ui 완료 기준 |
+| app-private 상태/backup 제외와 로그/진단 allowlist를 검증하여 raw 건강 데이터·CSV·token·계정/기기/문서 식별자·URI·provider 본문을 공개 로그·fixture·CI artifact에 포함하지 않는다. | `Private state and allowlisted diagnostics exclude health payload credentials identifiers and provider bodies` (①·③/저장소·TLS·provider 통합 및 정적 검증) | 전체 검증 3 완료 기준 |
+| 실제 store 재열기·손상/미지원 상태·실행 취소·동시 admission·local TLS·합성 provider·worker 제약/권한·UI 회귀와 APK/lint 검증을 수행하고 각 PR의 독립 최신 head 검토를 마친 개발 완료와 Galaxy/계정/provider/Doze/배터리/TalkBack 수용 대기를 별도로 보고한다. | `Real store cancellation admission TLS provider worker and UI suites pass with device acceptance separately pending` (①·③·④·⑤/통합·E2E; review와 실제 기기는 비자동 항목) | 전체 검증 1·2·4·5 완료 기준 |
+
+## 4. 분할과 순서
+
+| 작업 plan | 전달하는 동작 | 맡는 기준(묶음) | depends_on |
+|---|---|---|---|
+| core-store | 날짜별 source→revision→reconcile→durable 확인을 합성 destination과 실제 store로 증명 | 날짜·의미, 내구성·복구 | — (구현 전 PR #15 병합 head 반영) |
+| manual-drive | 계정을 고른 설정과 명시적 전경 bounded catch-up·개별 확인·reset | 수동 시작, HC blocker, 계정, Drive, 복구 | core-store |
+| saf-local | privacy/tree 구성부터 검증된 수동 local upsert/recovery까지 | SAF 구성·overwrite·capability | manual-drive |
+| automation-ui | 별도 opt-in부터 constrained worker/catch-up·차단/재시도·전체 상태 접근성까지 | 자동 실행, 화면·보안·증거 | saf-local |
+
+체크포인트: manual-drive 머지 후 — 실제 SQLite 재열기/host 중단, 동시 admission과 fresh account authorization, local TLS의 per-file 확인·불명확 create 복구, 기존 P0/V1 이력 회귀를 함께 실행한다. automation-ui 머지 후 — 전체 검증과 독립 적합성/보안/코드 리뷰 및 최신 head 재검토를 완료한다. 각 하위 plan은 2~3 T마다 부분 통합 체크포인트를 둔다.
+
+하위 plan 크기 제약: PR당 T 개수는 제한하지 않는다(소유자 위임 확인). 각 T 변경 파일 1~5개는 반드시 지키고 최종 통합 PR의 UI/worker/문서도 별도 검토 가능한 T로 나눈다. PR 자체가 검토하기 어렵게 커지면 최대 5번째 통합 PR로 분리하도록 에픽을 먼저 보정한다. 계획/실행 증거 갱신은 해당 제품 파일 한도와 별도지만 거대한 제품 변경을 문서 작업으로 숨기지 않는다. core-store는 모델·planner 검증, revision/destination 실행 검증, 실제 store 검증, process/gate 통합으로 분해한다. manual-drive는 authorization/configuration, tracked Drive reconciliation, 전경 실행/화면, 실제 통합 검증으로 나눈다. saf-local은 합성 provider 도입+starter(별도 T), SAF adapter/probe, tree UI 연결, 실패 통합으로 나눈다. automation-ui는 dependency+worker starter 도입(별도 T), automatic health scope/adapter(별도 T), worker/scheduler, UI/config invalidation, 통합 회귀, 문서 증거로 나눈다. 파일 수가 맞지 않으면 하위 T를 더 작게 나누되 PR 수를 늘리기 전에 에픽 의존성/추적성을 갱신한다. UI 새 파일을 독립 화면 조각으로 분리하여 마지막 PR의 파일 수·세션 부담을 제한한다.
+
+## 5. 전체 검증
+
+1. 각 PR에서 android/ 기준 `./gradlew -PcoreOnly :core:test`, `./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug`를 수행한다. 변경된 의미의 개별 테스트는 해당 하위 plan에서 --tests 또는 instrumentation class로 실행하고 전체 affected suite는 위 명령으로 확인한다. 기존 테스트로 충분한 경계는 중복 작성하지 않는다. 실제 SQLite 재열기/commit failure, cancellation, duplicate admission, TLS, 합성 provider는 mock 호출 횟수만으로 대체하지 않는다.
+2. API35/36 emulator에서 `./gradlew :app:connectedDebugAndroidTest`를 기존 CI의 host-only exclusions와 신규 SyncStateProcessRecoveryInstrumentedTest exclusion으로 실행한다. 이어 `bash android/ci/verify-history-process-recovery.sh`와 `bash android/ci/verify-sync-state-process-recovery.sh`를 실행한다. 신규 harness는 합성 state만 사용하며 commit 직전 kill→이전 상태, commit 후 kill→새 상태, RUNNING recovery→INDETERMINATE와 재조정 전 성공 불가를 검사한다. emulator/KVM 불가이면 CI의 해당 head 결과/URL을 기록하고 계정·Galaxy 결과로 부르지 않는다.
+3. automation-ui 도입 T에서 `./gradlew :app:dependencies --configuration debugRuntimeClasspath`, `./gradlew :app:dependencyInsight --dependency androidx.work --configuration debugRuntimeClasspath`, coroutines/stdlib/Guava별 dependencyInsight와 `./gradlew :app:processDebugMainManifest :app:assembleDebugAndroidTest`를 실행한다. 선택/해결 좌표·AAR metadata·compiler/runtime 호환 및 single-process/initializer/backup/permission manifest를 확인한다. 기존 docs/V1/dependency-audit.json 형식으로 releaseRuntimeClasspath/debugRuntimeClasspath/debugUnitTestRuntimeClasspath/debugAndroidTestRuntimeClasspath의 실제 ModuleComponentIdentifier 전체를 수집하여 Maven 좌표를 OSV querybatch로 조회하고 새 dependency-audit.json에 source head·시각·scope·errors·finding/disposition을 남긴다. BOM/variant와 instrumentation 의존성을 포함하며 source reachability/OS 취약점 검증과 구분한다. 조회 불가는 zero findings로 쓰지 않는다. WorkManager starter test는 실제 test context 초기화와 최소 CoroutineWorker 1회 기동/완료를 보여야 한다. 합성 provider starter도 실제 ContentResolver 연결·읽기 1회를 증명한다. 공개 artifact는 allowlist 합성 결과만 보존하고 토큰/CSV/건강값/account/device/document/URI 식별자/provider 예외가 포함되지 않는지 source·fixtures·CI 업로드 경로를 점검한다. app-private 최소 account/tree binding과 backup 제외는 실제 noBackup 경로/manifest 검사로 확인한다.
+4. light/dark와 큰 글자에서 Compose semantics로 동의/선택/자동/수동/재시도/reset을 스크롤하여 실행한다. 상태 restoration 자체가 read/upload/authorize를 실행하지 않는지 확인한다. 자동 off의 재시작, auto on unique catch-up, connected/battery-low 지연, HC feature/grant 부재, 운동/심박 개별 grant·세션 없음·cross-midnight interval·경계 sample·공유 query/page/sample 초과·start-time 선택 불명확 시 상세HR BLOCKED와 나머지 category 진행, null token/scope/resolution, transient budget 0~3 후 소진, 다음 명시 trigger, opt-out/변경/reset 중 늦은 callback, worker stop/restart를 합성 환경에서 검사한다. 실제 TalkBack/Galaxy/account/local provider/reboot·Doze·force-stop·배터리·늦은 원본 도착은 기기 절차와 pending으로 별도 기록한다.
+5. 각 PR은 최신 head/full relevant diff를 작성자·수정자와 다른 fresh-context 읽기 전용 세션이 검토한다(AGENTS.md 명시 요구). spec conformance에는 approved spec+implementation만 주고 plan/기존 review 결론을 주지 않는다. 한국어 PR 댓글에 reviewed commit·범위·findings/severity·실제 검증/한계·merge 적합성을 남긴다. blocking 수정 후 새 head 재검토를 받고 최종 reviewed head와 CI head를 일치시킨다. source 완료/개발 병합과 physical acceptance/release를 분리한다. 실행 보고서의 실제 테스트 이름과 23행 추적성을 대조하고 ADR Proposed는 독립 적합성 통과 후에만 Accepted로 바꾼다. 이 문서 PR도 동일 리뷰 대상이다.
+
+이 문서 작성 중 Gradle/테스트/기기/계정 작업은 실행하지 않았다. source·설치 API·공식 문서 조사와 문서 정합성 확인만 했다. 위 명령은 실행 단계의 검증 방법이며 PASS 보고가 아니다.
+
+## 6. 위험과 롤백
+
+별도 DB를 되돌릴 때 foundation history는 보존한다. 이미 생성한 새 state DB를 구버전 코드가 무시하는 것은 remote rollback이 아니며 재설치/백업에서 자동 재활성화하지 않는다. UI 설정을 바꾸기 전에 generation invalidation을 commit하고 queued work를 취소하여 이전 account/tree로 새 admission을 막는다. 취소·PR revert는 이미 발행한 remote write를 되돌리지 않는다.
+
+schema/codec를 잘못 읽으면 사용자 명시 reset 전까지 blocked로 남긴다. reset 실패·unknown schema를 자동 empty로 치환하지 않는다. metadata 크기 상한에 도달하면 admission 실패를 표시하고 confirmed/prior success를 삭제해 공간을 만들지 않는다. future schema 지원은 새 ADR/계획 보정이 필요하다.
+
+SAF capability 오판은 truncate 실패나 suffix 중복을 만들 수 있으므로 probe/readback 실패 시 비활성화하고 기존 target/uncertain journal을 보존한다. remote target 안전성은 검증 시점 뒤 외부 변경까지 보장하지 않으므로 매 실행 재검증하며 지속 privacy 보장이라고 말하지 않는다. WorkManager 도입은 별도 T에서 audit/starter를 통과하지 못하면 중단한다. rollback은 자동 off·generation invalidation·work cancel 후 해당 PR을 revert하고 private metadata를 보존하여 사용자가 명시 복구하도록 한다.
+
+## 복구 기록
+
+| 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
+|---|---|---|---|---|---|---|---|
+
+## 환경 준비 기록
+
+| 원인·근거 | 준비 조치 | 조치 사용/1 | 확인 명령·결과 | 확인 사용/1 | 다음 조치 |
+|---|---|---|---|---|---|
