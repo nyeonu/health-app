@@ -16,8 +16,13 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.Lifecycle
@@ -63,6 +68,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         model = ViewModelProvider(this)[SyncViewModel::class.java]
         setContent {
+            val owner = LocalView.current
+            val initialInsetsDispatched = remember(owner) { mutableStateOf(false) }
             val state by model.state.collectAsState()
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -94,6 +101,15 @@ class MainActivity : ComponentActivity() {
                                 model.copyPhoneProfiling { text -> writePhoneProfilingClipboard(this@MainActivity, text) }
                             },
                         ))
+                    }
+                }
+            }
+            // inset listener 설치 뒤 첫 측정 전에 현재 값을 한 번만 전달한다.
+            SideEffect {
+                if (!initialInsetsDispatched.value) {
+                    ViewCompat.getRootWindowInsets(owner)?.let {
+                        ViewCompat.dispatchApplyWindowInsets(owner, it)
+                        initialInsetsDispatched.value = true
                     }
                 }
             }
