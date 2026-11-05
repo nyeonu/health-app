@@ -7,6 +7,14 @@ import kotlinx.serialization.json.*
 /** SQL의 JSON 말단만 정규 형식으로 변환한다. */
 object SyncStateCodec {
     private const val LIMIT = 16 * 1024
+    // SQL scalar도 JSON 말단과 같은 정규 값 경계를 사용한다.
+    fun decodeDate(value: String): LocalDate = scalar { LocalDate.parse(value).also { require(validDate(it) && it.toString() == value) } }
+    fun decodeInstant(value: String): Instant = scalar { Instant.parse(value).also { require(validInstant(it) && it.toString() == value) } }
+    fun decodeDigest(value: String): String = value.also { require(validHex(it)) }
+    fun decodeUuid(value: String): String = value.also { require(validUuid(it)) }
+    fun decodeHandle(value: String): String = value.also { require(validHandle(it)) }
+    private inline fun <T> scalar(decode: () -> T): T = try { decode() }
+        catch (error: java.time.DateTimeException) { throw IllegalArgumentException("잘못된 SQL 시간 값", error) }
     private fun write(value: JsonElement): String = value.toString().also {
         require(it.toByteArray(Charsets.UTF_8).size <= LIMIT)
     }
