@@ -164,12 +164,14 @@ class HealthAppInstrumentedTest {
         val observer = androidx.test.runner.lifecycle.ActivityLifecycleCallback { activity, stage ->
             if (activity is MainActivity && stage == androidx.test.runner.lifecycle.Stage.RESUMED) {
                 activity.findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)
-                    .doOnAttach { host ->
-                        val insets = androidx.core.view.ViewCompat.getRootWindowInsets(host)
-                            ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or
-                                androidx.core.view.WindowInsetsCompat.Type.displayCutout())
-                        println("TOP_LAYOUT_ATTACH width=${host.width} height=${host.height} " +
-                            "left=${insets?.left} top=${insets?.top} right=${insets?.right} bottom=${insets?.bottom}")
+                    .doOnAttach { container ->
+                        (container as android.view.ViewGroup).getChildAt(0).doOnAttach { owner ->
+                            val insets = androidx.core.view.ViewCompat.getRootWindowInsets(owner)
+                                ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or
+                                    androidx.core.view.WindowInsetsCompat.Type.displayCutout())
+                            println("TOP_LAYOUT_ATTACH width=${owner.width} height=${owner.height} " +
+                                "left=${insets?.left} top=${insets?.top} right=${insets?.right} bottom=${insets?.bottom}")
+                        }
                     }
             }
         }

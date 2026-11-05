@@ -99,8 +99,11 @@ class MainActivity : ComponentActivity() {
         }
         // 첫 측정 전에 현재 inset을 전달해 복원된 스크롤이 임시 큰 viewport에 잘리지 않게 한다.
         val host = findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)
-        host.doOnAttach { view ->
-            ViewCompat.getRootWindowInsets(view)?.let { ViewCompat.dispatchApplyWindowInsets(view, it) }
+        host.doOnAttach { container ->
+            // Compose 1.9.2는 inner owner의 attach에서 content와 inset listener를 설치한다.
+            (container as android.view.ViewGroup).getChildAt(0).doOnAttach { owner ->
+                ViewCompat.getRootWindowInsets(owner)?.let { ViewCompat.dispatchApplyWindowInsets(owner, it) }
+            }
         }
     }
 
