@@ -87,10 +87,14 @@ fun SyncState.isValid(): Boolean {
     if (!config.isValid() || (scopeKey != null && scopeFingerprint(requestedScopes) != scopeKey)) return false
     if (attempt?.isValid(config.enrolledDay, LocalDate.MAX) == false) return false
     if (config.destinationHandle.isBlank() || !config.categories.containsAll(requestedScopes.keys)) return false
-    if (scopeKey == null && (coverage.scopePendingCount != null || coverage.scopeBlockedCount != null)) return false
+    if (scopeKey == null && (days.isNotEmpty() || oldestPendingDays.isNotEmpty() ||
+            coverage.scopePendingCount != null || coverage.scopeBlockedCount != null ||
+            coverage.scopeCheckedThrough != null || coverage.scopeUploadedThrough != null ||
+            coverage.recentCheckedDays.isNotEmpty() || coverage.recentUploadedDays.isNotEmpty())) return false
     if (oldestPendingDays.any { it < config.enrolledDay }) return false
     if (attempt?.let { a ->
-            a.id.isBlank() || a.scopeKey != scopeKey || a.requestedScopes != requestedScopes ||
+            a.id.isBlank() || !config.categories.containsAll(a.requestedScopes.keys) ||
+                (scopeKey != null && (a.scopeKey != scopeKey || a.requestedScopes != requestedScopes)) ||
                 a.retryBudgetKey.isBlank() || a.retriesUsed !in 0..3 || a.dates.size > 7 ||
                 a.dates != a.dates.distinct().sorted() || a.dates.any { it < config.enrolledDay } ||
                 (a.startedAt != null && a.startedAt < a.scheduledAt) ||

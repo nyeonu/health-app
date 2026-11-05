@@ -146,6 +146,34 @@ class SyncStateTest {
             candidate: SyncState = state, expectedGeneration: DestinationGeneration? = generation) =
             assertEquals(expected, candidate.validateMutation(expectedGeneration, value, row, f.today))
         check(CommitStatus.COMMITTED, mutation(confirm = confirmation))
+        val unscoped = state.copy(scopeKey = null, requestedScopes = emptyMap(),
+            coverage = state.coverage.copy(scopeKey = null, scopeCheckedThrough = null, scopeUploadedThrough = null,
+                scopePendingCount = null, scopeBlockedCount = null, excludedTypes = emptySet(),
+                recentCheckedDays = emptySet(), recentUploadedDays = emptySet()))
+        val unscopedFinished = unscoped.copy(attempt = attempt.copy(finishedAt = f.time))
+        assertTrue(unscoped.isValid())
+        assertTrue(unscopedFinished.isValid())
+        assertFalse(unscoped.copy(attempt = attempt.copy(id = "malformed")).isValid())
+        assertFalse(unscoped.copy(attempt = attempt.copy(scopeKey = ReadScopeKey("c".repeat(64)))).isValid())
+        assertFalse(unscoped.copy(configuration = f.config.copy(categories = setOf(DataType.WEIGHT))).isValid())
+        val otherScopes = mapOf(DataType.HEART_RATE to ReadScope.SUMMARY)
+        val otherKey = requireNotNull(SyncPlanner.scopeKey(f.config, ReadAccess(true, otherScopes.keys, otherScopes)))
+        assertFalse(state.copy(scopeKey = otherKey, requestedScopes = otherScopes,
+            coverage = state.coverage.copy(scopeKey = otherKey)).isValid())
+        assertFalse(unscoped.copy(days = mapOf(date to journal)).isValid())
+        assertFalse(unscoped.copy(oldestPendingDays = listOf(date)).isValid())
+        for (invalidCoverage in listOf(unscoped.coverage.copy(scopePendingCount = 0),
+            unscoped.coverage.copy(scopeBlockedCount = 0), unscoped.coverage.copy(scopeCheckedThrough = date),
+            unscoped.coverage.copy(scopeUploadedThrough = date), unscoped.coverage.copy(recentCheckedDays = setOf(date)),
+            unscoped.coverage.copy(recentUploadedDays = setOf(date)))) {
+            assertFalse(unscoped.copy(coverage = invalidCoverage).isValid())
+        }
+        check(CommitStatus.COMMITTED, mutation(confirm = confirmation), candidate = unscoped)
+        check(CommitStatus.INVALID, mutation(confirm = confirmation), row = null, candidate = unscoped)
+        check(CommitStatus.INVALID, mutation(confirm = confirmation), candidate = unscopedFinished)
+        check(CommitStatus.STALE, mutation(confirm = confirmation.copy(key = confirmation.key.copy(revision = "d".repeat(64)))), candidate = unscoped)
+        check(CommitStatus.STALE, mutation(confirm = confirmation.copy(key = confirmation.key.copy(scopeKey = otherKey))), candidate = unscoped)
+        check(CommitStatus.STALE, mutation(confirm = confirmation), row = journal.copy(date = date.minusDays(1)), candidate = unscoped)
         assertTrue(state.days.isEmpty())
         assertEquals(f.summary, state.coverage)
         check(CommitStatus.STALE, mutation(confirm = confirmation), expectedGeneration = DestinationGeneration("00000000-0000-0000-0000-000000000003"))
@@ -176,6 +204,7 @@ class SyncStateTest {
         val startMutation = mutation(start = start).copy(attemptId = start.id)
         check(CommitStatus.COMMITTED, startMutation, row = null, candidate = state.copy(attempt = attempt.copy(finishedAt = f.time)))
         check(CommitStatus.INVALID, startMutation, row = null)
+        check(CommitStatus.INVALID, startMutation, row = null, candidate = unscopedFinished)
         assertFalse(attempt.copy(dates = listOf(f.today)).isValid(f.config.enrolledDay, f.today))
         assertFalse(attempt.copy(retriesUsed = 4).isValid(f.config.enrolledDay, f.today))
         assertFalse(confirmed.copy(datasets = confirmed.datasets.mapValues { (_, it) -> it.copy(confirmedAt = null) }).isValid(generation, f.config.enrolledDay, f.today))

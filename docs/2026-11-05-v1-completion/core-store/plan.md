@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-05
 parent: ../plan.md
-parent_rev: c55220ffd1979607a4977a81aecc55eb0b981632
+parent_rev: 980a38bc98279d020c557600d5ed586d2fc83b13
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feat/v1-completion
@@ -115,6 +115,19 @@ class DestinationSync(store: SyncStateStore, reader: ScopedHealthReader,
 
 - `SyncStateStore`：loadForScope는 expected generation/current config/access를 같은 읽기 snapshot에서 확인하고 scope filtering→현재 profile 완료일 제외→eligible floor와 blocker 판단→oldest 최대7 LIMIT 순서로 선택한다. 이전 EXPLICIT_DAY 완료와 자동 SUMMARY/WORKOUT_SCOPED 완료는 각각 별도 row로 남는다. loadDay null은 정확한 generation/date/scope row 부재만 뜻하며 stale generation/DB 오류는 예외다. planner는 state.scopeKey와 access에서 다시 계산한 key가 다르면 빈 실행으로 넘기지 않고 admission을 중단한다.
 - `DestinationSync`：session이 access→loadForScope→scopeKey가 고정된 attempt start를 commit한다. engine는 access 재확인 후 attempt scopeKey와 다르면 source read/write 없이 STALE로 반환한다. 동일 key이면 selected day의 exact-scope 이전 state를 loadDay하고 readScoped→identify한다. 당일 조회 중 scope가 BLOCKED로 변하면 해당 row를 BLOCKED로 남긴다.
+
+### DestinationException: 안전한 실패 분류
+
+```kotlin
+// DestinationException — safe allowlisted boundary, lives in Ports.kt
+class DestinationException(val reason: BlockReason) : IllegalStateException(reason.name)
+// Accept only DESTINATION_TRANSIENT_FAILURE, DESTINATION_RECONCILIATION_REQUIRED,
+// ACCOUNT_AUTHORIZATION_BLOCKED, DESTINATION_BLOCKED. No provider message/cause parameter.
+```
+
+- `DestinationException`：reconcile/writePending 호출만을 분류 경계로 삼는다. typed transient는 current day 최신 상태를 다시 읽고 RUNNING 파일을 INDETERMINATE로 보존한 후 blocker=DESTINATION_TRANSIENT_FAILURE·phase=PENDING 또는 INDETERMINATE로 커밋한다. 영속화 성공 때만 RETRYABLE이며 store/stale 오류를 transient로 오인하지 않는다. 원격 확인·priorConfirmation·성공한 source checkedAt을 보존한다.
+- `DestinationException`：불명확 create는 DESTINATION_RECONCILIATION_REQUIRED, 계정 resolution은 ACCOUNT_AUTHORIZATION_BLOCKED, unknown 일반 목적지 예외는 DESTINATION_BLOCKED로 day BLOCKED journal을 남긴다. 명시된 고정 reason 외 constructor 입력은 거부한다. 모두 자동 후보에서 제외하고 null/error를 EMPTY/confirmed로 만들지 않는다. cancellation은 별도 전파하며 transient 사유를 부여하지 않는다. 일시 실패라도 outstanding unknown-create 파일이 있으면 adapter가 RECONCILIATION_REQUIRED로 우선 분류해야 한다.
+- `SyncState`：새3종 reason은 source checkedAt을 무효화하지 않는다. transient reason은 PENDING/INDETERMINATE에서만, 새 영구2종은 BLOCKED에서만 유효하다. 기존 DESTINATION_BLOCKED의 transient 변환 금지. `SyncPlanner`는 RECONCILIATION_REQUIRED/ACCOUNT_AUTHORIZATION_BLOCKED를 기존 영구 사유와 함께 제외하되 pending counts와 prior 이력은 보존한다. RETRYABLE은 이번 batch에 known transient가 있고 영구 blocker가 없을 때만 반환한다. 일반 PENDING·미분류 interruption은 자동 retry 허가가 아니다. worker retry budget은 후속 plan에서 소비하며 이번에는 변경하지 않는다.
 
 ### SyncRevision: canonical projection과 공유 원격 파일
 
@@ -323,10 +336,11 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
   | `android/core/src/main/kotlin/com/ny/my/health/core/Ports.kt` | 수정 | additive store/scoped-reader/destination 포트 |
   | `android/core/src/main/kotlin/com/ny/my/health/core/DestinationSync.kt` | 신규 | source→pending→reconcile→개별확인 |
   | `android/core/src/main/kotlin/com/ny/my/health/core/SyncState.kt` | 수정 | mutation 유효성·attempt/budget metadata |
+  | `android/core/src/main/kotlin/com/ny/my/health/core/SyncPlanner.kt` | 수정 | 영구 목적지 blocker와 transient 후보 분리 |
   | `android/core/src/test/kotlin/com/ny/my/health/core/DestinationSyncTest.kt` | 신규 | 합성 reader/store/destination 실패 경로 |
 
-- **인터페이스**: 2절 `SyncState` 참조. 2절 `SyncPlanner` 참조. 2절 `SyncRevision` 참조. 2절 `SyncStateStore` 참조. 2절 `StorageDestination` 참조. 2절 `ScopedHealthReader` 참조. 2절 `DestinationSync` 참조. DriveUploader의 upsert/upsertBatch는 그대로 보존한다. upsertTracked default 추가는 manual-drive 소유다.
-- **결정 로직**: 없음(판정은 T1/T2 함수 호출).
+- **인터페이스**: 2절 `SyncState` 참조. 2절 `SyncPlanner` 참조. 2절 `SyncRevision` 참조. 2절 `SyncStateStore` 참조. 2절 `StorageDestination` 참조. 2절 `ScopedHealthReader` 참조. 2절 `DestinationSync` 참조. 2절 `DestinationException` 참조. DriveUploader의 upsert/upsertBatch는 그대로 보존한다. upsertTracked default 추가는 manual-drive 소유다.
+- **결정 로직**: T1/T2 판정 재사용과 2절 `DestinationException`의 고정 reason 분류. provider 오류 문자열은 판정에 사용하지 않는다.
 - **호출 순서**:
   ```
   1. access/loadForScope/plan → 고정 attempt scope와 다르면 중단; read 전 generation 재검사
@@ -338,7 +352,7 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
   ```
 - **작성할 테스트**:
   - "After partial failure cancellation or unknown create reconciliation retries only pending files" — 신규; 아래 fixture 조건으로 검증.
-  - 케이스·재사용 근거: 신규 — 1절 After partial failure...; Source reread...의 read 후 revision 확인 순서; 합성 4파일 중2확인 후 실패, callback commit실패, 다른 scope 쓰기 전 기존 scope 파일 INDETERMINATE+prior 확인 보존, cancel 전/중/후, unknown create→reconcile 기존 target 채택, 건강한 동일 revision 무쓰기, stale generation/revision/attempt callback거부, narrowed scope 보존. 실패/cancel 시 prior 성공 보존과 다음 실행의 source 재읽기를 결과로 단언한다(①③④). 합성 store는 실제 SQLite 검증이 아님을 구분한다.
+  - 케이스·재사용 근거: 신규 — 1절 After partial failure...; Source reread...의 read 후 revision 확인 순서; 합성 4파일 중2확인 후 실패, callback commit실패, 다른 scope 쓰기 전 기존 scope 파일 INDETERMINATE+prior 확인 보존, cancel 전/중/후, unknown create→reconcile 기존 target 채택, 건강한 동일 revision 무쓰기, stale generation/revision/attempt callback거부, narrowed scope 보존. 실패/cancel 시 prior 성공 보존과 다음 실행의 source 재읽기를 결과로 단언한다(①③④). 합성 store는 실제 SQLite 검증이 아님을 구분한다. known transient와 unknown 예외 구별, 첫 조회 실패시 write0,2개 확인 후 transient·불명확 create·계정 block의 확인/prior 보존, 영구 사유 planner 제외, cancellation transient 아님, failure journal commit실패시 RETRYABLE 금지, reason/phase validation을 같은 테스트에서 검증한다(①③④).
 - **완료 기준**: 모든 remote write보다 journal이 앞서며 파일별 commit만 성공 count에 포함; 기존 P0 coordinator/ports callsites 컴파일·회귀 유지.
 - **검증 방법**:
   ```bash
@@ -473,6 +487,9 @@ bash android/ci/verify-sync-state-process-recovery.sh
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T2 | 2/2 | root source 대조: load()는 선택 scope 없이 현재 attempt를 반환하지만 isValid가 attempt.scopeKey와 null selected scope를 무조건 비교해 정상 journal을 거부 | unscoped snapshot은 attempt 자체의 canonical/profile/config 관계만 검사하고 selected scope가 있을 때만 equality 검사; 날짜행/선택 coverage를 unscoped에 혼입하지 않음 | load() 무선택 계약과 엄격한 selected-scope CAS 불변 | SyncState.kt/SyncStateTest.kt만; 기존 mutation·hash·codec 유지 | core64개/실패·오류·skip0; 실행자9초/root7초 PASS(입력동일 UP-TO-DATE XML대조) | v1_core_t2 부분 교정 |
+| T3 | 2/2 | 실행자 uncovered: 목적지 모든 예외를 generic PENDING으로 반환해 worker가 안전한 transient와 불명확 create를 구분할 durable 근거 없음 | typed allowlist failure + 고정 reason/RETRYABLE, 실제 provider 매핑은 후속 유지 | 최초외3회 제한·불명확create 맹목재송신금지 보존. parent980a38b 재검토·핀 | Ports/SyncState/SyncPlanner/DestinationSync/DestinationSyncTest 총5파일; 기존 regression 보존 | typed/unknown/partial/storefailure/cancel 검증 대기 | v1_core_t3 한정 교정 |
+| T3 | 1/2 | root source 대조: 동일 revision의 기존 CONFIRMED 파일을 planned에서 제외해 현재 remote metadata/checksum 재검증 없이 성공 재사용 | 모든 intended 파일을 새 source read 뒤 reconcile하고 이전 확인은 prior로 보존. 무쓰기 재사용도 fresh remote proof 필요 | 현재성 재검증·same-ID·privacy 계약 불변. PENDING 확인 거부와 INDETERMINATE 중간 journal 유지 | DestinationSync.kt/DestinationSyncTest.kt만; 기존포트/DTO/Drive유지 | prior-confirmed unsafe/moved/shared/absent/reconcile 실패·healthy 무쓰기 target 실행자/root 각20초 PASS | v1_core_t3 부분 교정 |
 | T2 | 1/2 | root source 대조: revision hash가 승인된 schema literal0.1 누락, scope JSON 묶음/enum ordinal dataset 순서로 canonical component 계약과 다름. 기존49테스트는 시간불변만 확인 | 명시적 component별 protocol + 고정 EMPTY hash vector/명시 dataset 이름 순서 fixture로 확인 | SHA256·4byte BE 길이·기존CSV/scope/시각 계약 불변, 새 persisted format 배포 전 교정 | SyncRevision.kt/SyncRevisionTest.kt만; T1/codec/reducer 보존 | literal vector·4dataset 이름순 검증과 core49개/0실패·오류·skip,17초 PASS | v1_core_t2 한정 교정 |
 | T1 | 3 (소유자 자동승인에 따른 추가 교정; 기본 한도2회 유지 기록) | root 코드 대조: scopeKey가 ordinal 정렬/문자 length-colon 형식으로 승인된 domain+이름정렬+4byte big-endian 계약 위반. isChecked가 source read와 remote 확인을 합쳐 구분 불충분 | 고정 외부 hash vector로 scope protocol 검증; checked는 읽기 확인, uploaded는 파일 원격 확인으로 분리하고 planner는 업로드 pending을 계속 gap으로 유지 | 새 업무규칙/권한 없음. 기본 복구한도 소진 후 원인을 숨기거나 회차 리셋하지 않고 현재 사용자 V1 자동승인을 추가 정합성 교정 권한으로 적용 | SyncPlanner.kt/SyncState.kt와 배정2test파일만; DTO/기존회귀 보존 | core45개/0실패·오류·skip, 실행자18초/root7초 PASS | v1_core_t1 한정 보정 |
 | T1 | 2/2 | test 파일 작성 명령의 cwd가 android인데 android/core 상대경로를 사용해 쓰기 실패. source compile PASS 후 지정 test class 없음으로 verify FAIL | 승인된 repository root에서 미작성 배정2개 test 파일 작성, 같은 verify 실행 | 구현/기대값/대상4파일 불변. DTO/planner source 보존 | SyncStateTest.kt/SyncPlannerTest.kt만 새로 작성 | 지정4개/실패·오류·skip0,15초 PASS | v1_core_t1 경로 한정 복구 |
@@ -490,3 +507,9 @@ Core T1 추가 정합성: canonical scope key는 domain 포함·타입 이름 �
 T2 canonical revision component 명확화: 각 component는 UTF-8 앞4byte big-endian 길이이며 순서가 sync-revision/1 → 0.1 → ISO date → admitted scopeKey hex → actual scope map의 DataType.name 사전순(type.name,scope.name 각기) → Dataset.name 사전순(dataset.name,relativePath,canonical CSV content 각기)이다. positive grant는 actual non-BLOCKED scope keys와 정확히 같아 별도 JSON component를 중복 추가하지 않는다. EMPTY 고정 vector도 이 형식을 사용한다.
 
 T3 실행 선행 증거: PR15는 master bf071e19e4e52c285e075b3dfe3db09e1bda8135로 병합됐고 이 worktree에 1cbf860c6c431edd437a5d039fe1d36eafade2f6로 반영했다. 실제 Ports.upsertBatch 기본 순차와 PrivateDriveUploader의 최대2/고유입력/콜백 계약을 다시 확인했다. 병합 후 root 전체 JVM137개(core63/app74)·APK/lint/testAPK가2분21초에 통과했다. ScopedHealthReader.readScoped에는 admission의 requestedScopes를 명시 전달하여 구성 밖 읽기와 일중 권한 변경 때 profile 축소 바꿔치기를 막는다. 응답 scopeByType은 요청 key를 그대로 가지며 읽기 불가 타입은 BLOCKED, HealthSnapshot.grantedTypes는 실제 positive read scope keys여야 한다. 현재 전체 grant는 별도 access() 사실로 유지한다.
+
+T3 현재성 보정: snapshot/revision이 같아도 기존 CONFIRMED 파일을 reconcile 입력에서 제외하지 않는다. 이전 확인은 priorConfirmation으로 남기고 현재 journal을 준비해 모든 intended file의 현재 metadata/identity/checksum을 재검증한다. 원격 검증이 건강하면 write 없이 재확인하며 privacy/identity/조회 실패를 과거 성공으로 숨기지 않는다.
+
+T2 unscoped snapshot 명확화: load()의 scopeKey=null/requestedScopes={}는 attempt 부재를 뜻하지 않는다. attempt는 자체 scope fingerprint·요청 categories가 configuration subset인지 검증하고, 선택 scope가 존재할 때만 selected key와 equality를 요구한다. 무선택 snapshot의 days/oldestPendingDays/selected counters는 비어/null이어야 한다. start mutation은 선택 scope 없이 허용하지 않으며 기존 confirmation은 exact attempt/currentDay 관계로 검증한다.
+
+상위 변경 재검토: c55220f→980a38b는 위 T3 실패 분류의 enum/outcome와 책임 분리만 보정한다. 승인 spec 변경 없음, 사용자 V1 자동승인에 따라 이 child를 재검토하고 parent_rev를 새 revision으로 고정했다. 현재성 recovery1과 unscoped T2 recovery2는 보존한다.
