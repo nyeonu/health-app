@@ -2,7 +2,7 @@
 plan_id: 2026-11-05-v1-completion
 title: V1 날짜별 복구·목적지·자동 실행 에픽 계획
 kind: epic
-status: approved
+status: in_progress
 author: Codex
 created: 2026-11-05
 target: /workspace/health-app-v1-completion
@@ -13,7 +13,7 @@ work_plans:
     title: 날짜별 복구와 내구성 상태
     path: core-store/plan.md
     depends_on: []
-    status: pending
+    status: in_progress
   - id: manual-drive
     title: 계정에 연결된 전경 수동 복구
     path: manual-drive/plan.md
