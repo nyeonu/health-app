@@ -96,6 +96,91 @@ class SyncStateTest {
         assertEquals(original.revision, originalState.days[originalRow.date]!!.revision)
         assertEquals(setOf(originalRow.date), SyncPlanner.coverage(originalState, original.today).recentUploadedDays)
     }
+
+    @Test
+    fun `Canonical leaves roundtrip bounded metadata and reject unknown noncanonical malformed input`() {
+        val f = SyncFixture(LocalDate.of(2026, 11, 5), 20)
+        val confirmation = FileConfirmation(FileKey(f.state().generation, f.today.minusDays(1), f.key,
+            Dataset.DAILY, f.revision.digest), "가".repeat(1365) + "a", f.time)
+        fun rejected(block: () -> Unit) {
+            try { block(); fail("거부해야 한다") } catch (_: IllegalArgumentException) { }
+        }
+        val categories = DataType.entries.toSet()
+        val scopes = categories.associateWith { ReadScope.SUMMARY }
+        val dates = (1L..7).map { f.today.minusDays(it) }.sorted()
+        val triggers = SyncTrigger.entries.toSet()
+        assertEquals(categories, SyncStateCodec.decodeCategories(SyncStateCodec.encodeCategories(categories), 1))
+        assertEquals(scopes, SyncStateCodec.decodeScopes(SyncStateCodec.encodeScopes(scopes), 1))
+        assertEquals(dates, SyncStateCodec.decodeDates(SyncStateCodec.encodeDates(dates), 1))
+        assertEquals(triggers, SyncStateCodec.decodeTriggers(SyncStateCodec.encodeTriggers(triggers), 1))
+        val encoded = SyncStateCodec.encodeConfirmation(confirmation)
+        assertEquals(confirmation, SyncStateCodec.decodeConfirmation(encoded, 1))
+        rejected { SyncStateCodec.encodeConfirmation(confirmation.copy(targetHandle = confirmation.targetHandle + "a")) }
+        rejected { SyncStateCodec.encodeDates(dates + f.today) }
+        for (json in listOf("[ \"STEPS\"]", "[\"steps\"]", "[\"UNKNOWN\"]", "[\"STEPS\",\"STEPS\"]", "[\"\\u0053TEPS\"]", " ".repeat(16385)))
+            rejected { SyncStateCodec.decodeCategories(json, 1) }
+        for (json in listOf("{\"STEPS\":\"SUMMARY\",\"STEPS\":\"SUMMARY\"}", "{\"STEPS\":\"SUMMARY\",\"EXERCISE\":\"SUMMARY\"}", "{\"UNKNOWN\":\"SUMMARY\"}"))
+            rejected { SyncStateCodec.decodeScopes(json, 1) }
+        rejected { SyncStateCodec.decodeConfirmation(encoded.dropLast(1) + ",\"extra\":\"x\"}", 1) }
+        rejected { SyncStateCodec.decodeConfirmation(encoded.replace("CONFIRMED", "confirmed").replace("DAILY", "daily"), 1) }
+        try { SyncStateCodec.decodeCategories("[]", 2); fail("지원하지 않는 버전") } catch (_: UnsupportedOperationException) { }
+        rejected { SyncStateCodec.decodeDates("[\"2026-11-04\",\"2026-11-03\"]", 1) }
+        rejected { SyncStateCodec.decodeConfirmation("null", 1) }
+    }
+
+    @Test
+    fun `Mutation validates exact journal identities preserves prior confirmation and leaves global coverage unchanged`() {
+        val f = SyncFixture(LocalDate.of(2026, 11, 5), 20)
+        val date = f.today.minusDays(10)
+        val id = "00000000-0000-0000-0000-000000000002"
+        val attempt = AttemptState(id, f.key, f.scopes, SyncTrigger.MANUAL, f.time, f.time, null,
+            listOf(date), "b".repeat(64), 3, setOf(SyncTrigger.MANUAL))
+        val state = f.state().copy(attempt = attempt)
+        val generation = state.generation
+        val journal = f.day(date, true).copy(phase = DayPhase.RUNNING, datasets = mapOf(Dataset.DAILY to
+            f.day(date, true).datasets.getValue(Dataset.DAILY).copy(phase = FilePhase.RUNNING, confirmedAt = null)))
+        val confirmation = FileConfirmation(FileKey(generation, date, f.key, Dataset.DAILY, f.revision.digest), "synthetic-file", f.time)
+        fun mutation(day: DayState? = null, confirm: FileConfirmation? = null, finish: Instant? = null,
+            pending: Set<SyncTrigger>? = null, start: AttemptState? = null) = SyncMutation(id, start, day, confirm, pending, finish)
+        fun check(expected: CommitStatus, value: SyncMutation, row: DayState? = journal,
+            candidate: SyncState = state, expectedGeneration: DestinationGeneration? = generation) =
+            assertEquals(expected, candidate.validateMutation(expectedGeneration, value, row, f.today))
+        check(CommitStatus.COMMITTED, mutation(confirm = confirmation))
+        assertTrue(state.days.isEmpty())
+        assertEquals(f.summary, state.coverage)
+        check(CommitStatus.STALE, mutation(confirm = confirmation), expectedGeneration = DestinationGeneration("00000000-0000-0000-0000-000000000003"))
+        check(CommitStatus.STALE, mutation(confirm = confirmation).copy(attemptId = "00000000-0000-0000-0000-000000000003"))
+        check(CommitStatus.STALE, mutation(confirm = confirmation.copy(key = confirmation.key.copy(scopeKey = ReadScopeKey("c".repeat(64))))))
+        check(CommitStatus.STALE, mutation(confirm = confirmation.copy(key = confirmation.key.copy(revision = "d".repeat(64)))))
+        check(CommitStatus.INVALID, mutation(confirm = confirmation), row = null)
+        check(CommitStatus.INVALID, mutation(confirm = confirmation), row = journal.copy(datasets = journal.datasets.mapValues { (_, it) -> it.copy(phase = FilePhase.PENDING) }))
+        check(CommitStatus.INVALID, mutation(confirm = confirmation), candidate = state.copy(attempt = attempt.copy(finishedAt = f.time)))
+        val confirmed = f.day(date, true)
+        check(CommitStatus.COMMITTED, mutation(confirm = confirmation), confirmed)
+        check(CommitStatus.INVALID, mutation(confirm = confirmation.copy(confirmedAt = f.time.plusSeconds(1))), confirmed)
+        check(CommitStatus.INVALID, mutation(confirm = confirmation.copy(targetHandle = "different")), confirmed)
+        check(CommitStatus.INVALID, mutation(confirm = confirmation.copy(targetHandle = "bad handle")))
+        check(CommitStatus.INVALID, mutation(finish = f.time.minusSeconds(1)))
+        check(CommitStatus.INVALID, mutation(pending = emptySet()))
+        check(CommitStatus.COMMITTED, mutation(pending = SyncTrigger.entries.toSet()), row = null)
+        check(CommitStatus.COMMITTED, mutation(finish = f.time), row = null)
+        val newer = RevisionKey("c".repeat(64), f.time.plusSeconds(1))
+        val replacement = journal.copy(revision = newer, phase = DayPhase.PENDING,
+            datasets = journal.datasets.mapValues { (_, it) -> it.copy(revision = newer, phase = FilePhase.PENDING, priorConfirmation = confirmation) })
+        check(CommitStatus.COMMITTED, mutation(day = replacement), confirmed)
+        check(CommitStatus.INVALID, mutation(day = replacement.copy(datasets = replacement.datasets.mapValues { (_, it) -> it.copy(priorConfirmation = null) })), confirmed)
+        check(CommitStatus.INVALID, mutation(day = replacement.copy(phase = DayPhase.CONFIRMED)), confirmed)
+        check(CommitStatus.INVALID, mutation(day = replacement.copy(scopeKey = ReadScopeKey("c".repeat(64)))), confirmed)
+        check(CommitStatus.INVALID, mutation(day = replacement, confirm = confirmation), confirmed)
+        val start = attempt.copy(id = "00000000-0000-0000-0000-000000000004", retriesUsed = 0)
+        val startMutation = mutation(start = start).copy(attemptId = start.id)
+        check(CommitStatus.COMMITTED, startMutation, row = null, candidate = state.copy(attempt = attempt.copy(finishedAt = f.time)))
+        check(CommitStatus.INVALID, startMutation, row = null)
+        assertFalse(attempt.copy(dates = listOf(f.today)).isValid(f.config.enrolledDay, f.today))
+        assertFalse(attempt.copy(retriesUsed = 4).isValid(f.config.enrolledDay, f.today))
+        assertFalse(confirmed.copy(datasets = confirmed.datasets.mapValues { (_, it) -> it.copy(confirmedAt = null) }).isValid(generation, f.config.enrolledDay, f.today))
+    }
+
 }
 
 internal class SyncFixture(val today: LocalDate, val age: Long, scope: ReadScope = ReadScope.SUMMARY) {
@@ -108,7 +193,7 @@ internal class SyncFixture(val today: LocalDate, val age: Long, scope: ReadScope
     val summary = CoverageSummary(null, null, key, null, null, DataType.entries.toSet() - DataType.STEPS,
         age, 0, null, emptySet(), emptySet())
     fun state(rows: List<DayState> = emptyList(), candidates: List<LocalDate> = emptyList(),
-        summary: CoverageSummary = this.summary): SyncState = SyncState(1, DestinationGeneration("synthetic-generation"),
+        summary: CoverageSummary = this.summary): SyncState = SyncState(1, DestinationGeneration("00000000-0000-0000-0000-000000000001"),
         config, null, key, scopes, rows.associateBy { it.date }, candidates, summary)
     fun day(date: LocalDate, uploaded: Boolean): DayState = DayState(date, key, scopes, revision,
         if (uploaded) DayPhase.CONFIRMED else DayPhase.EMPTY, scopes, time,

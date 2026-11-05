@@ -11,7 +11,7 @@ spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feat/v1-completion
 tasks:
   - {id: T1, title: 등록 이후 bounded 날짜 계획, depends_on: [], status: done, tier: standard}
-  - {id: T2, title: 재읽기 revision과 scope별 확인, depends_on: [T1], status: in_progress, tier: standard}
+  - {id: T2, title: 재읽기 revision과 scope별 확인, depends_on: [T1], status: done, tier: standard}
   - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: pending, tier: standard}
   - {id: T4, title: 실제 SQLite의 원자적 상태 저장, depends_on: [T3], status: pending, tier: standard}
   - {id: T5, title: process 공용 admission과 중단 복구, depends_on: [T4], status: pending, tier: standard}
@@ -473,6 +473,7 @@ bash android/ci/verify-sync-state-process-recovery.sh
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T2 | 1/2 | root source 대조: revision hash가 승인된 schema literal0.1 누락, scope JSON 묶음/enum ordinal dataset 순서로 canonical component 계약과 다름. 기존49테스트는 시간불변만 확인 | 명시적 component별 protocol + 고정 EMPTY hash vector/명시 dataset 이름 순서 fixture로 확인 | SHA256·4byte BE 길이·기존CSV/scope/시각 계약 불변, 새 persisted format 배포 전 교정 | SyncRevision.kt/SyncRevisionTest.kt만; T1/codec/reducer 보존 | literal vector·4dataset 이름순 검증과 core49개/0실패·오류·skip,17초 PASS | v1_core_t2 한정 교정 |
 | T1 | 3 (소유자 자동승인에 따른 추가 교정; 기본 한도2회 유지 기록) | root 코드 대조: scopeKey가 ordinal 정렬/문자 length-colon 형식으로 승인된 domain+이름정렬+4byte big-endian 계약 위반. isChecked가 source read와 remote 확인을 합쳐 구분 불충분 | 고정 외부 hash vector로 scope protocol 검증; checked는 읽기 확인, uploaded는 파일 원격 확인으로 분리하고 planner는 업로드 pending을 계속 gap으로 유지 | 새 업무규칙/권한 없음. 기본 복구한도 소진 후 원인을 숨기거나 회차 리셋하지 않고 현재 사용자 V1 자동승인을 추가 정합성 교정 권한으로 적용 | SyncPlanner.kt/SyncState.kt와 배정2test파일만; DTO/기존회귀 보존 | core45개/0실패·오류·skip, 실행자18초/root7초 PASS | v1_core_t1 한정 보정 |
 | T1 | 2/2 | test 파일 작성 명령의 cwd가 android인데 android/core 상대경로를 사용해 쓰기 실패. source compile PASS 후 지정 test class 없음으로 verify FAIL | 승인된 repository root에서 미작성 배정2개 test 파일 작성, 같은 verify 실행 | 구현/기대값/대상4파일 불변. DTO/planner source 보존 | SyncStateTest.kt/SyncPlannerTest.kt만 새로 작성 | 지정4개/실패·오류·skip0,15초 PASS | v1_core_t1 경로 한정 복구 |
 | T1 | 1/2 | 실행자 사전 확인: validation API·bounded days와 SQL 전기간 summary의 권위·remainingPending 의미가 모호해 DTO 선언만 작성 후 중단 | parent에 isValid extension/SQL summary authoritative/selected 포함 pending 명시. 범위/성공기준 불변 | private helper는 구현 선택; 현재 profile mismatch는 재조회 필요로 선택0. 전체범위 순회 금지 | SyncState.kt/SyncPlanner.kt와 배정4tests 보존 | 사전 계약 반영; 후속 경로실패와 교정 결과를 같은 T1에 누적 기록 | v1_core_t1 부분 보정 후 구현/검증 |
@@ -485,3 +486,5 @@ bash android/ci/verify-sync-state-process-recovery.sh
 최신 위임 경계: 자동승인된 상위 계획에 따라 SDK-free 신규 모델/planner/revision(T1/T2)만 별도 worktree에서 먼저 실행한다. 기존 Ports/Android/CI 연결(T3 이후)과 PR 병합은 PR15 reviewed merge/API 재확인 뒤 진행한다. 이는 최초 코드 실행 전 실제 파일 의존성에 맞춘 순서 보정이며 성능 PR 코드/기능/병합 gate를 우회하지 않는다.
 
 Core T1 추가 정합성: canonical scope key는 domain 포함·타입 이름 사전순·각 UTF-8 component 앞4byte big-endian 길이로 고정한다. checked는 해당 revision의 source read와 요청 scope를 확인한 사실이며 remote pending/REMOTE_STALE만으로 읽기 사실을 지우지 않는다. uploaded는 nonempty intended files의 확인 완료를 별도 요구한다. planner의 오래된 gap 제외는 checked만으로 판단하지 않고 EMPTY 또는 실제 uploaded 현재성일 때만 제외한다. source blocked/실패는 새 checked를 만들지 않는다.
+
+T2 canonical revision component 명확화: 각 component는 UTF-8 앞4byte big-endian 길이이며 순서가 sync-revision/1 → 0.1 → ISO date → admitted scopeKey hex → actual scope map의 DataType.name 사전순(type.name,scope.name 각기) → Dataset.name 사전순(dataset.name,relativePath,canonical CSV content 각기)이다. positive grant는 actual non-BLOCKED scope keys와 정확히 같아 별도 JSON component를 중복 추가하지 않는다. EMPTY 고정 vector도 이 형식을 사용한다.
