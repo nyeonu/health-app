@@ -86,7 +86,7 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
             val attempt = requireNotNull(initial.attempt)
             activeAttempt = attempt
             if (attempt.trigger != trigger || attempt.startedAt == null) return BatchOutcome(BatchStatus.STALE, 0, null)
-            val access = reader.access()
+            val access = reader.access(trigger)
             val config = initial.configuration ?: throw Halt(BatchStatus.STALE)
             if (SyncPlanner.scopeKey(config, access) != attempt.scopeKey) throw Halt(BatchStatus.STALE)
             val today = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")))

@@ -26,3 +26,5 @@ T3 오류 분류의 durable contract는 상위 `980a38b`에 기술 보정했고 
 core-store의 현재 head JVM/APK/lint, SQLite instrumentation, 별도 process-kill harness, 독립 스펙 적합성·코드·보안 검토와 한국어 PR 댓글은 완료 후 실제 증거로 갱신한다. 아직 PR을 만들지 않았으며 개발 병합/전체 V1 완료를 주장하지 않는다. 기존 P0 미확인 항목은 [readiness](../P0/pr-readiness.md)의 상태를 유지한다.
 
 core-store 후속: T3 typed failure 수정의 root 통합 JVM138(core64/app74)/실패0·오류0·skip0 + APK/lint/testAPK는1분31초 PASS. 그 뒤 독립 사전 계약 검토가 발견한 finished scope 전환(T2 추가교정3)과 자정 지연floor(T3 추가교정3)를 보정했다. 마지막 root core64/0/0/0은9초 PASS이며 read 직전 floor와 종료시점 coverage today를 재확인한다. 각 기본2회 한도 사용 뒤 추가 교정은 소유자의 자동승인 위임에 따라 누적 표시했고 회차를 초기화하지 않았다. T3 done/T4 in_progress. Android 재통합·실제SQLite·최종PR 독립 검토는 여전히 후속이다.
+
+T3 trigger policy 추가 정합성: 같은 reader/engine에서 MANUAL→SCHEDULED→MANUAL이 다른 요청 scope를 선택하도록 access(trigger) 인자를 필수화했다. 자동 HR은 WORKOUT_SCOPED이며 background unavailable 자동 시도는 source/remote IO 없이 STALE, 이후 수동은 가능함을 합성 검증했다. target33/0/0/0(22초), root 전체core64/0/0/0(10초). 실제 자동 HC reader/권한 admission은 후속이다. T4 최초 전체 build는 nullable core public property의 app-side smartcast 오류로25초 FAIL했고, 같은 행동을 유지한 local binding 교정 뒤 재검증 중이다. SQLite/전체 V1 완료를 아직 주장하지 않는다.

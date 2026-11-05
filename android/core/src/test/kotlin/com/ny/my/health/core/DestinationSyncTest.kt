@@ -40,12 +40,12 @@ class DestinationSyncTest {
                     null, all.keys - scopes.keys, 1, 0, null, emptySet(), emptySet()))
             admit()
         }
-        fun admit(scopes: Map<DataType, ReadScope> = state.requestedScopes) {
+        fun admit(scopes: Map<DataType, ReadScope> = state.requestedScopes, trigger: SyncTrigger = SyncTrigger.MANUAL) {
             sequence++
             val key = requireNotNull(scopeFingerprint(scopes))
             state = state.copy(scopeKey = key, requestedScopes = scopes, attempt = AttemptState(
                 "00000000-0000-0000-0000-${sequence.toString().padStart(12, '0')}", key, scopes,
-                SyncTrigger.MANUAL, now, now, null, listOf(date), "b".repeat(64), 0, emptySet()),
+                trigger, now, now, null, listOf(date), "b".repeat(64), 0, emptySet()),
                 coverage = state.coverage.copy(scopeKey = key))
         }
         private fun selected() = state.copy(days = rows.filterKeys { it.second == state.scopeKey }.mapKeys { it.key.first })
@@ -96,15 +96,22 @@ class DestinationSyncTest {
         val store = Store(scopes)
         var observedAt = now
         var access = ReadAccess(true, scopes.keys, scopes)
+        var accessByTrigger = emptyMap<SyncTrigger, ReadAccess>()
+        val accessTriggers = mutableListOf<SyncTrigger>()
+        val requestedReads = mutableListOf<Map<DataType, ReadScope>>()
         var reads = 0
         var readFailure: Exception? = null
         var blocked = false
         var steps = 12L
         var beforeRead: () -> Unit = {}
         val reader = object : ScopedHealthReader {
-            override suspend fun access() = access
+            override suspend fun access(trigger: SyncTrigger): ReadAccess {
+                accessTriggers += trigger
+                return accessByTrigger[trigger] ?: access
+            }
             override suspend fun readScoped(date: LocalDate, requestedScopes: Map<DataType, ReadScope>): ScopedSnapshot {
-                reads++; beforeRead(); readFailure?.let { throw it }
+                reads++; requestedReads += requestedScopes.toMap()
+                beforeRead(); readFailure?.let { throw it }
                 assertEquals(store.state.attempt!!.requestedScopes, requestedScopes)
                 val effective = requestedScopes.mapValues { if (blocked) ReadScope.BLOCKED else it.value }
                 val granted = effective.filterValues { it != ReadScope.BLOCKED }.keys
@@ -169,8 +176,9 @@ class DestinationSyncTest {
                 if (cancel) throw CancellationException("합성 취소")
             }
         }
-        suspend fun run() = DestinationSync(store, reader, destination, MovingClock({ observedAt }))
-            .run(SyncTrigger.MANUAL, store.state.generation, store.state.attempt!!.id)
+        val engine by lazy { DestinationSync(store, reader, destination, MovingClock({ observedAt })) }
+        suspend fun run(trigger: SyncTrigger = SyncTrigger.MANUAL) = engine
+            .run(trigger, store.state.generation, store.state.attempt!!.id)
         fun day() = store.rows.getValue(date to store.state.scopeKey!!)
     }
 
@@ -405,6 +413,39 @@ class DestinationSyncTest {
         assertTrue(cancelledLookup.written.isEmpty())
         try { DestinationException(BlockReason.SOURCE_READ_FAILED); fail("허용 목록 밖의 사유는 거부해야 한다") }
         catch (_: IllegalArgumentException) { }
+
+        // 같은 reader와 engine이 trigger마다 범위를 고르며 자동 실패가 수동 읽기를 막지 않는다.
+        val policy = Fixture()
+        val automaticScopes = all.mapValues { (type, _) ->
+            if (type == DataType.HEART_RATE) ReadScope.WORKOUT_SCOPED else ReadScope.SUMMARY
+        }
+        policy.accessByTrigger = mapOf(
+            SyncTrigger.MANUAL to ReadAccess(true, all.keys, all),
+            SyncTrigger.SCHEDULED to ReadAccess(true, automaticScopes.keys, automaticScopes),
+            SyncTrigger.CATCH_UP to ReadAccess(false, automaticScopes.keys, automaticScopes))
+        val sameEngine = policy.engine
+        assertEquals(BatchStatus.COMPLETED, policy.run(SyncTrigger.MANUAL).status)
+        policy.store.admit(automaticScopes, SyncTrigger.SCHEDULED)
+        assertEquals(BatchStatus.COMPLETED, policy.run(SyncTrigger.SCHEDULED).status)
+        policy.store.admit(all, SyncTrigger.MANUAL)
+        assertEquals(BatchStatus.COMPLETED, policy.run(SyncTrigger.MANUAL).status)
+        assertEquals(listOf(all, automaticScopes, all), policy.requestedReads)
+        assertEquals(ReadScope.WORKOUT_SCOPED, policy.requestedReads[1][DataType.HEART_RATE])
+        assertFalse(policy.requestedReads[1].values.contains(ReadScope.EXPLICIT_DAY))
+        val readsBeforeUnavailable = policy.reads
+        val reconcilesBeforeUnavailable = policy.reconciledDatasets.size
+        val writesBeforeUnavailable = policy.written.size
+        policy.store.admit(automaticScopes, SyncTrigger.CATCH_UP)
+        assertEquals(BatchStatus.STALE, policy.run(SyncTrigger.CATCH_UP).status)
+        assertEquals(readsBeforeUnavailable, policy.reads)
+        assertEquals(reconcilesBeforeUnavailable, policy.reconciledDatasets.size)
+        assertEquals(writesBeforeUnavailable, policy.written.size)
+        policy.store.admit(all, SyncTrigger.MANUAL)
+        assertEquals(BatchStatus.COMPLETED, policy.run(SyncTrigger.MANUAL).status)
+        assertEquals(listOf(all, automaticScopes, all, all), policy.requestedReads)
+        assertEquals(listOf(SyncTrigger.MANUAL, SyncTrigger.SCHEDULED, SyncTrigger.MANUAL,
+            SyncTrigger.CATCH_UP, SyncTrigger.MANUAL), policy.accessTriggers)
+        assertSame(sameEngine, policy.engine)
 
         // 전날 승인한 30일 경계 날짜가 대기 중 범위를 벗어나면 원격 접근 없이 이력을 보존한다.
         val delayedFloor = Fixture(mapOf(DataType.STEPS to ReadScope.SUMMARY))

@@ -29,9 +29,13 @@ interface DriveUploader {
     }
 }
 
-/** 접근 메타데이터와 이미 승인한 읽기 범위를 분리한다. */
+/**
+ * 접근 메타데이터와 이미 승인한 읽기 범위를 분리한다.
+ * MANUAL은 사용자가 요청한 제한된 과거 복구를 포함하는 명시적 전경 정책이다.
+ * SCHEDULED와 CATCH_UP은 자동·백그라운드 정책이며 호출별 trigger로 선택한다.
+ */
 interface ScopedHealthReader {
-    suspend fun access(): ReadAccess
+    suspend fun access(trigger: SyncTrigger): ReadAccess
     suspend fun readScoped(date: LocalDate, requestedScopes: Map<DataType, ReadScope>): ScopedSnapshot
 }
 
