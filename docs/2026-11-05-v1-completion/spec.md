@@ -85,6 +85,12 @@ created: 2026-11-05
 
 revision은 생성 시각 하나의 차이로 달라지지 않게 dataset의 canonical semantic content와 schema/category 범위를 기준으로 식별한다. `generated_at`은 해당 revision의 최초 생성 시각으로 고정하여 같은 revision을 재생성할 수 있게 한다. 내구성 상태에는 hash/생성 시각/확인 metadata만 두고 CSV 본문은 저장하지 않는다. source를 다시 읽은 뒤 동일 revision일 때만 이전 확인을 재사용하고, 변경되면 새 revision으로 전환한다. pending 파일만 재시도할 때도 원본 재읽기와 revision 대조가 선행한다. 이전 populated dataset이 새 snapshot에서 사라진 경우 기존 remote 파일이 사라졌다고 주장하지 않는다: `REMOTE_STALE`를 표시하고 해당 새 revision의 full-current 판정을 막는다. 자동 삭제는 범위 밖이고 명시적 사용자 정리/새 목적지 후 재조정이 필요하다. source 삭제 전파를 완성했다고 주장하지 않는다.
 
+### 자동 읽기의 배터리·상세 심박 범위
+
+기존 전경 수동 실행의 명시적 어제 대상 조회와 CSV 계약은 유지한다. 자동 실행에는 그 reader의 하루 전체 raw 심박 스캔을 그대로 연결하지 않는다. 지원되는 일별 요약은 Aggregate API를 사용하고, 상세 심박은 허용된 운동 세션과 겹치는 명시적 bounded query로 제한한다. 운동/심박 권한을 각각 확인하고 세션이 없으면 상세 심박을 조회하지 않는다. query·page·sample 수행량은 하루 전체에서 기존 안전 상한을 공유하며 초과를 성공/빈 데이터로 잘라내지 않는다.
+
+자동 심박의 범위는 `WORKOUT_SCOPED`로 구분하여 하루 전체 심박 확인이나 안정시 심박으로 표시하지 않는다. SDK/provider의 interval 시작 선택 때문에 운동 구간의 포함 여부를 안전하게 확인할 수 없거나 운동 조회가 불가하면 해당 상세 범위는 명시적으로 BLOCKED/미확인으로 남기고 더 넓은 원시 이력 스캔으로 우회하지 않는다. 다른 허용 category는 독립적으로 처리할 수 있으나 전체 5종 완료로 승격하지 않는다. 자동 실행의 제한 범위와 전경의 명시적 대상 조회 결과를 같은 coverage로 혼합하지 않는다. API 수준의 조회 동작·cross-midnight·경계·권한 없음·세션 없음은 adapter 테스트에서 확인하고 실제 provider completeness는 별도 수용으로 유지한다.
+
 ### 동의·계정·실행과 복구 정책
 
 Drive 구성은 전경 `AccountPicker`에서 `com.google` 계정을 고르는 동작, 선택 계정으로 제한한 `AuthorizationRequest`와 `drive.file` grant 확인, destination 및 자동 실행 privacy 설명으로 나눈다. 구성 식별에 필요한 account name/type만 app-private backup-excluded 상태에 보관하고 opaque destination generation으로 coverage를 묶는다. 식별자는 화면에서 사용자가 자기 선택을 확인하는 용도 외 로그·진단·공개 증거에 넣지 않는다. token·server auth code·refresh token은 저장하지 않고 offline-access/backend flow를 도입하지 않는다. 앱에 broad 계정 열거 권한을 추가하지 않는다.
@@ -173,6 +179,8 @@ stateDiagram-v2
 - 앱 시작은 자동 opt-in이 없으면 감지·표시만 수행하고 자동 opt-in이 있으면 같은 planner의 unique catch-up을 enqueue하며 읽기/업로드를 UI 복원 부수효과로 직접 실행하지 않는다.
 - EMPTY·제한된 category 확인·upload confirmation·연속 checked-through·uploaded-through를 구분하고 일부 허용 범위나 worker 실행 성공만으로 5종 전체 완료·현재성·gap 없는 coverage를 주장하지 않는다.
 - 매 실행 한국 시간 오늘에서 30일을 뺀 보수적 HC read floor 이전 또는 가용성/권한이 불명확한 날짜를 HISTORY_ACCESS_REQUIRED와 미확인 gap으로 유지하고 추정 최초 grant 시각을 저장하거나 원본 제한·오류·page/sample 초과를 빈 데이터로 처리하지 않는다.
+
+- 자동 실행은 하루 전체 원시 심박 스캔을 재사용하지 않고 운동 구간의 bounded 상세 조회와 지원되는 요약 Aggregate를 사용하며 권한·세션·조회 의미가 불명확한 심박 범위는 BLOCKED/미확인으로 표시하고 수동 대상 조회와 coverage를 혼합하지 않는다.
 
 ### 내구성과 복구
 
