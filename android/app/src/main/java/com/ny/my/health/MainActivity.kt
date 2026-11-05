@@ -18,8 +18,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.core.view.ViewCompat
-import androidx.core.view.doOnAttach
+import androidx.core.view.WindowCompat
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
@@ -59,6 +58,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // 본문 제목을 사용하고 시스템 바 경계는 Compose에서 일관되게 처리한다.
         requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        // edge-to-edge 초기화 전에 보존된 Window의 inset 처리를 맞춘다.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         enableEdgeToEdge()
         model = ViewModelProvider(this)[SyncViewModel::class.java]
         setContent {
@@ -95,14 +96,6 @@ class MainActivity : ComponentActivity() {
                         ))
                     }
                 }
-            }
-        }
-        // 첫 측정 전에 현재 inset을 전달해 복원된 스크롤이 임시 큰 viewport에 잘리지 않게 한다.
-        val host = findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)
-        host.doOnAttach { container ->
-            // Compose 1.9.2는 inner owner의 attach에서 content와 inset listener를 설치한다.
-            (container as android.view.ViewGroup).getChildAt(0).doOnAttach { owner ->
-                ViewCompat.getRootWindowInsets(owner)?.let { ViewCompat.dispatchApplyWindowInsets(owner, it) }
             }
         }
     }
