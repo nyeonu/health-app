@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-05
 parent: ../plan.md
-parent_rev: 3159b4ab7218fa41e6974cb779d6aaa9ea96fa9d
+parent_rev: c55220ffd1979607a4977a81aecc55eb0b981632
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feat/v1-completion
@@ -419,6 +419,7 @@ bash android/ci/verify-sync-state-process-recovery.sh
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T1 | 1/2 | 실행자 사전 확인: validation API·bounded days와 SQL 전기간 summary의 권위·remainingPending 의미가 모호해 DTO 선언만 작성 후 중단 | parent에 isValid extension/SQL summary authoritative/selected 포함 pending 명시. 범위/성공기준 불변 | private helper는 구현 선택; 현재 profile mismatch는 재조회 필요로 선택0. 전체범위 순회 금지 | SyncState.kt/SyncPlanner.kt와 배정4tests 보존 | 최초 검증 대기 | v1_core_t1 부분 보정 후 구현/검증 |
 
 ## 환경 준비 기록
 
