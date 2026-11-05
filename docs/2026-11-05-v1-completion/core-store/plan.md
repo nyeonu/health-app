@@ -12,8 +12,8 @@ branch: feat/v1-completion
 tasks:
   - {id: T1, title: 등록 이후 bounded 날짜 계획, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 재읽기 revision과 scope별 확인, depends_on: [T1], status: done, tier: standard}
-  - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: in_progress, tier: standard}
-  - {id: T4, title: 실제 SQLite의 원자적 상태 저장, depends_on: [T3], status: pending, tier: standard}
+  - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: done, tier: standard}
+  - {id: T4, title: 실제 SQLite의 원자적 상태 저장, depends_on: [T3], status: in_progress, tier: standard}
   - {id: T5, title: process 공용 admission과 중단 복구, depends_on: [T4], status: pending, tier: standard}
   - {id: T6, title: OS 강제종료의 실제 commit 검증, depends_on: [T5], status: pending, tier: standard}
 ---
@@ -487,8 +487,10 @@ bash android/ci/verify-sync-state-process-recovery.sh
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T2 | 3 (소유자 자동승인에 따른 추가 교정; 기존2회 보존) | root 및 독립 사전 계약 검토: finished 수동 attempt가 새 자동 scope selected snapshot을 영구 invalid로 만들어 새 start 불가 | selected-scope equality는 unfinished attempt에만 적용하고 finished 자체 fingerprint/categories 검증은 유지. fresh id의 새 profile start만 허용 | 승인된 manual/automatic 분리 및 previous finished 교체 계약 불변. 기본한도 초과를 숨기지 않고 현재 자동승인 범위의 제한 교정 | SyncState.kt/SyncStateTest.kt만; 기존unfinished mismatch/start/confirmation 거부 유지 | core64/실패·오류·skip0; 실행자21초·최종 root9초 PASS | v1_core_t2 한정 교정 |
 | T2 | 2/2 | root source 대조: load()는 선택 scope 없이 현재 attempt를 반환하지만 isValid가 attempt.scopeKey와 null selected scope를 무조건 비교해 정상 journal을 거부 | unscoped snapshot은 attempt 자체의 canonical/profile/config 관계만 검사하고 selected scope가 있을 때만 equality 검사; 날짜행/선택 coverage를 unscoped에 혼입하지 않음 | load() 무선택 계약과 엄격한 selected-scope CAS 불변 | SyncState.kt/SyncStateTest.kt만; 기존 mutation·hash·codec 유지 | core64개/실패·오류·skip0; 실행자9초/root7초 PASS(입력동일 UP-TO-DATE XML대조) | v1_core_t2 부분 교정 |
-| T3 | 2/2 | 실행자 uncovered: 목적지 모든 예외를 generic PENDING으로 반환해 worker가 안전한 transient와 불명확 create를 구분할 durable 근거 없음 | typed allowlist failure + 고정 reason/RETRYABLE, 실제 provider 매핑은 후속 유지 | 최초외3회 제한·불명확create 맹목재송신금지 보존. parent980a38b 재검토·핀 | Ports/SyncState/SyncPlanner/DestinationSync/DestinationSyncTest 총5파일; 기존 regression 보존 | typed/unknown/partial/storefailure/cancel 검증 대기 | v1_core_t3 한정 교정 |
+| T3 | 3 (소유자 자동승인에 따른 추가 교정; 기존2회 보존) | 독립 사전 계약 검토: KST 자정 전 승인한 floor 날짜가 자정 뒤 실행될 때 scope만 확인하고 현재 floor 이전 원본을 읽을 수 있음 | admitted 날짜는 늘리지 않고 각 read 직전 current KST floor 재검사. 범위외는 STALE 중단, floor 이전은 HISTORY_ACCESS_REQUIRED journal 후 읽기 없이 유지 | 매실행 conservative floor·admitted 날짜 고정 계약 보존; 기본한도 초과를 자동승인 제한 교정으로 명시 | DestinationSync.kt/DestinationSyncTest.kt만; typed failure·reconcile·기존midnight fixture 보존 | target33/실패·오류·skip0, 실행자21초; 최종 root core64/0/0/0,9초 PASS | v1_core_t3 한정 교정 |
+| T3 | 2/2 | 실행자 uncovered: 목적지 모든 예외를 generic PENDING으로 반환해 worker가 안전한 transient와 불명확 create를 구분할 durable 근거 없음 | typed allowlist failure + 고정 reason/RETRYABLE, 실제 provider 매핑은 후속 유지 | 최초외3회 제한·불명확create 맹목재송신금지 보존. parent980a38b 재검토·핀 | Ports/SyncState/SyncPlanner/DestinationSync/DestinationSyncTest 총5파일; 기존 regression 보존 | target 실행자29초 PASS; root JVM138/0/0/0·APK/lint/testAPK1분31초 PASS | v1_core_t3 한정 교정 |
 | T3 | 1/2 | root source 대조: 동일 revision의 기존 CONFIRMED 파일을 planned에서 제외해 현재 remote metadata/checksum 재검증 없이 성공 재사용 | 모든 intended 파일을 새 source read 뒤 reconcile하고 이전 확인은 prior로 보존. 무쓰기 재사용도 fresh remote proof 필요 | 현재성 재검증·same-ID·privacy 계약 불변. PENDING 확인 거부와 INDETERMINATE 중간 journal 유지 | DestinationSync.kt/DestinationSyncTest.kt만; 기존포트/DTO/Drive유지 | prior-confirmed unsafe/moved/shared/absent/reconcile 실패·healthy 무쓰기 target 실행자/root 각20초 PASS | v1_core_t3 부분 교정 |
 | T2 | 1/2 | root source 대조: revision hash가 승인된 schema literal0.1 누락, scope JSON 묶음/enum ordinal dataset 순서로 canonical component 계약과 다름. 기존49테스트는 시간불변만 확인 | 명시적 component별 protocol + 고정 EMPTY hash vector/명시 dataset 이름 순서 fixture로 확인 | SHA256·4byte BE 길이·기존CSV/scope/시각 계약 불변, 새 persisted format 배포 전 교정 | SyncRevision.kt/SyncRevisionTest.kt만; T1/codec/reducer 보존 | literal vector·4dataset 이름순 검증과 core49개/0실패·오류·skip,17초 PASS | v1_core_t2 한정 교정 |
 | T1 | 3 (소유자 자동승인에 따른 추가 교정; 기본 한도2회 유지 기록) | root 코드 대조: scopeKey가 ordinal 정렬/문자 length-colon 형식으로 승인된 domain+이름정렬+4byte big-endian 계약 위반. isChecked가 source read와 remote 확인을 합쳐 구분 불충분 | 고정 외부 hash vector로 scope protocol 검증; checked는 읽기 확인, uploaded는 파일 원격 확인으로 분리하고 planner는 업로드 pending을 계속 gap으로 유지 | 새 업무규칙/권한 없음. 기본 복구한도 소진 후 원인을 숨기거나 회차 리셋하지 않고 현재 사용자 V1 자동승인을 추가 정합성 교정 권한으로 적용 | SyncPlanner.kt/SyncState.kt와 배정2test파일만; DTO/기존회귀 보존 | core45개/0실패·오류·skip, 실행자18초/root7초 PASS | v1_core_t1 한정 보정 |
@@ -513,3 +515,11 @@ T3 현재성 보정: snapshot/revision이 같아도 기존 CONFIRMED 파일을 r
 T2 unscoped snapshot 명확화: load()의 scopeKey=null/requestedScopes={}는 attempt 부재를 뜻하지 않는다. attempt는 자체 scope fingerprint·요청 categories가 configuration subset인지 검증하고, 선택 scope가 존재할 때만 selected key와 equality를 요구한다. 무선택 snapshot의 days/oldestPendingDays/selected counters는 비어/null이어야 한다. start mutation은 선택 scope 없이 허용하지 않으며 기존 confirmation은 exact attempt/currentDay 관계로 검증한다.
 
 상위 변경 재검토: c55220f→980a38b는 위 T3 실패 분류의 enum/outcome와 책임 분리만 보정한다. 승인 spec 변경 없음, 사용자 V1 자동승인에 따라 이 child를 재검토하고 parent_rev를 새 revision으로 고정했다. 현재성 recovery1과 unscoped T2 recovery2는 보존한다.
+
+T2 finished profile 전환 보정: selected scope와 attempt의 equality는 unfinished attempt에만 요구한다. finished attempt는 자체 fingerprint와 현재 구성 category subset 등 기존 metadata 검증을 유지하며, 다른 profile의 새 선택 snapshot에서도 과거 마지막 journal로 남을 수 있다. start는 새 UUID와 선택 profile 일치/기존 finished 조건을 계속 요구한다. 현재 진행 중 다른 profile attempt의 탈취·confirmation 우회는 허용하지 않는다.
+
+T3 지연 실행 경계: 각 날짜의 readScoped 직전 현재 KST 날짜를 다시 구하고 date<enrolled 또는 date>=현재 today이면 STALE로 원본/원격 IO를 중단한다. date<현재today-30일이면 해당 exact-profile day를 BLOCKED/HISTORY_ACCESS_REQUIRED·checkedAt=null로 journal하고 읽기/업로드 없이 다음 admitted 날짜로 간다. 이전 파일 확인/target metadata는 과거 사실로 보존한다. 새 날짜를 추가하거나 과거 first-grant timestamp를 추정하지 않는다. 자정 전 floor 날짜를 승인하고 자정 뒤 실행한 fixture에서 reader/write 호출0과 durable blocker를 확인한다.
+
+같은 T3 자정 경계 교정에서 최종 coverage 조회의 today도 종료 시점 KST로 다시 산출한다. 진행 중 자정이 지난 경우 새 날짜를 실행 목록에 추가하지 않지만 최신 pending gap을 이전 today 기준으로 숨기지 않는다.
+
+T3 최종 확인: root source/테스트 대조 후 전체core64/실패·오류·skip0을 최종 working snapshot에서 직접 실행했다(9초). 바로 앞 typed failure 단계의 통합 JVM138/APK/lint/testAPK1분31초 증거와 구분하며 이후 상태교정의 Android 재통합은 T4 체크포인트에서 수행한다. T4의 actual SQLite suite는 로컬 emulator 부재로 API35/36 CI가 필요하다.

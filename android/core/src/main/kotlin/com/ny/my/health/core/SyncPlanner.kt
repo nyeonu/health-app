@@ -40,7 +40,8 @@ object SyncPlanner {
                 date < floor -> BlockReason.HISTORY_ACCESS_REQUIRED
                 day?.phase == DayPhase.REMOTE_STALE -> BlockReason.DESTINATION_BLOCKED
                 day?.blocker in setOf(BlockReason.DESTINATION_BLOCKED, BlockReason.RETRY_EXHAUSTED,
-                    BlockReason.STORE_UNAVAILABLE) -> day?.blocker
+                    BlockReason.STORE_UNAVAILABLE, BlockReason.DESTINATION_RECONCILIATION_REQUIRED,
+                    BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED) -> day?.blocker
                 else -> null
             }
             if (reason != null) blocked[date] = reason

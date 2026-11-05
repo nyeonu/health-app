@@ -1,0 +1,28 @@
+# V1 개발 실행 기록
+
+이 문서는 진행 증거이며 V1 수용 완료나 출시 승인이 아니다. 소유자의 자동승인 범위에서 구현·독립 검토·개발 병합을 진행한다. 실제 Galaxy/Google/SAF provider/Doze·재부팅·TalkBack의 미실행 항목은 pending이다.
+
+## 선행 작업
+
+- PR #14의 앱 최초 진입/맨 위 제목과 날짜 가림: 소유자 답변 “정상으로 보여”. 사용자 관찰 결과이며 새 V1 화면의 접근성 전반 통과로 확대하지 않는다.
+- 성능 PR #15: master `bf071e19e4e52c285e075b3dfe3db09e1bda8135`로 병합. 현재 worktree에는 `1cbf860c6c431edd437a5d039fe1d36eafade2f6`로 반영했다. 성능 source·별도 검토·합성 local TLS·API35/36 증거는 해당 PR 댓글/문서가 원본이다.
+- 고정 서명 APK: [trusted master build](https://github.com/nyeonu/health-app/actions/runs/41959514365), [artifact](https://github.com/nyeonu/health-app/actions/runs/41959514365/artifacts/13385245747). 다운로드한 ZIP digest/실제 APK 서명/기존 certificate 동일/package를 확인했다. APK SHA256 `e6f1f55adc442498f900a9e678446ae0630ac41258aa0db6731742165ef50f31`. 새 바이너리의 실기기 업로드 성능 측정은 아직 없다.
+
+## core-store 진행
+
+| 단계 | 실제 검증 | 상태·한계 |
+|---|---|---|
+| T1 모델/planner | canonical scope literal vector, 등록일·KST·최대7·범위별 checked/uploaded 구분; core45/실패0·오류0·skip0 | done; 기본 복구2회 뒤 소유자 자동승인에 따른 추가 정합성 교정1회는 child plan에 별도 누적 |
+| T2 revision/codec/reducer | schema0.1 포함 literal EMPTY digest/4dataset 이름순; core49/0/0/0 | done; recovery1 protocol 보정 |
+| PR15 병합 후 통합 | core63+app74=137/0/0/0, APK/lint/testAPK 2분21초 | 그 시점 source에 대한 검증; 이후 변경의 통합 검증을 대신하지 않음 |
+| T2 recovery2 | unscoped unfinished/finished attempt·구성 categories·정확한 journal/CAS/start 거부 fixture; core64/0/0/0 | 실행자9초 PASS; root 명령7초 입력동일 UP-TO-DATE와 실제 XML 대조. source 수정은 `947b0c7` 포함 |
+| T3 reconciliation recovery1 | 모든 intended 파일 재조회, 과거 확인은 prior로 보존, unsafe/moved/shared/absent/조회실패로 과거 성공 재사용 금지, healthy 무쓰기; target 실행자/root 각20초 PASS | recovery2의 typed failure 보정 진행 중. 최신 전체 head 통과를 아직 주장하지 않음 |
+| T4~T6 | 실제 SQLite와 OS force-stop 검증 필요 | pending; 로컬 환경 emulator/KVM 없음. API35/36 CI의 실제 XML·host evidence 필요 |
+
+T3 오류 분류의 durable contract는 상위 `980a38b`에 기술 보정했고 child parent revision을 재검토·고정했다. generic PENDING은 자동 재시도 권한이 아니다. 실제 provider 오류 매핑·worker retry budget 소비는 각각 후속 작업에서 검증한다.
+
+## 미완료 검증
+
+core-store의 현재 head JVM/APK/lint, SQLite instrumentation, 별도 process-kill harness, 독립 스펙 적합성·코드·보안 검토와 한국어 PR 댓글은 완료 후 실제 증거로 갱신한다. 아직 PR을 만들지 않았으며 개발 병합/전체 V1 완료를 주장하지 않는다. 기존 P0 미확인 항목은 [readiness](../P0/pr-readiness.md)의 상태를 유지한다.
+
+core-store 후속: T3 typed failure 수정의 root 통합 JVM138(core64/app74)/실패0·오류0·skip0 + APK/lint/testAPK는1분31초 PASS. 그 뒤 독립 사전 계약 검토가 발견한 finished scope 전환(T2 추가교정3)과 자정 지연floor(T3 추가교정3)를 보정했다. 마지막 root core64/0/0/0은9초 PASS이며 read 직전 floor와 종료시점 coverage today를 재확인한다. 각 기본2회 한도 사용 뒤 추가 교정은 소유자의 자동승인 위임에 따라 누적 표시했고 회차를 초기화하지 않았다. T3 done/T4 in_progress. Android 재통합·실제SQLite·최종PR 독립 검토는 여전히 후속이다.

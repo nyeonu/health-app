@@ -205,6 +205,35 @@ class SyncStateTest {
         check(CommitStatus.COMMITTED, startMutation, row = null, candidate = state.copy(attempt = attempt.copy(finishedAt = f.time)))
         check(CommitStatus.INVALID, startMutation, row = null)
         check(CommitStatus.INVALID, startMutation, row = null, candidate = unscopedFinished)
+        val manualScopes = mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY)
+        val manualKey = requireNotNull(SyncPlanner.scopeKey(f.config, ReadAccess(true, manualScopes.keys, manualScopes)))
+        val finishedManual = attempt.copy(scopeKey = manualKey, requestedScopes = manualScopes, finishedAt = f.time)
+        for (automaticScope in listOf(ReadScope.SUMMARY, ReadScope.WORKOUT_SCOPED)) {
+            val automaticScopes = mapOf(DataType.STEPS to automaticScope)
+            val automaticKey = requireNotNull(SyncPlanner.scopeKey(f.config,
+                ReadAccess(true, automaticScopes.keys, automaticScopes)))
+            val selectedAutomatic = state.copy(scopeKey = automaticKey, requestedScopes = automaticScopes,
+                attempt = finishedManual, coverage = state.coverage.copy(scopeKey = automaticKey))
+            assertTrue(selectedAutomatic.isValid())
+            assertFalse(selectedAutomatic.copy(attempt = finishedManual.copy(finishedAt = null)).isValid())
+            val automaticStart = start.copy(scopeKey = automaticKey, requestedScopes = automaticScopes,
+                trigger = SyncTrigger.SCHEDULED, pendingTriggers = setOf(SyncTrigger.SCHEDULED))
+            val automaticMutation = mutation(start = automaticStart).copy(attemptId = automaticStart.id)
+            check(CommitStatus.COMMITTED, automaticMutation, row = null, candidate = selectedAutomatic)
+            val mismatchedStart = automaticStart.copy(scopeKey = manualKey, requestedScopes = manualScopes)
+            check(CommitStatus.INVALID, mutation(start = mismatchedStart).copy(attemptId = mismatchedStart.id),
+                row = null, candidate = selectedAutomatic)
+            for (malformedFinished in listOf(finishedManual.copy(id = "malformed"),
+                finishedManual.copy(scopeKey = ReadScopeKey("c".repeat(64))),
+                finishedManual.copy(finishedAt = f.time.minusSeconds(1)))) {
+                val malformedState = selectedAutomatic.copy(attempt = malformedFinished)
+                assertFalse(malformedState.isValid())
+                check(CommitStatus.INVALID, automaticMutation, row = null, candidate = malformedState)
+            }
+            assertFalse(selectedAutomatic.copy(configuration = f.config.copy(categories = setOf(DataType.WEIGHT))).isValid())
+            assertFalse(selectedAutomatic.copy(configuration = f.config.copy(categories = setOf(DataType.STEPS)),
+                attempt = finishedManual.copy(scopeKey = otherKey, requestedScopes = otherScopes)).isValid())
+        }
         assertFalse(attempt.copy(dates = listOf(f.today)).isValid(f.config.enrolledDay, f.today))
         assertFalse(attempt.copy(retriesUsed = 4).isValid(f.config.enrolledDay, f.today))
         assertFalse(confirmed.copy(datasets = confirmed.datasets.mapValues { (_, it) -> it.copy(confirmedAt = null) }).isValid(generation, f.config.enrolledDay, f.today))

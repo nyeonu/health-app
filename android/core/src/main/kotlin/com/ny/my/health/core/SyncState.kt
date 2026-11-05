@@ -12,7 +12,8 @@ enum class ReadScope { EXPLICIT_DAY, SUMMARY, WORKOUT_SCOPED, BLOCKED }
 enum class StateStatus { ABSENT, READY, CORRUPT, UNSUPPORTED, UNAVAILABLE }
 enum class DayPhase { PENDING, RUNNING, EMPTY, CONFIRMED, INDETERMINATE, BLOCKED, REMOTE_STALE }
 enum class BlockReason { HISTORY_ACCESS_REQUIRED, SOURCE_ACCESS_REQUIRED, SOURCE_READ_FAILED,
-    SOURCE_LIMIT_EXCEEDED, DESTINATION_BLOCKED, STORE_UNAVAILABLE, RETRY_EXHAUSTED }
+    SOURCE_LIMIT_EXCEEDED, DESTINATION_BLOCKED, STORE_UNAVAILABLE, RETRY_EXHAUSTED,
+    DESTINATION_TRANSIENT_FAILURE, DESTINATION_RECONCILIATION_REQUIRED, ACCOUNT_AUTHORIZATION_BLOCKED }
 enum class FilePhase { PENDING, RUNNING, CONFIRMED, INDETERMINATE, REMOTE_STALE, BLOCKED }
 data class RevisionKey(val digest: String, val generatedAt: Instant)
 data class FileKey(val generation: DestinationGeneration, val date: LocalDate,
@@ -61,7 +62,7 @@ data class SyncCommit(val status: CommitStatus, val generation: DestinationGener
 data class SyncMutation(val attemptId: String?, val start: AttemptState?,
     val day: DayState?, val confirmation: FileConfirmation?,
     val pendingTriggers: Set<SyncTrigger>?, val finishAt: Instant?)
-enum class BatchStatus { COMPLETED, PENDING, BLOCKED, MERGED, STALE }
+enum class BatchStatus { COMPLETED, PENDING, BLOCKED, MERGED, STALE, RETRYABLE }
 data class BatchOutcome(val status: BatchStatus, val confirmedFiles: Int,
     val coverage: CoverageSummary?)
 
@@ -94,7 +95,7 @@ fun SyncState.isValid(): Boolean {
     if (oldestPendingDays.any { it < config.enrolledDay }) return false
     if (attempt?.let { a ->
             a.id.isBlank() || !config.categories.containsAll(a.requestedScopes.keys) ||
-                (scopeKey != null && (a.scopeKey != scopeKey || a.requestedScopes != requestedScopes)) ||
+                (scopeKey != null && a.finishedAt == null && (a.scopeKey != scopeKey || a.requestedScopes != requestedScopes)) ||
                 a.retryBudgetKey.isBlank() || a.retriesUsed !in 0..3 || a.dates.size > 7 ||
                 a.dates != a.dates.distinct().sorted() || a.dates.any { it < config.enrolledDay } ||
                 (a.startedAt != null && a.startedAt < a.scheduledAt) ||
@@ -153,6 +154,10 @@ fun DayState.isValid(generation: DestinationGeneration, enrolledDay: LocalDate, 
         !validRequested(scopeKey, requestedScopes) || scopes.any { (type, scope) ->
             type !in requestedScopes || (scope != ReadScope.BLOCKED && scope != requestedScopes[type])
         } || datasets.size > 4 || checkedAt?.let { !validInstant(it) } == true) return false
+    if (blocker == BlockReason.DESTINATION_TRANSIENT_FAILURE &&
+        phase !in setOf(DayPhase.PENDING, DayPhase.INDETERMINATE)) return false
+    if (blocker in setOf(BlockReason.DESTINATION_RECONCILIATION_REQUIRED,
+            BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED) && phase != DayPhase.BLOCKED) return false
     if (revision == null) return phase in setOf(DayPhase.PENDING, DayPhase.BLOCKED) &&
         datasets.isEmpty() && checkedAt == null && (phase != DayPhase.BLOCKED || blocker != null)
     if (!validHex(revision.digest) || !validInstant(revision.generatedAt)) return false
