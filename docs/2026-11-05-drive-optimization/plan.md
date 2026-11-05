@@ -14,12 +14,12 @@ tasks:
   - id: T1
     title: 배치 업로드의 확인과 종료 경계
     depends_on: []
-    status: in_progress
+    status: done
     tier: standard
   - id: T2
     title: 실제 TLS 전후 분포와 오류 검증
     depends_on: [T1]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T3
     title: 실행 증거와 남은 수용 조건 기록
@@ -113,11 +113,11 @@ class SyncProfiling {
 
 | 스펙 기준 | 테스트 이름 (출처/층) | 충족 위치 |
 |---|---|---|
-| 단일 페이지의 기존 private tree에서 서로 다른 데이터셋 3CSV를 업데이트하면 앱 루트 조회 1회·데이터셋 조회 3회·파일 조회 3회·업데이트 3회로 총 10회 요청하며, 기존 순차 기준 12회와 비교할 수 있다. | "Warm batch of three datasets confirms three files with ten requests" (①·②·③·④/유닛) | T1 완료 기준 |
+| 단일 페이지의 기존 private tree에서 서로 다른 데이터셋 3CSV를 업데이트하면 앱 루트 조회 1회·데이터셋 조회 3회·파일 조회 3회·업데이트 3회로 총 10회 요청하며, 기존 순차 기준 12회와 비교할 수 있다. | "Warm batch of three datasets confirms three files with ten requests", "Duplicate relative paths are rejected before any remote request or confirmation" (①·②·③·④/유닛) | T1 완료 기준 |
 | warm 단일 CSV는 총 4회, cold 단일 CSV는 새 루트 생성 후 재확인을 포함해 총 7회 요청으로 기존 보호 절차를 유지한다. | "Single warm and cold uploads retain four and seven requests" (①·②·③·④/유닛) | T1 완료 기준 |
 | 지연이 있는 서로 다른 파일 작업은 실제로 겹쳐 실행되고 동일 instance의 배치 내 활성 Drive 요청은 언제나 2개 이하이다. | "Delayed file requests overlap with a maximum of two active requests" (①·②·③·④/유닛) | T1 완료 기준 |
 | 같은 uploader instance의 배치와 다른 배치 또는 단일 upsert가 겹치지 않으며 cold 동시 진입에서도 그 instance 때문에 앱·동일 데이터셋 폴더가 중복 생성되지 않는다. | "Concurrent cold batches and single calls serialize without duplicate folders" (①·②·③·④/유닛) | T1 완료 기준 |
-| 다음 배치는 루트를 다시 조회하므로 앞선 배치 후 공유·이동·삭제·중복 등 안전하지 않은 변경을 감지하고 해당 대상 쓰기를 거부한다. | "Each later batch rejects changed unsafe root before child writes" (①·②·③·④/유닛) | T1 완료 기준 |
+| 다음 배치는 루트를 다시 조회하므로 앞선 배치 후 공유·이동·삭제·중복 등 안전하지 않은 변경을 감지하고 해당 대상 쓰기를 거부한다. | "Each later batch rejects changed unsafe root before child writes", "Later batches replace filtered moved or trashed roots without reusing prior target IDs" (①·②·③·④/유닛) | T1 완료 기준 |
 | 기존 단일 upsert 호출자는 API 변경 없이 동작하고 배치 최적화를 제공하지 않는 기존 fake uploader는 파일을 원래 순서로 하나씩 처리한다. | "Default batch uploader preserves single upsert API and file order" (①·②·③·④/유닛) | T1 완료 기준 |
 | 하루 묶음의 모든 파일이 검증된 원격 확인을 반환한 경우에만 SUCCESS와 전체 확인 수를 반환하며 빈 응답 ID나 검증 실패는 성공으로 세지 않는다. | "Coordinator succeeds only after every nonblank verified confirmation" (①·②·③·④/유닛) | T1 완료 기준 |
 | 한 파일이 실패하면 새로운 파일 작업을 더 시작하지 않고 이미 시작한 작업의 종료를 정리한 뒤 실제로 확인된 파일만 uploadedFiles에 반영하여 FAILED를 반환한다. | "Batch failure stops queued files and reports only confirmed files after children finish" (①·②·③·④/유닛) | T1 완료 기준 |
@@ -179,6 +179,7 @@ class SyncProfiling {
   - "Batch preserves private target validation and rejects incomplete duplicate or malformed pages" — 기존 회귀 재사용 및 배치 경로로 동일 조건 보강.
   - "Overlapping completed failed and cancelled requests close all profiling counters" — 신규; 결정적 gate와 합성 metadata로 3절의 조건·결과 검증.
 - **완료 기준**:
+  - 동일 relativePath 중복 입력은 병렬 원격 생성 경합을 막기 위해 요청 전 거부하고 빈 입력은 요청 없이 종료한다. 다음 배치 root 검증은 malformed 응답 거부와 서버 조회에서 사라진 대상의 ID 미재사용을 구분한다. 기존 cold 생성/재확인 계약을 유지하며 삭제/이동의 독립 실서버 탐지를 주장하지 않는다.
   - 위 테스트와 기존 core 전체 통과. 실패를 앞/뒤 슬롯에서 각각 유발하고 미확인 in-flight·확인 완료·대기 파일을 구별한다. 종료 뒤 callback 수 불변과 다음 호출의 0부터 시작을 검사한다.
   - cold 배치/배치와 배치/단일 동시 진입, 같은 데이터셋 여러 파일, 빈 배치, warm/cold 1CSV, 다음 배치 root 변경(공유·이동·삭제·중복), 중복 페이지·불완전 조회를 검증한다.
   - profiler 성공/실패/취소 합계와 모든 active=false를 검사하며 DRIVE_TOTAL 벽시계와 operation/request 누적 시간을 동일 값으로 강제하지 않는다.
@@ -279,6 +280,7 @@ T2 완료 후 시작.
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T1 | 1/2 | root 읽기 검토: batch의 중복 relativePath 입력이 같은 날짜의 병렬 POST를 허용할 수 있고 root 변화 fixture는 malformed 응답과 검색 미노출을 구분하지 않았다. 기존53개 PASS는 이 입력 경계를 검증하지 않음 | 승인된 unique-file 전제와 같은-instance 중복 방지 경계를 요청 전 검증하고 실제 검색 의미의 fixture 추가 | 기존 입력 경로·보안 검사·cold 생성 보존; duplicate-input 거부/filtered-old-ID 미재사용을 보강 | PrivateDriveUploader.kt, PrivateDriveBatchTest.kt; 기존 모든 단언/파일 보존 | prefix 미실행; core55개/0실패·오류·skip, 실행자22초/root7초 PASS | drive_batch_t1 부분 보완 후 root 재검증 |
 
 ## 환경 준비 기록
 
