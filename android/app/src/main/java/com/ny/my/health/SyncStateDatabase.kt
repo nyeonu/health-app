@@ -11,8 +11,20 @@ import java.util.Locale
 
 internal class UnsupportedSyncSchemaException : IllegalStateException("지원하지 않는 동기화 DB")
 
+/** 내부 fault seam은 단계 enum 외의 저장소 정보를 전달하지 않는다. */
+internal enum class SyncStatePhase {
+    INITIAL_SCHEMA_READY, INITIAL_BEFORE_PUBLISH, INITIAL_PUBLISHED,
+    RESET_OWNER_BEFORE, RESET_OWNER_WRITING, RESET_OWNER_WRITTEN,
+    RESET_STAGE_SCHEMA_READY, RESET_PREPARED, RESET_MARKER_PUBLISHED,
+}
+
 /** 읽기는 생성ㆍ수리하지 않으며, 손상 처리기도 원본을 삭제하지 않는다. */
-internal class SyncStateDatabase internal constructor(internal val databaseFile: File) {
+internal class SyncStateDatabase internal constructor(
+    internal val databaseFile: File,
+    private val phaseObserver: (SyncStatePhase) -> Unit = {},
+    private val schemaReadyPhase: SyncStatePhase = SyncStatePhase.INITIAL_SCHEMA_READY,
+) {
+    internal fun observe(phase: SyncStatePhase) = phaseObserver(phase)
     constructor(context: Context) : this(File(context.noBackupFilesDir, "sync-state.db"))
     internal val resetDirectory = File(databaseFile.parentFile, "${databaseFile.name}.reset")
     internal val pathLock = synchronized(locks) { locks.getOrPut(databaseFile.canonicalPath) { Any() } }
@@ -43,9 +55,12 @@ internal class SyncStateDatabase internal constructor(internal val databaseFile:
         val db = SQLiteDatabase.openDatabase(databaseFile, builder.build())
         try {
             db.setForeignKeyConstraintsEnabled(true)
-            if (create) transaction(db) {
-                schema.values.forEach(db::execSQL)
-                db.version = 1
+            if (create) {
+                transaction(db) {
+                    schema.values.forEach(db::execSQL)
+                    db.version = 1
+                }
+                observe(schemaReadyPhase)
             }
             if (db.version != 1) throw UnsupportedSyncSchemaException()
             val found = mutableMapOf<String, String>()

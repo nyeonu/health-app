@@ -295,13 +295,13 @@ class SqliteSyncStateStoreInstrumentedTest {
             try {
                 val generation = f.configure()
                 when(change) {
-                    "version" -> SQLiteDatabase.openDatabase(f.db.databaseFile.path,null,SQLiteDatabase.OPEN_READWRITE).use { it.version = 99 }
-                    "column" -> SQLiteDatabase.openDatabase(f.db.databaseFile.path,null,SQLiteDatabase.OPEN_READWRITE).use { it.execSQL("ALTER TABLE day ADD COLUMN extra TEXT") }
-                    "trigger" -> SQLiteDatabase.openDatabase(f.db.databaseFile.path,null,SQLiteDatabase.OPEN_READWRITE).use { it.execSQL("CREATE TRIGGER unexpected AFTER UPDATE ON day BEGIN SELECT 1; END") }
+                    "version" -> SQLiteDatabase.openDatabase(f.db.databaseFile.path,null,SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use { it.version = 99 }
+                    "column" -> SQLiteDatabase.openDatabase(f.db.databaseFile.path,null,SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use { it.execSQL("ALTER TABLE day ADD COLUMN extra TEXT") }
+                    "trigger" -> SQLiteDatabase.openDatabase(f.db.databaseFile.path,null,SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use { it.execSQL("CREATE TRIGGER unexpected AFTER UPDATE ON day BEGIN SELECT 1; END") }
                     "corrupt" -> f.db.databaseFile.writeBytes(ByteArray(4096) { 0x5a })
                     "directory" -> { assertTrue(f.db.databaseFile.delete()); assertTrue(f.db.databaseFile.mkdir()) }
                     "marker" -> { assertTrue(f.db.resetDirectory.mkdir()); File(f.db.resetDirectory,"unknown").writeText("합성") }
-                    "row" -> SQLiteDatabase.openDatabase(f.db.databaseFile.path,null,SQLiteDatabase.OPEN_READWRITE).use { it.execSQL("UPDATE generation SET categories_json='[ \"STEPS\" ]'") }
+                    "row" -> SQLiteDatabase.openDatabase(f.db.databaseFile.path,null,SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use { it.execSQL("UPDATE generation SET categories_json='[ \"STEPS\" ]'") }
                 }
                 val original = f.db.databaseFile.takeIf { it.isFile }?.readBytes()
                 val expected = when(change) {
@@ -531,6 +531,177 @@ class SqliteSyncStateStoreInstrumentedTest {
         } finally { f.close() }
     }
 
+    @Test
+    fun initialConfigurationBeforeCommitFailurePreservesAbsentAndAllowsFreshRetry() = runBlocking {
+        val f = Fixture()
+        try {
+            assertEquals(CommitStatus.UNAVAILABLE,f.store { error("합성 최초 커밋 실패") }
+                .configure(null,f.config(),PrivateDestinationBinding("SYNTHETIC")).status)
+            assertEquals(StateStatus.ABSENT,f.store().load().status)
+            f.configure()
+            f.integrity()
+        } finally { f.close() }
+    }
+
+    @Test
+    fun initialConfigurationBeforeCommitCancellationPreservesAbsentAndAllowsFreshRetry() = runBlocking {
+        val f = Fixture()
+        try {
+            try {
+                f.store { throw CancellationException("합성 최초 커밋 취소") }
+                    .configure(null,f.config(),PrivateDestinationBinding("SYNTHETIC"))
+                fail("최초 커밋 취소는 전파되어야 합니다")
+            } catch (_: CancellationException) { }
+            assertEquals(StateStatus.ABSENT,f.store().load().status)
+            f.configure()
+            f.integrity()
+        } finally { f.close() }
+    }
+
+    @Test
+    fun interruptionAfterInitialSchemaPreservesAbsentAndAllowsFreshRetry() = runBlocking {
+        val f = Fixture()
+        try {
+            var observed = false
+            val result = f.store(observer = { phase ->
+                if (phase == SyncStatePhase.INITIAL_SCHEMA_READY) { observed = true; error("합성 초기 schema 중단") }
+            }).configure(null,f.config(),PrivateDestinationBinding("SYNTHETIC"))
+            assertTrue(observed)
+            assertEquals(CommitStatus.UNAVAILABLE,result.status)
+            assertEquals(StateStatus.ABSENT,f.store().load().status)
+            f.configure()
+            f.integrity()
+        } finally { f.close() }
+    }
+
+    @Test
+    fun malformedBindingRejectsConfigurationWithoutChangingOriginalBytes() = runBlocking {
+        corruptOrdinaryWritePreservesOriginal("binding","configure")
+    }
+
+    @Test
+    fun malformedBindingRejectsInvalidationWithoutChangingOriginalBytes() = runBlocking {
+        corruptOrdinaryWritePreservesOriginal("binding","invalidate")
+    }
+
+    @Test
+    fun malformedBindingRejectsTransactionWithoutChangingOriginalBytes() = runBlocking {
+        corruptOrdinaryWritePreservesOriginal("binding","transact")
+    }
+
+    @Test
+    fun malformedBindingRejectsNormalResetWithoutChangingOriginalBytes() = runBlocking {
+        corruptOrdinaryWritePreservesOriginal("binding","reset")
+    }
+
+    @Test
+    fun malformedDayRejectsConfigurationWithoutChangingOriginalBytes() = runBlocking {
+        corruptOrdinaryWritePreservesOriginal("day","configure")
+    }
+
+    @Test
+    fun malformedDayRejectsInvalidationWithoutChangingOriginalBytes() = runBlocking {
+        corruptOrdinaryWritePreservesOriginal("day","invalidate")
+    }
+
+    @Test
+    fun malformedDayRejectsTransactionWithoutChangingOriginalBytes() = runBlocking {
+        corruptOrdinaryWritePreservesOriginal("day","transact")
+    }
+
+    @Test
+    fun malformedDayRejectsNormalResetWithoutChangingOriginalBytes() = runBlocking {
+        corruptOrdinaryWritePreservesOriginal("day","reset")
+    }
+
+    @Test
+    fun malformedAttemptRejectsConfigurationWithoutChangingOriginalBytes() = runBlocking {
+        corruptOrdinaryWritePreservesOriginal("attempt","configure")
+    }
+
+    @Test
+    fun malformedAttemptRejectsInvalidationWithoutChangingOriginalBytes() = runBlocking {
+        corruptOrdinaryWritePreservesOriginal("attempt","invalidate")
+    }
+
+    @Test
+    fun malformedAttemptRejectsTransactionWithoutChangingOriginalBytes() = runBlocking {
+        corruptOrdinaryWritePreservesOriginal("attempt","transact")
+    }
+
+    @Test
+    fun malformedAttemptRejectsNormalResetWithoutChangingOriginalBytes() = runBlocking {
+        corruptOrdinaryWritePreservesOriginal("attempt","reset")
+    }
+
+    private suspend fun corruptOrdinaryWritePreservesOriginal(kind: String,operation: String) {
+        val f = Fixture()
+        try {
+            val generation = f.configure()
+            val scopes = mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY)
+            val attempt = f.start(generation,scopes,listOf(f.date.minusDays(1)))
+            f.commit(generation,attempt.id,day = f.day(f.date.minusDays(1),scopes))
+            f.db.openForWrite().use { db ->
+                when(kind) {
+                    "binding" -> db.execSQL("UPDATE config SET binding_payload=?",arrayOf("{"))
+                    "day" -> db.execSQL("UPDATE day SET scopes_json=?",arrayOf("{"))
+                    "attempt" -> db.execSQL("UPDATE attempt SET pending_triggers_json=?",arrayOf("{"))
+                }
+            }
+            val original = f.db.databaseFile.readBytes()
+            assertEquals(StateStatus.CORRUPT,f.store().load().status)
+            val result = when(operation) {
+                "configure" -> f.store().configure(generation,f.config(),PrivateDestinationBinding("SYNTHETIC"))
+                "invalidate" -> f.store().invalidate(generation)
+                "transact" -> f.store().transact(generation,SyncMutation(attempt.id,null,null,null,setOf(SyncTrigger.CATCH_UP),null))
+                "reset" -> f.store().reset(generation)
+                else -> error("지원하지 않는 합성 mutation")
+            }
+            assertEquals(CommitStatus.UNAVAILABLE,result.status)
+            assertArrayEquals(original,f.db.databaseFile.readBytes())
+            assertEquals(StateStatus.CORRUPT,f.store().load().status)
+        } finally { f.close() }
+    }
+
+    @Test
+    fun interruptionBeforeResetOwnerAllowsExplicitResetRetry() = runBlocking {
+        interruptedResetPreparationAllowsRetry(SyncStatePhase.RESET_OWNER_BEFORE)
+    }
+
+    @Test
+    fun interruptionDuringResetOwnerWriteAllowsExplicitResetRetry() = runBlocking {
+        interruptedResetPreparationAllowsRetry(SyncStatePhase.RESET_OWNER_WRITING)
+    }
+
+    @Test
+    fun interruptionAfterResetOwnerWriteAllowsExplicitResetRetry() = runBlocking {
+        interruptedResetPreparationAllowsRetry(SyncStatePhase.RESET_OWNER_WRITTEN)
+    }
+
+    @Test
+    fun interruptionAfterResetStageSchemaAllowsExplicitResetRetry() = runBlocking {
+        interruptedResetPreparationAllowsRetry(SyncStatePhase.RESET_STAGE_SCHEMA_READY)
+    }
+
+    private suspend fun interruptedResetPreparationAllowsRetry(stop: SyncStatePhase) {
+        val f = Fixture()
+        try {
+            f.configure()
+            f.db.openForWrite().use { it.version = 99 }
+            val original = f.db.databaseFile.readBytes()
+            var observed = false
+            val interrupted = f.store(observer = { phase ->
+                if (phase == stop) { observed = true; error("합성 reset 준비 중단") }
+            }).reset(null)
+            assertTrue(observed)
+            assertEquals(CommitStatus.UNAVAILABLE,interrupted.status)
+            assertArrayEquals(original,f.db.databaseFile.readBytes())
+            assertEquals(CommitStatus.COMMITTED,f.store().reset(null).status)
+            assertNull(f.ready().configuration)
+            f.integrity()
+        } finally { f.close() }
+    }
+
     private suspend fun prepareReset(f: Fixture): ByteArray {
         f.db.openForWrite().use { it.version = 99 }
         val original = f.db.databaseFile.readBytes()
@@ -546,7 +717,8 @@ class SqliteSyncStateStoreInstrumentedTest {
         val db = SyncStateDatabase(File(context.noBackupFilesDir,"sync-state-probe-${UUID.randomUUID()}.db"))
         var date: LocalDate = LocalDate.of(2026,10,20)
         private val time = Instant.parse("2026-11-05T00:00:00Z")
-        fun store(hook: () -> Unit = {}) = SqliteSyncStateStore(SyncStateDatabase(db.databaseFile),{ date },hook)
+        fun store(observer: (SyncStatePhase) -> Unit = {}, hook: () -> Unit = {}) =
+            SqliteSyncStateStore(SyncStateDatabase(db.databaseFile,observer),{ date },hook)
         fun config() = SyncConfiguration("synthetic-destination",date.minusDays(1),true,DataType.entries.toSet())
         suspend fun configure(expected: DestinationGeneration? = null): DestinationGeneration = store().configure(expected,config(),PrivateDestinationBinding("SYNTHETIC")).let {
             assertEquals(CommitStatus.COMMITTED,it.status); it.generation!!

@@ -182,12 +182,16 @@ internal class SqliteSyncStateStore internal constructor(
                     return@synchronized SyncCommit(CommitStatus.STALE, null)
                 }
                 val result = database.openForWrite().use { db ->
-                    database.transaction(db, { capacity(db); coroutine.ensureActive(); beforeCommit(); coroutine.ensureActive() }) {
+                    database.transaction(db, {
+                        capacity(db); coroutine.ensureActive(); beforeCommit(); coroutine.ensureActive()
+                        if (!existed) database.observe(SyncStatePhase.INITIAL_BEFORE_PUBLISH)
+                    }) {
                         if (existed) metadata(db)
                         block(db)
                     }
                 }
                 database.openForRead().use { db -> checkNotNull(db); metadata(db) }
+                if (!existed && result.status == CommitStatus.COMMITTED) database.observe(SyncStatePhase.INITIAL_PUBLISHED)
                 result
             } catch (error: CancellationException) { throw error }
             catch (_: Exception) { SyncCommit(CommitStatus.UNAVAILABLE, null) }
@@ -209,8 +213,13 @@ internal class SqliteSyncStateStore internal constructor(
                     if (status != StateStatus.CORRUPT && status != StateStatus.UNSUPPORTED) return@synchronized SyncCommit(CommitStatus.UNAVAILABLE, null)
                     check(marker.mkdir())
                     syncDirectory(marker.parentFile!!)
-                    durableText(File(marker, "owner"), UUID.randomUUID().toString())
+                    database.observe(SyncStatePhase.RESET_MARKER_PUBLISHED)
+                    database.observe(SyncStatePhase.RESET_OWNER_BEFORE)
+                    durableText(File(marker,"owner"),UUID.randomUUID().toString()) {
+                        database.observe(SyncStatePhase.RESET_OWNER_WRITING)
+                    }
                     syncDirectory(marker)
+                    database.observe(SyncStatePhase.RESET_OWNER_WRITTEN)
                 }
                 check(marker.isDirectory && marker.listFiles()!!.all { it.name in setOf("owner", "stage", "old", "installed", "old-journal", "old-wal", "old-shm") && it.isFile && !Files.isSymbolicLink(it.toPath()) })
                 val owner = readOwner(File(marker,"owner"))
@@ -226,7 +235,7 @@ internal class SqliteSyncStateStore internal constructor(
                 }
                 if (!old.exists() && !installed.exists()) {
                     if (!stage.exists()) {
-                        val staged = SyncStateDatabase(stage)
+                        val staged = SyncStateDatabase(stage,database::observe,SyncStatePhase.RESET_STAGE_SCHEMA_READY)
                         staged.openForWrite().use { db -> staged.transaction(db) {
                             val generation = fresh(); insertGeneration(db, generation, null)
                             db.insertOrThrow("config", null, values("id" to 1,"format_version" to 1,"active_generation" to generation.value,"automatic" to 0,"reset_epoch" to 0))
@@ -236,6 +245,7 @@ internal class SqliteSyncStateStore internal constructor(
                     coroutine.ensureActive(); beforeCommit(); coroutine.ensureActive()
                     syncFile(stage)
                     syncDirectory(marker)
+                    database.observe(SyncStatePhase.RESET_PREPARED)
                     check(database.databaseFile.renameTo(old))
                     syncDirectory(marker); syncDirectory(marker.parentFile!!)
                 }
@@ -515,7 +525,9 @@ internal class SqliteSyncStateStore internal constructor(
         check(file.isFile && !Files.isSymbolicLink(file.toPath()) && file.length() == 36L)
         return file.readText(Charsets.UTF_8).also { check(it.toByteArray(Charsets.UTF_8).size == 36 && UUID.fromString(it).toString() == it) }
     }
-    private fun durableText(file: File, value: String) = FileOutputStream(file).use { it.write(value.toByteArray(Charsets.UTF_8)); it.fd.sync() }
+    private fun durableText(file: File, value: String, beforeWrite: () -> Unit = {}) = FileOutputStream(file).use {
+        beforeWrite(); it.write(value.toByteArray(Charsets.UTF_8)); it.fd.sync()
+    }
     private fun syncFile(file: File) = FileOutputStream(file,true).use { it.fd.sync() }
     private fun syncDirectory(file: File) {
         val descriptor = Os.open(file.path,OsConstants.O_RDONLY,0)
