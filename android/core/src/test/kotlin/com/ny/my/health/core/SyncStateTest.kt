@@ -1,0 +1,117 @@
+package com.ny.my.health.core
+
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import org.junit.Assert.*
+import org.junit.Test
+
+class SyncStateTest {
+    @Test
+    fun `Enrollment at KST midnight excludes old history today future and pre-enrollment days`() {
+        for (instant in listOf("2026-11-04T14:59:59Z", "2026-11-04T15:00:00Z")) {
+            val today = Instant.parse(instant).atZone(ZoneId.of("Asia/Seoul")).toLocalDate()
+            for (age in listOf(0L, 1L, 7L, 8L)) {
+                val f = SyncFixture(today, age)
+                val batch = SyncPlanner.plan(f.state(candidates = listOf(today.minusDays(age + 1), today, today.plusDays(1))), today, f.access)
+                assertEquals(listOf(today.minusDays(2), today.minusDays(1)).filter { it >= f.config.enrolledDay }, batch.dates)
+                assertEquals(age, batch.remainingPending)
+            }
+        }
+        val f = SyncFixture(LocalDate.of(2026, 11, 5), 1)
+        val state = f.state()
+        assertTrue(state.isValid())
+        assertTrue(state.copy(configuration = null, scopeKey = null, requestedScopes = emptyMap(),
+            coverage = CoverageSummary(null, null, null, null, null, emptySet(), 0, 0, null, emptySet(), emptySet())).isValid())
+        val row = f.day(f.today.minusDays(1), false)
+        for (invalid in listOf(state.copy(version = 2), state.copy(generation = DestinationGeneration("")),
+            state.copy(requestedScopes = mapOf(DataType.STEPS to ReadScope.BLOCKED)),
+            state.copy(coverage = state.coverage.copy(scopePendingCount = -1)),
+            state.copy(days = mapOf(row.date to row.copy(checkedAt = null))),
+            state.copy(days = mapOf(row.date to row.copy(scopes = emptyMap()))),
+            state.copy(days = mapOf(row.date to row.copy(phase = DayPhase.CONFIRMED))),
+            state.copy(days = mapOf(row.date to row.copy(date = row.date.plusDays(1)))))) assertFalse(invalid.isValid())
+    }
+
+    @Test
+    fun `Empty and partial grants never claim five categories upload success or continuous uploaded coverage`() {
+        val vectorFixture = SyncFixture(LocalDate.of(2026, 11, 5), 3)
+        val vectorAccess = ReadAccess(true, setOf(DataType.STEPS, DataType.HEART_RATE),
+            linkedMapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY, DataType.HEART_RATE to ReadScope.SUMMARY))
+        val vectorKey = SyncPlanner.scopeKey(vectorFixture.config, vectorAccess)
+        assertEquals("b4a8d8eedf4c548fa42d9d5f0377422f4a6a5d78c65d5280353bca3fd83bcba5", vectorKey?.value)
+        assertEquals(vectorKey, SyncPlanner.scopeKey(vectorFixture.config.copy(categories = DataType.entries.reversed().toSet()),
+            vectorAccess.copy(granted = vectorAccess.granted.reversed().toSet(), scopeByType = vectorAccess.scopeByType.entries.reversed().associate { it.toPair() })))
+        assertNotEquals(vectorKey, SyncPlanner.scopeKey(vectorFixture.config,
+            vectorAccess.copy(scopeByType = vectorAccess.scopeByType + (DataType.HEART_RATE to ReadScope.WORKOUT_SCOPED))))
+        val original = SyncFixture(LocalDate.of(2026, 11, 5), 3, ReadScope.EXPLICIT_DAY)
+        val originalRow = original.day(original.today.minusDays(1), true)
+        val originalState = original.state(listOf(originalRow))
+        for (scope in listOf(ReadScope.EXPLICIT_DAY, ReadScope.SUMMARY, ReadScope.WORKOUT_SCOPED)) {
+            val f = SyncFixture(original.today, 3, scope)
+            val yesterday = f.today.minusDays(1)
+            val empty = f.day(yesterday, false)
+            val uploaded = f.day(yesterday.minusDays(1), true)
+            val state = f.state(listOf(empty, uploaded), summary = f.summary.copy(scopeCheckedThrough = yesterday,
+                scopePendingCount = 1, lastUploadAt = f.time))
+            val coverage = SyncPlanner.coverage(state, f.today)
+            assertNull(coverage.checkedThrough)
+            assertNull(coverage.uploadedThrough)
+            assertEquals(yesterday, coverage.scopeCheckedThrough)
+            assertNull(coverage.scopeUploadedThrough)
+            assertEquals(setOf(yesterday, yesterday.minusDays(1)), coverage.recentCheckedDays)
+            assertEquals(setOf(yesterday.minusDays(1)), coverage.recentUploadedDays)
+            assertEquals(DataType.entries.toSet() - DataType.STEPS, coverage.excludedTypes)
+            assertEquals(f.time, coverage.lastUploadAt)
+            assertTrue(state.isValid())
+            val pending = uploaded.copy(datasets = uploaded.datasets.mapValues { (_, file) ->
+                file.copy(phase = FilePhase.INDETERMINATE, confirmedAt = null)
+            })
+            assertFalse(state.copy(days = mapOf(pending.date to pending)).isValid())
+            assertTrue(SyncPlanner.coverage(state.copy(days = mapOf(pending.date to pending)), f.today).recentUploadedDays.isEmpty())
+            for ((dayPhase, filePhase) in listOf(DayPhase.RUNNING to FilePhase.RUNNING,
+                DayPhase.INDETERMINATE to FilePhase.INDETERMINATE, DayPhase.REMOTE_STALE to FilePhase.REMOTE_STALE)) {
+                val known = uploaded.copy(date = f.config.enrolledDay, phase = dayPhase,
+                    datasets = uploaded.datasets.mapValues { (_, file) -> file.copy(phase = filePhase, confirmedAt = null) })
+                assertTrue(known.isChecked())
+                assertFalse(known.isUploaded())
+                val knownState = f.state(listOf(known), listOf(known.date))
+                assertTrue(knownState.isValid())
+                val planned = SyncPlanner.plan(knownState, f.today, f.access)
+                if (dayPhase == DayPhase.REMOTE_STALE) {
+                    assertEquals(BlockReason.DESTINATION_BLOCKED, planned.blocked[known.date])
+                } else assertTrue(known.date in planned.dates)
+                for (reason in listOf(BlockReason.SOURCE_READ_FAILED, BlockReason.SOURCE_ACCESS_REQUIRED,
+                    BlockReason.SOURCE_LIMIT_EXCEEDED)) assertFalse(known.copy(blocker = reason).isChecked())
+                assertFalse(known.copy(revision = null).isChecked())
+                assertFalse(known.copy(phase = DayPhase.EMPTY).isChecked())
+            }
+            if (scope != ReadScope.EXPLICIT_DAY) {
+                assertTrue(SyncPlanner.plan(state, f.today, original.access).dates.isEmpty())
+                assertEquals(3L, SyncPlanner.plan(state, f.today, original.access).remainingPending)
+            }
+        }
+        // 프로필 전환 뒤 저장소가 원래 프로필을 선택해 돌려준 행은 그대로 보존된다.
+        assertEquals(originalRow, originalState.days[originalRow.date])
+        assertEquals(original.revision, originalState.days[originalRow.date]!!.revision)
+        assertEquals(setOf(originalRow.date), SyncPlanner.coverage(originalState, original.today).recentUploadedDays)
+    }
+}
+
+internal class SyncFixture(val today: LocalDate, val age: Long, scope: ReadScope = ReadScope.SUMMARY) {
+    val time: Instant = Instant.parse("2026-11-05T00:00:00Z")
+    val config = SyncConfiguration("synthetic-destination", today.minusDays(age), true, DataType.entries.toSet())
+    val scopes = mapOf(DataType.STEPS to scope)
+    val access = ReadAccess(true, setOf(DataType.STEPS), scopes)
+    val key = requireNotNull(SyncPlanner.scopeKey(config, access))
+    val revision = RevisionKey("a".repeat(64), time)
+    val summary = CoverageSummary(null, null, key, null, null, DataType.entries.toSet() - DataType.STEPS,
+        age, 0, null, emptySet(), emptySet())
+    fun state(rows: List<DayState> = emptyList(), candidates: List<LocalDate> = emptyList(),
+        summary: CoverageSummary = this.summary): SyncState = SyncState(1, DestinationGeneration("synthetic-generation"),
+        config, null, key, scopes, rows.associateBy { it.date }, candidates, summary)
+    fun day(date: LocalDate, uploaded: Boolean): DayState = DayState(date, key, scopes, revision,
+        if (uploaded) DayPhase.CONFIRMED else DayPhase.EMPTY, scopes, time,
+        if (!uploaded) emptyMap() else mapOf(Dataset.DAILY to DatasetState(Dataset.DAILY, revision,
+            FilePhase.CONFIRMED, true, "synthetic-file", time, time, null)), null)
+}

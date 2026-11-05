@@ -10,8 +10,8 @@ spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feat/v1-completion
 tasks:
-  - {id: T1, title: 등록 이후 bounded 날짜 계획, depends_on: [], status: in_progress, tier: standard}
-  - {id: T2, title: 재읽기 revision과 scope별 확인, depends_on: [T1], status: pending, tier: standard}
+  - {id: T1, title: 등록 이후 bounded 날짜 계획, depends_on: [], status: done, tier: standard}
+  - {id: T2, title: 재읽기 revision과 scope별 확인, depends_on: [T1], status: in_progress, tier: standard}
   - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: pending, tier: standard}
   - {id: T4, title: 실제 SQLite의 원자적 상태 저장, depends_on: [T3], status: pending, tier: standard}
   - {id: T5, title: process 공용 admission과 중단 복구, depends_on: [T4], status: pending, tier: standard}
@@ -135,9 +135,63 @@ identify 선언은 상위 2절 `SyncRevision`를 그대로 사용한다.
 - `SyncRevision`：DefaultNormalizer/VersionedCsvExporter의 기존 정렬·CRLF·schema0.1을 재사용한다. revision.previous는 같은 scopeKey만 허용하며 다른 profile이면 INVALID다. previous=null은 blocked 없는 clean snapshot에서 positive granted scopes로 최초 profile을 산출하는 경우만 허용한다. engine의 해당 profile row 없는 최초 읽기는 admitted requestedScopes/scopeKey를 담은 revision=null·phase=PENDING·scopes={}·checkedAt=null·datasets={}·blocker=null DayState를 previous로 제공한다. blockedTypes와 BLOCKED scope entries가 일치해야 하며 scope 불명은 성공 empty로 만들지 않는다. DAILY source는 STEPS/WEIGHT, 나머지는 EXERCISE/HEART_RATE/SLEEP다.
 - `SyncRevision`：원격 경로는 기존 dataset/date.csv이므로 서로 다른 scope가 **같은 target을 공유할 수 있다**. 새 scope row를 보존하는 것이 다른 scope의 현재 remote bytes도 보존한다는 뜻은 아니다. writePending 직전 durable RUNNING journal transaction은 같은 generation/date/dataset의 다른 scope dataset을 INDETERMINATE로 전환하고 priorConfirmation에 이전 확인을 보존한다. 그 다른 scope의 requestedScopes/revision/checkedAt은 보존한다. 이 보수적 무효화는 remote write 실패/결과불명에도 유지하며 삭제하지 않는다. 다른 profile의 uploadedThrough/current 판정은 멈추고 이후 그 profile 재실행의 source reread+reconciliation으로만 복원한다. 처음 profile pending journal commit은 해당 profile만 바꾸며 이 cross-scope 무효화는 실제 writePending 대상에만 적용한다.
 
-### SyncStateCodec: 저장 포맷과 상한
+### SyncStateCodec: JSON leaf 계약과 상한
 
-- `SyncStateCodec`：JSON은 **행별 metadata 필드**에만 사용한다. SyncState 전체 봉투 또는 raw HealthSnapshot/CsvFile/content/recordId/sourcePackage를 저장하지 않는다. encode/decode 함수는 각각 configuration/day/attempt의 metadata를 대상으로 하며 exact allowlist와 타입·관계 validation을 공유한다. JSON depth 최대8, 각 행 UTF-8 최대16KiB, unknown key/enum/duplicate key/버전 거부. 날짜는 ISO LocalDate(1970-01-01~9999-12-31), instant는 ISO Instant(동일 연도 범위), digest hex64, UUID canonical36, opaque handle은 공백/제어문자 없는 UTF-8 1~4096 bytes. categories/scopes 최대5, datasets 최대4, attempt.dates 최대7 unique ascending, pendingTriggers 최대3, retriesUsed 0..3. DB 전체(현재+archived) 최대10000 generation행·10000 attempt행·100000 day행·400000 dataset행, 초과시 INVALID/blocked; 성공 기록을 삭제해 자리 만들지 않는다. 파싱 실패는 CORRUPT, 알 수 없는 version/schema는 UNSUPPORTED다. JSON은 이 앱의 canonical writer가 만든 저장 행만 입력으로 받는다. 객체 key 순서·enum/set/map 정렬·숫자·문자열 escaping·공백 없음의 canonical encoding을 고정하고 decode→strict field/type validation→canonical re-encode가 원래 UTF-8 입력과 byte-for-byte 같아야 decode 성공이다. duplicate keys는 재인코딩 때 한 key로 축약되어 같을 수 없으므로 이 검사로 거부한다. 새 custom JSON tokenizer/parser를 도입하지 않는다. 의미가 같아도 whitespace·key 순서·escape·숫자 표기가 다른 외부 JSON은 CORRUPT다. own-store 전용이므로 외부 JSON 호환성은 제공하지 않는다.
+```kotlin
+// SyncStateCodec — only actual JSON leaves in scalar SQLite rows; no row/envelope codecs
+object SyncStateCodec {
+    fun encodeCategories(value: Set<DataType>): String
+    fun decodeCategories(json: String, formatVersion: Int): Set<DataType>
+    fun encodeScopes(value: Map<DataType, ReadScope>): String
+    fun decodeScopes(json: String, formatVersion: Int): Map<DataType, ReadScope>
+    fun encodeDates(value: List<LocalDate>): String
+    fun decodeDates(json: String, formatVersion: Int): List<LocalDate>
+    fun encodeTriggers(value: Set<SyncTrigger>): String
+    fun decodeTriggers(json: String, formatVersion: Int): Set<SyncTrigger>
+    fun encodeConfirmation(value: FileConfirmation): String
+    fun decodeConfirmation(json: String, formatVersion: Int): FileConfirmation
+}
+// SyncStateCodec — writer format=1; decoder version comes from scalar config.format_version.
+// Unknown formatVersion throws UnsupportedOperationException; invalid JSON/value throws IllegalArgumentException.
+// Categories/triggers: JSON arrays of enum names, sorted ascending, unique, max5/max3; empty allowed.
+// Scopes: JSON object DataType-name -> ReadScope-name, sorted keys, max5; empty and BLOCKED allowed here.
+// Admission separately rejects empty/BLOCKED requestedScopes; actual scopes may contain BLOCKED.
+// Dates: ISO LocalDate JSON string array, unique ascending, max7; empty allowed at leaf level.
+// Confirmation: flat object with exact keys confirmedAt,dataset,date,generation,revision,scopeKey,targetHandle.
+// Confirmation values are strings; keys lexicographic ascending; no extra/nested version or key object.
+// All methods enforce encoded UTF8 <=16KiB and depth<=8; sets/maps sort deterministically.
+// Decode -> validate type/allowlist/bounds -> re-encode must equal original UTF8 bytes exactly.
+// Equality rejects duplicate keys and noncanonical whitespace/order/escaping without a new JSON parser.
+// No configuration/day/attempt/SyncState/HealthSnapshot/CsvFile/DayRevision JSON serialization exists.
+```
+
+- `SyncStateCodec`：JSON leaf는 generation.categories_json, day.requested_scopes_json/scopes_json, attempt.requested_scopes_json/dates_json/pending_triggers_json, dataset.prior_confirmation_json뿐이다. SQL scalar date/generation/scope/revision/phase/timestamp와 JSON 봉투를 중복 저장하지 않는다. private binding은 app adapter 자체 canonical codec이며 core에 올리지 않는다. null priorConfirmation은 SQL NULL이고 문자열 null을 encode/decode하지 않는다. decode version은 SQL config.format_version에서 검증해 전달한다. version1 JSON leaf 안에 version 필드를 만들지 않는다.
+- `SyncStateCodec`：날짜는 ISO LocalDate(1970-01-01~9999-12-31), instant는 ISO Instant(동일 연도 범위), digest/scope key는 lowercase hex64, generation/attempt id는 canonical UUID36, opaque handle은 공백/제어문자 없는 UTF-8 1~4096 bytes다. decode unknown version은 store에서 UNSUPPORTED, malformed/noncanonical leaf는 CORRUPT로 구분한다. own-store 입력만 지원하므로 의미가 같아도 다른 공백·key순서·escape·숫자 표기는 거부한다. 파싱 후 구조를 검사해 depth를 제한하며 16KiB byte 제한은 파싱 전에 적용한다. enum alias/ordinal/대소문자 alias는 허용하지 않는다.
+- `SyncStateCodec`：최대5 scopes/categories·4 datasets·7 unique ascending dates·3 pendingTriggers·retriesUsed0..3의 허용 경계 fixture를 검증한다. leaf 상한 초과는 encoder/decoder 모두 거부한다. DB 전체(현재+archived) 최대10000 generation행·10000 attempt행·100000 day행·400000 dataset행은 SQL transaction이 검사하며 codec/state snapshot으로 전역 개수를 추정하지 않는다. 개인 payload/CSV/token/raw record 저장은 금지한다.
+
+### SyncStateTransitions: 순수 mutation 검증의 공개 계약
+
+```kotlin
+// SyncStateTransitions — functions live in SyncState.kt, no new source file or persistence layer
+fun SyncState.isValid(): Boolean // existing T1 public function; retain signature and observable meaning
+fun SyncConfiguration.isValid(): Boolean
+fun FileConfirmation.isValid(): Boolean
+fun AttemptState.isValid(enrolledDay: LocalDate, todayInSeoul: LocalDate): Boolean
+fun DayState.isValid(generation: DestinationGeneration,
+    enrolledDay: LocalDate, todayInSeoul: LocalDate): Boolean
+fun SyncState.validateMutation(expected: DestinationGeneration?, mutation: SyncMutation,
+    currentDay: DayState?, todayInSeoul: LocalDate): CommitStatus
+// COMMITTED here means a VALID candidate only: pure code never acknowledges durability.
+// STALE means active expected generation / current attempt / scope / date revision identity changed.
+// INVALID means malformed shape/metadata or a forbidden transition; UNAVAILABLE is never returned here.
+// Only SqliteSyncStateStore.transact may construct durable SyncCommit(COMMITTED) after endTransaction succeeds.
+```
+
+- `SyncStateTransitions`：isValid overloads는 상위 DTO와 codec의 필드 범위·관계를 검증한다. Configuration은 nonempty categories와 bounded handle/enrollment, confirmation은 canonical FileKey/target/time를 검사한다. Attempt는 id/key/retry/dates/요청 scope와 scheduled≤started≤finished 관계, Day는 same requested fingerprint·등록일≤date<today·dataset key/revision 일치·현재/과거 confirmation의 generation/date/scope/dataset 관계를 검사한다. 요청 scopes는 nonempty/non-BLOCKED, 실제 scopes는 요청 key의 부분집합이며 BLOCKED를 허용하되 성공으로 승격하지 않는다. priorConfirmation은 과거 revision이 가능하나 동일 generation/date/scope/dataset이어야 한다. 공개 함수 추가 외 private helper/extension 분해는 실행자 구현 판단이며 별도 승인·질문을 요구하지 않는다.
+- `SyncStateTransitions`：validateMutation 입력 state는 현재 active generation/config/attempt와 최대9일 snapshot이다. currentDay는 SQL adapter가 **같은 transaction에서 mutation의 exact date/scope를 별도 조회한 권위 행**이며 state.days의 누락으로 부재를 추정하지 않는다. currentDay=null은 실제 row 부재다. 날짜 행 변경이 아닌 start/pendingTriggers/finish에는 null을 전달한다. 전역 coverage/counter/archived rows를 이 함수가 재계산·저장하지 않는다.
+- `SyncStateTransitions`：분류 순서는 malformed state/mutation(정확히 한 payload·필수 attemptId·필드 범위)→INVALID, expected!=state.generation→STALE, configuration=null→INVALID다. start는 id==attemptId·현재 unfinished attempt 없음·state의 선택 scope/profile과 일치·등록 이후 어제까지 unique ascending dates여야 한다. 기존 finished attempt를 새 id로 대체할 수 있다. 나머지는 현재 unfinished attempt id가 일치해야 하고 아니면 STALE/finished면 INVALID다. pendingTriggers는 현재 집합과 union으로만 늘리고 finishAt은 startedAt 이후여야 한다.
+- `SyncStateTransitions`：day mutation은 attempt.dates에 포함된 exact scope/profile만 허용하며 currentDay와 무관한 scope/date는 STALE다. 새 revision은 기존 확인을 priorConfirmation으로 보존한 PENDING 또는 RUNNING journal로 시작한다. 같은 revision 변경은 기존 CONFIRMED를 근거 없이 지우지 않으며 EMPTY/CONFIRMED는 요청 scope read 완료와 intended dataset별 확인이 모두 필요하다. canonical reread가 입증한 populated→empty는 REMOTE_STALE이며 prior 확인/target을 보존한다. CONFIRMED 외 phase로의 write uncertainty는 current confirmedAt을 지우되 priorConfirmation을 보존한다. 실제 source 비교·revision 산출은 SyncRevision, 상태 검증은 이 함수다.
+- `SyncStateTransitions`：confirmation은 currentDay 존재·현재 attempt 날짜/scope·revision·dataset의 RUNNING/INDETERMINATE journal이 모두 일치해야 유효하다. identity mismatch는 STALE, target/시간/phase 불가능은 INVALID다. 이미 CONFIRMED인 동일 FileKey/targetHandle/confirmedAt의 정확한 재커밋만 멱등 유효하며 다른 확인으로 덮지 않는다. SQL adapter가 이 검증 후 해당 dataset 확인과 day outcome을 같은 transaction에서 변경한다. 다른 scope current 무효화·archived 차단·전역 capacity/coverage는 SQL query/transaction 책임이며 bounded state의 순수 reducer로 전체 DB를 대체하지 않는다.
 
 ### SqliteSyncStateStore: schema와 private 설정
 
@@ -234,12 +288,12 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
   | `android/core/src/main/kotlin/com/ny/my/health/core/SyncRevision.kt` | 신규 | canonical revision·안정 generatedAt |
-  | `android/core/src/main/kotlin/com/ny/my/health/core/SyncStateCodec.kt` | 신규 | bounded strict row codec |
-  | `android/core/src/main/kotlin/com/ny/my/health/core/SyncState.kt` | 수정 | confirmation·중단·stale reducer |
+  | `android/core/src/main/kotlin/com/ny/my/health/core/SyncStateCodec.kt` | 신규 | strict categories/scopes/dates/triggers/confirmation leaf codec |
+  | `android/core/src/main/kotlin/com/ny/my/health/core/SyncState.kt` | 수정 | 공개 isValid overloads와 validateMutation 분류 |
   | `android/core/src/test/kotlin/com/ny/my/health/core/SyncRevisionTest.kt` | 신규 | 시간 독립 revision·scope narrowing |
   | `android/core/src/test/kotlin/com/ny/my/health/core/SyncStateTest.kt` | 수정 | codec/metadata 오류·prior 확인 보존 |
 
-- **인터페이스**: 2절 `SyncState` 참조. 2절 `SyncRevision` 참조. 2절 `SyncStateCodec` 포맷.
+- **인터페이스**: 2절 `SyncState` 참조. 2절 `SyncRevision` 참조. 2절 `SyncStateCodec` 참조. 2절 `SyncStateTransitions` 참조.
 - **결정 로직**:
   ```
   canonical 같음 → 이전 generatedAt/digest 유지
@@ -251,14 +305,14 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
 - **작성할 테스트**:
   - "Source reread reuses canonical revision despite generated time and advances changed snapshots" — 신규; 아래 fixture 조건으로 검증.
   - "Disappearing populated datasets retain remote stale and prevent full current without deletion" — 신규; 아래 fixture 조건으로 검증.
-  - 케이스·재사용 근거: 신규 — 1절 Source reread..., Disappearing populated...; generatedAt만 다름/순서만 다름/실제 content변경, scope변경(새 profile와 기존 profile 공존), 완전 empty와 grant축소의 차이, CSV actual byte digest와 semantic digest 구별을 검증한다(①②④). codec unknown key/enum/version, 중복key 및 canonical과 다른 공백/key순서/escape 입력 거부, canonical roundtrip과 허용범위16KiB 경계, invalid phase/confirmation 조합은 SyncStateTest의 관찰 가능한 load/encode 거부 fixture로 검증한다(③). 기존 exporter 정렬·escaping·weight tie regression 재사용(⑤).
-- **완료 기준**: 재생성 bytes 안정, raw/CSV 저장 필드 없음; T1+T2 통합 체크포인트로 core 전체 회귀 통과.
+  - 케이스·재사용 근거: 신규 — 1절 Source reread..., Disappearing populated...; generatedAt만 다름/순서만 다름/실제 content변경, scope변경(새 profile와 기존 profile 공존), 완전 empty와 grant축소의 차이, CSV actual byte digest와 semantic digest 구별을 검증한다(①②④). codec unknown key/enum/version, 중복key 및 canonical과 다른 공백/key순서/escape 입력 거부, canonical roundtrip·최대4096 UTF-8 byte handle 허용과16KiB 초과 입력의 파싱 전 거부(16KiB 정확히인 유효 leaf를 억지로 만들지 않음), invalid phase/confirmation 조합은 SyncStateTest의 관찰 가능한 leaf decode/encode 및 mutation 검증 거부 fixture로 검증한다(③). generation/attempt/scope/revision stale, journal 없는 확인 거부, 동일 확인 멱등, finished callback 거부, prior 확인 보존은 기존 SyncStateTest fixture에 추가한다. bounded snapshot 밖 currentDay를 명시 전달하여 검증 가능함과 전역 coverage를 덮지 않음을 확인한다. 기존 합성 fixture의 임의 generation 문자열은 canonical 합성 UUID로 갱신할 수 있으나 T1 동작 단언은 유지한다. 기존 exporter 정렬·escaping·weight tie regression 재사용(⑤).
+- **완료 기준**: 재생성 bytes 안정, raw/CSV/whole-row JSON 저장 필드 없음, 공개 leaf API와 transition 분류의 유닛 검증 통과; T1+T2 통합 체크포인트로 core 전체 회귀 통과.
 - **검증 방법**:
   ```bash
   cd android
   ./gradlew -PcoreOnly :core:test
   ```
-- **주의사항**: T1 후 시작. generated_at 문자열 치환/원본 list hash 금지. 코덱 helper마다 새 테스트를 만들지 않고 invalid input이 확인 상태에 진입하지 못하는 대표 사례를 검증한다. 불명확 계약이면 blocked.
+- **주의사항**: JSON leaf helper와 검증 helper의 private 분해는 구현 재량이며 별도 질문하지 않는다. COMMITTED 검증 결과를 durable SyncCommit/원격 성공으로 반환하지 않는다.  T1 후 시작. generated_at 문자열 치환/원본 list hash 금지. 코덱 helper마다 새 테스트를 만들지 않고 invalid input이 확인 상태에 진입하지 못하는 대표 사례를 검증한다. 불명확 계약이면 blocked.
 
 ### T3: pending 기반 destination 실행
 
@@ -304,12 +358,12 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
   | `android/app/src/androidTest/java/com/ny/my/health/SqliteSyncStateStoreInstrumentedTest.kt` | 신규 | 실제 DB reopen·손상·저장 실패 |
   | `android/core/src/main/kotlin/com/ny/my/health/core/SyncStateCodec.kt` | 수정 | SQL row decode validation 연결 |
 
-- **인터페이스**: 2절 `SyncState` 참조. 2절 `SyncPlanner` 참조. 2절 `SyncStateStore` 참조. 2절 `SqliteSyncStateStore`의 schema/configure/readBinding. app 내부 invalidate(expected)도 같은 transaction으로 구현한다.
+- **인터페이스**: 2절 `SyncState` 참조. 2절 `SyncPlanner` 참조. 2절 `SyncStateStore` 참조. 2절 `SyncStateCodec` 참조. 2절 `SyncStateTransitions` 참조. 2절 `SqliteSyncStateStore`의 schema/configure/readBinding. app 내부 invalidate(expected)도 같은 transaction으로 구현한다.
 - **결정 로직**: 없음(순수 상태 판정 T1/T2 재사용).
 - **호출 순서**:
   ```
   1. marker/path/schema 검사 → 실패는 상태 분류 후 원본 보존
-  2. transaction 내부 generation/attempt/revision CAS와 변경 → 실패 rollback
+  2. transaction 내부 active CAS와 exact currentDay query→validateMutation(COMMITTED 후보)→SQL leaf/scalar 변경 → 실패 rollback
   3. endTransaction 성공 → 새 connection reopen 검증
   4. 명시 reset만 stage/marker 교체 경계 진입 → 실패 marker 유지
   ```
@@ -419,7 +473,9 @@ bash android/ci/verify-sync-state-process-recovery.sh
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
-| T1 | 1/2 | 실행자 사전 확인: validation API·bounded days와 SQL 전기간 summary의 권위·remainingPending 의미가 모호해 DTO 선언만 작성 후 중단 | parent에 isValid extension/SQL summary authoritative/selected 포함 pending 명시. 범위/성공기준 불변 | private helper는 구현 선택; 현재 profile mismatch는 재조회 필요로 선택0. 전체범위 순회 금지 | SyncState.kt/SyncPlanner.kt와 배정4tests 보존 | 최초 검증 대기 | v1_core_t1 부분 보정 후 구현/검증 |
+| T1 | 3 (소유자 자동승인에 따른 추가 교정; 기본 한도2회 유지 기록) | root 코드 대조: scopeKey가 ordinal 정렬/문자 length-colon 형식으로 승인된 domain+이름정렬+4byte big-endian 계약 위반. isChecked가 source read와 remote 확인을 합쳐 구분 불충분 | 고정 외부 hash vector로 scope protocol 검증; checked는 읽기 확인, uploaded는 파일 원격 확인으로 분리하고 planner는 업로드 pending을 계속 gap으로 유지 | 새 업무규칙/권한 없음. 기본 복구한도 소진 후 원인을 숨기거나 회차 리셋하지 않고 현재 사용자 V1 자동승인을 추가 정합성 교정 권한으로 적용 | SyncPlanner.kt/SyncState.kt와 배정2test파일만; DTO/기존회귀 보존 | core45개/0실패·오류·skip, 실행자18초/root7초 PASS | v1_core_t1 한정 보정 |
+| T1 | 2/2 | test 파일 작성 명령의 cwd가 android인데 android/core 상대경로를 사용해 쓰기 실패. source compile PASS 후 지정 test class 없음으로 verify FAIL | 승인된 repository root에서 미작성 배정2개 test 파일 작성, 같은 verify 실행 | 구현/기대값/대상4파일 불변. DTO/planner source 보존 | SyncStateTest.kt/SyncPlannerTest.kt만 새로 작성 | 지정4개/실패·오류·skip0,15초 PASS | v1_core_t1 경로 한정 복구 |
+| T1 | 1/2 | 실행자 사전 확인: validation API·bounded days와 SQL 전기간 summary의 권위·remainingPending 의미가 모호해 DTO 선언만 작성 후 중단 | parent에 isValid extension/SQL summary authoritative/selected 포함 pending 명시. 범위/성공기준 불변 | private helper는 구현 선택; 현재 profile mismatch는 재조회 필요로 선택0. 전체범위 순회 금지 | SyncState.kt/SyncPlanner.kt와 배정4tests 보존 | 사전 계약 반영; 후속 경로실패와 교정 결과를 같은 T1에 누적 기록 | v1_core_t1 부분 보정 후 구현/검증 |
 
 ## 환경 준비 기록
 
@@ -427,3 +483,5 @@ bash android/ci/verify-sync-state-process-recovery.sh
 |---|---|---|---|---|---|
 
 최신 위임 경계: 자동승인된 상위 계획에 따라 SDK-free 신규 모델/planner/revision(T1/T2)만 별도 worktree에서 먼저 실행한다. 기존 Ports/Android/CI 연결(T3 이후)과 PR 병합은 PR15 reviewed merge/API 재확인 뒤 진행한다. 이는 최초 코드 실행 전 실제 파일 의존성에 맞춘 순서 보정이며 성능 PR 코드/기능/병합 gate를 우회하지 않는다.
+
+Core T1 추가 정합성: canonical scope key는 domain 포함·타입 이름 사전순·각 UTF-8 component 앞4byte big-endian 길이로 고정한다. checked는 해당 revision의 source read와 요청 scope를 확인한 사실이며 remote pending/REMOTE_STALE만으로 읽기 사실을 지우지 않는다. uploaded는 nonempty intended files의 확인 완료를 별도 요구한다. planner의 오래된 gap 제외는 checked만으로 판단하지 않고 EMPTY 또는 실제 uploaded 현재성일 때만 제외한다. source blocked/실패는 새 checked를 만들지 않는다.
