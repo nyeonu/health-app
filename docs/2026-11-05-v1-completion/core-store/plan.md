@@ -1,16 +1,16 @@
 ---
 plan_id: core-store
 title: 날짜별 복구와 내구성 상태
-status: approved
+status: in_progress
 author: Codex
 created: 2026-11-05
 parent: ../plan.md
-parent_rev: 2cbceb32c0a8a3376f27b05cf92719c8342d3fe4
+parent_rev: 3159b4ab7218fa41e6974cb779d6aaa9ea96fa9d
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feat/v1-completion
 tasks:
-  - {id: T1, title: 등록 이후 bounded 날짜 계획, depends_on: [], status: pending, tier: standard}
+  - {id: T1, title: 등록 이후 bounded 날짜 계획, depends_on: [], status: in_progress, tier: standard}
   - {id: T2, title: 재읽기 revision과 scope별 확인, depends_on: [T1], status: pending, tier: standard}
   - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: pending, tier: standard}
   - {id: T4, title: 실제 SQLite의 원자적 상태 저장, depends_on: [T3], status: pending, tier: standard}
@@ -40,7 +40,7 @@ tasks:
 
 ### 조사와 실행 경계
 
-- 기준 checkout의 제품 코드는 `20baaa4` 계열이며 `Ports.kt`의 DriveUploader에는 upsert만 있다. `/workspace/health-app-top-layout`의 `de2852a1ebdd5ffbfe686c3fab84d24230b6f8dd`에서 prospective upsertBatch를 읽기 전용으로 확인했다. **PR #15의 독립 최신 head 검토·master 병합 후 실제 merge head로 갱신하고 Ports/PrivateDriveUploader/SyncCoordinator/배치 회귀를 다시 조사하기 전에는 T1도 시작하지 않는다.** 예상 API가 달라지면 실행자가 우회하지 않고 plan/상위 공통 계약을 보정한다.
+- 기준 checkout의 제품 코드는 `20baaa4` 계열이며 `Ports.kt`의 DriveUploader에는 upsert만 있다. `/workspace/health-app-top-layout`의 `de2852a1ebdd5ffbfe686c3fab84d24230b6f8dd`에서 prospective upsertBatch를 읽기 전용으로 확인했다. **신규 SDK-free 모델·planner·revision T1/T2는 현재 포트/API를 사용하지 않아 별도 worktree에서 먼저 구현·유닛 검증한다. T3의 기존 포트/Android/CI 연결과 이 PR 병합은 PR #15 독립 검토·master 병합 후 actual merge head 반영 및 Ports/PrivateDriveUploader/SyncCoordinator/배치 회귀 재조사 전에는 시작하지 않는다.** 예상 API가 달라지면 실행자가 우회하지 않고 plan/상위 공통 계약을 보정한다.
 - AGENTS.md와 README, implementation-plan, architecture, data-contract, codex-first-task, 승인 spec/epic을 읽었다. C/CT/A/AT/AI 접두어는 상위 2절과 동일하다. 아래 신규 경로는 기존 package 디렉터리 안에 만든다.
 - `Model.kt`: DataType 5종, HealthSnapshot, CsvFile(relativePath, content). `Normalization.kt`: DayWindow.zone/start/end/yesterday, DefaultNormalizer. `VersionedCsvExporter.kt`: schema 0.1, daily/workouts/heart-rate/sleep, 정렬·CRLF. 이 구현·기존 coordinator 동작은 보존한다.
 - `HistoryDatabase.kt`의 noBackupFilesDir, no-delete corruption handler, version/schema 확인, DELETE/FULL commit, beforeCommit 테스트 경계와 `SqliteHistoryStoreInstrumentedTest`의 실제 SQLite fixture를 참고한다. **기존 history 파일/스키마/클래스는 수정하거나 새 store에서 열지 않는다.** SQLite instrumentation 기반은 이미 있으므로 신규 framework/starter 도입 T가 필요 없다.
@@ -225,7 +225,7 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
   cd android
   ./gradlew -PcoreOnly :core:test --tests '*SyncStateTest' --tests '*SyncPlannerTest'
   ```
-- **주의사항**: PR15 gate 선행. pathLock이 sync gate가 아니라는 상위 확인을 적용한다. 실제 SDK/계정 데이터를 fixture에 넣지 않는다. 불명확 scope를 EXPLICIT_DAY로 추정하지 않는다. 인터페이스 충돌/추정 불일치면 blocked로 보고한다.
+- **주의사항**: T1/T2 독립 실행을 허용하며 기존 포트 변경은 T3 선행 gate까지 금지한다. pathLock이 sync gate가 아니라는 상위 확인을 적용한다. 실제 SDK/계정 데이터를 fixture에 넣지 않는다. 불명확 scope를 EXPLICIT_DAY로 추정하지 않는다. 인터페이스 충돌/추정 불일치면 blocked로 보고한다.
 
 ### T2: 재읽기 revision과 scope별 확인
 
@@ -390,7 +390,7 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
 
 문서 조립 검증은 실제 `assemble_brief.py`에 `--parent docs/2026-11-05-v1-completion/plan.md`를 주어 pinned parent revision에서 수행했다. T1~T6 모두 exit0/해소실패0이며 T1의 31개 metadata 선언은 parent에서 각각 정확히 한 번 수집됨을 확인했다(자식 DTO 선언0). 실제 변경 파일 집계는 T1~T6=4/5/4/4/3/3, 테스트 집계=4/2/1/1/1/1이다. 9개 담당 기준/테스트 열도 상위와 정확히 일치한다. Shared design의 80줄 권장 상한 경고는 남으며 T1의 최종 크기는 88줄이다. 계약을 생략해 크기를 줄이지 않으며 작업블록은 모두80줄 미만이다. 검증용 브리프는 /tmp에만 있고 구현 실행/위임은 하지 않았다. PR15 병합·실제 API 재확인 gate는 유지한다.
 
-실행 전 parent/spec revision과 PR15 merged API를 확인한다. core-store만의 개발 검증이며 상위 전체 23행/실제계정/SAF/worker/UI acceptance 완료를 의미하지 않는다. 명령은 계획이며 작성 중 실행하지 않았다.
+실행 전 parent/spec revision을 확인한다. T3 착수 전 PR15 merged API를 확인한다. core-store만의 개발 검증이며 상위 전체 23행/실제계정/SAF/worker/UI acceptance 완료를 의미하지 않는다. 명령은 계획이며 작성 중 실행하지 않았다.
 
 ```bash
 cd android
@@ -424,3 +424,5 @@ bash android/ci/verify-sync-state-process-recovery.sh
 
 | 원인·근거 | 준비 조치 | 조치 사용/1 | 확인 명령·결과 | 확인 사용/1 | 다음 조치 |
 |---|---|---|---|---|---|
+
+최신 위임 경계: 자동승인된 상위 계획에 따라 SDK-free 신규 모델/planner/revision(T1/T2)만 별도 worktree에서 먼저 실행한다. 기존 Ports/Android/CI 연결(T3 이후)과 PR 병합은 PR15 reviewed merge/API 재확인 뒤 진행한다. 이는 최초 코드 실행 전 실제 파일 의존성에 맞춘 순서 보정이며 성능 PR 코드/기능/병합 gate를 우회하지 않는다.
