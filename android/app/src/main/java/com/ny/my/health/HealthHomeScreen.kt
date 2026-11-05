@@ -85,7 +85,8 @@ internal fun HealthHomeScreen(state: SyncUiState, actions: HistoryUiActions) {
         }
     }
     Column(
-        modifier = Modifier.verticalScroll(rememberScrollState()).padding(24.dp),
+        // 여백은 스크롤되는 본문 밖에 두어 제목바와 뷰포트의 경계를 유지한다.
+        modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Health App · 수동 동기화", style = MaterialTheme.typography.headlineMedium)

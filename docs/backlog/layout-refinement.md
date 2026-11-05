@@ -1,12 +1,12 @@
 ---
-status: deferred_by_owner
+status: scoped_fix_implemented_device_pending
 reported: 2026-11-03
 scope: future manual-sync screen layout refinement
 ---
 
 # Keep the top screen text readable
 
-The owner reports text obscured at the top of the manual-sync screen beneath the Health App app bar on the target phone. Include this in the next layout-refinement task; the owner explicitly deferred the fix while proceeding with performance measurement. No layout or runtime change is made by this note.
+The owner reports text obscured at the top of the manual-sync screen beneath the Health App app bar on the target phone. The owner initially deferred this while proceeding with performance measurement, then authorized continued handling of the marked top boundary. Fixed outer padding alone failed the initial-frame pixel check. Native geometry confirmed a different initial content boundary from the recreated Activity. The correction combines the existing body heading, no duplicate native title bar, explicit safe drawing insets, early fitting-policy normalization, and one initial inset dispatch after listener installation; see [current fix scope and evidence](../2026-11-04-top-content-layout/report.md). API35/36 full verification passed with 57 Android tests and 20 host checks per API; a separate fresh-context review approved the exact tested code after directly checking original captures and restored scroll position. Actual target-device verification remains pending. Other layout changes remain deferred.
 
 The private screenshot is not copied into this public repository. It contains account-adjacent health-sync information. Do not reproduce its dates, timestamps, dataset coverage, file counts or identifying attachment references here. This report is not a performance measurement or a new P0 acceptance result.
 
@@ -25,4 +25,4 @@ The private screenshot is not copied into this public repository. It contains ac
 - Preserve permission/consent gates, explicit upload continuation, lifecycle cancellation, private Drive checks and local-history behavior.
 - Verify with synthetic automated UI/lifecycle checks and retain actual target-device validation as a distinct result. A future PR requires a separate review session and findings/fixes/rechecks in its PR comments, as required by AGENTS.md.
 
-The next active performance step remains the private device-summary collection described in [the profiling procedure](../2026-11-02-sync-profiling/device-profiling.md). Actual Google/Health Connect/device latency remains unmeasured until safe diagnostic evidence is available; this deferred layout item does not authorize speculative performance changes.
+Performance diagnosis remains a separate follow-up using the private safe-summary procedure. Device summaries are not copied here; no latency improvement or optimization is established by this layout correction. This item does not change the existing device/account/P0 acceptance gates.
