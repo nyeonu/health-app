@@ -37,6 +37,8 @@ noBackupFilesDir의 별도 sync-state.db versioned SQLite에 config/generation/d
 
 READY configuration=null은 새 generation·자동 off·빈 coverage를 가진 durable reset tombstone이다. ABSENT/error의 state=null과 구분하고 tombstone 재구성에도 generation CAS를 적용한다. 위 내용은 구현 전 최초 계획 검토의 설계 명확화이며 구현 장애를 수리하거나 실행 복구 회차를 사용한 기록이 아니다.
 
+독립 검토의 초기화 중단 지적에 따라 최초 구성 DB와 corrupt-reset ownership/stage를 비활성 app-private 위치에서 완성·검증한 뒤에만 active 경로로 원자적으로 게시한다. 미완성 비활성 artifact는 이전 사용자 상태를 자동 삭제·수리하는 근거가 아니며, 이미 존재하는 알 수 없는 active marker는 계속 보존·차단한다. 일반 변경도 canonical active 상태와 private binding 무결성을 adapter 안에서 확인하고 private 값을 SDK-free core에 넘기지 않는다. 이 보정의 실제 Native 실패→교정 및 process kill 검증은 아직 진행 중이다.
+
 실행 중 사전 정합성 검토로 reset protocol을 보완했다. stage 설치 전후 exact empty tombstone/FK/child 부재를 검증하며, owned 완료 marker는 토큰별 삭제 대신 같은 parent의 완료 directory로 원자적으로 퇴역·fsync한다. 미완료 단계의 원본과 알 수 없는 파일은 보존하고 차단하며 완료 marker는 admission으로 재해석하지 않는다. 이는 아직 Proposed인 결정의 구체화이며 실제 SQLite/OS 검증 전 Accepted로 올리지 않는다.
 
 별도 DB lifecycle·codec·명시 reset/failure injection을 관리해야 한다. unknown/corrupt/미완료 reset은 fail closed하며 자동 새 DB로 덮지 않는다. hash와 시각·확인 metadata만 저장하고 raw/CSV/token을 staging하지 않는다. remote write는 DB rollback과 함께 취소되지 않는다. multi-process 또는 remote delete를 도입하면 새 결정이 필요하다.
