@@ -238,10 +238,14 @@ class HealthAppInstrumentedTest {
             val location = IntArray(2)
             view.getLocationInWindow(location)
             val parent = view.parent as? android.view.View
+            val margins = view.layoutParams as? android.view.ViewGroup.MarginLayoutParams
             println("TOP_LAYOUT_VIEW name=$name label=$label x=${location[0]} y=${location[1]} " +
                 "width=${view.width} height=${view.height} measuredWidth=${view.measuredWidth} " +
                 "measuredHeight=${view.measuredHeight} scrollY=${view.scrollY} " +
-                "layoutRequested=${view.isLayoutRequested} parentTop=${parent?.top} parentHeight=${parent?.height}")
+                "layoutRequested=${view.isLayoutRequested} parentTop=${parent?.top} parentHeight=${parent?.height} " +
+                "paddingTop=${view.paddingTop} paddingBottom=${view.paddingBottom} " +
+                "marginTop=${margins?.topMargin} marginBottom=${margins?.bottomMargin} " +
+                "fits=${view.fitsSystemWindows} parentClass=${parent?.javaClass?.name}")
         }
         logView("decor", decor)
         logView("content", content)
@@ -393,6 +397,7 @@ class HealthAppInstrumentedTest {
         recreateWithAttachDiagnostics()
         waitForHomeReady()
         compose.onNodeWithText("상세·설정 접기").assertExists()
+        logNativeGeometry("restored-before-assert")
         org.junit.Assert.assertEquals("재생성 전후의 안전한 본문 경계는 같아야 합니다",
             boundsBefore, nativeContent().fetchSemanticsNode().boundsInWindow)
         org.junit.Assert.assertEquals("재생성은 기존 스크롤 위치를 보존해야 합니다",

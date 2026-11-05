@@ -16,13 +16,9 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.platform.LocalView
-import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
@@ -62,11 +58,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // 본문 제목을 사용하고 시스템 바 경계는 Compose에서 일관되게 처리한다.
         requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        // edge-to-edge 초기화 전에 보존된 Window의 inset 처리를 맞춘다.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         enableEdgeToEdge()
         model = ViewModelProvider(this)[SyncViewModel::class.java]
         setContent {
-            val owner = LocalView.current
-            val initialInsetsDispatched = remember(owner) { mutableStateOf(false) }
             val state by model.state.collectAsState()
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -98,15 +94,6 @@ class MainActivity : ComponentActivity() {
                                 model.copyPhoneProfiling { text -> writePhoneProfilingClipboard(this@MainActivity, text) }
                             },
                         ))
-                    }
-                }
-            }
-            // DisposableEffect의 inset listener 설치 뒤, 첫 측정 전에 한 번만 전달한다.
-            SideEffect {
-                if (!initialInsetsDispatched.value) {
-                    ViewCompat.getRootWindowInsets(owner)?.let {
-                        ViewCompat.dispatchApplyWindowInsets(owner, it)
-                        initialInsetsDispatched.value = true
                     }
                 }
             }
