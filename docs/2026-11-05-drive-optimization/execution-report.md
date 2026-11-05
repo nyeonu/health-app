@@ -51,7 +51,7 @@ T1은 중복 대상 및 실제 transport 계약에 맞는 루트 fixture의 한�
 
 ## 독립 검토와 남은 수용
 
-별도 fresh-context 적합성 세션은 d82 head에서 배치13+coordinator9+TLS6=28개를 --rerun-tasks로 직접 실행해0실패·오류·skip,1분5초 PASS와 전체 보존 XML129개를 확인했다. 요청12→10·최대활성1→2와 합성 p50/p95 감소도 재현했다. 기능·경계·문서 기준19개 PASS이며 공개 댓글 기준도 [코멘트6648000963](https://github.com/nyeonu/health-app/pull/15#issuecomment-6648000963) 원문 확인으로 PASS다. 최종 독립 세션이 정확684 head의 workflow delta·두API/JVM 원본·공개 한국어 최신head 검토 댓글을 직접 대조하여 잔여 게이트를 PASS로 갱신했다. 전체 적합성 PASS, 차단 구현 결함 없음이다. 이전 FAIL은 실패 CI의 실제 상태로 보존하고 새 source 성공과 구분한다. 품질/보안/성능 및 최종 문서 head 재검토는 대기다. 이 문서 작성자는 이를 승인으로 대체하지 않는다. 차단 지적이 있으면 수정·정확한 수정 head 검증·독립 재검토 후 결과를 갱신한다.
+별도 fresh-context 적합성 세션은 d82 head에서 배치13+coordinator9+TLS6=28개를 --rerun-tasks로 직접 실행해0실패·오류·skip,1분5초 PASS와 전체 보존 XML129개를 확인했다. 요청12→10·최대활성1→2와 합성 p50/p95 감소도 재현했다. 기능·경계·문서 기준19개 PASS이며 공개 댓글 기준도 [코멘트6648000963](https://github.com/nyeonu/health-app/pull/15#issuecomment-6648000963) 원문 확인으로 PASS다. 최종 독립 세션이 정확684 head의 workflow delta·두API/JVM 원본·공개 한국어 최신head 검토 댓글을 직접 대조하여 잔여 게이트를 PASS로 갱신했다. 전체 적합성 PASS, 차단 구현 결함 없음이다. 이전 FAIL은 실패 CI의 실제 상태로 보존하고 새 source 성공과 구분한다. 품질·보안·성능의 서로 다른 fresh-context 세션이 정확 `9cd76ff3abf50cc97a2eedcd50cb564b64ea9686`의 전체 관련 diff·코드/단언·원본을 각각 독립 검토해 모두 APPROVE, 새 Critical/Important/Suggestion 없음으로 판정했다. 보안은 incremental gitleaks7커밋/약122646바이트/발견0을 직접 확인했다. 최종 문서 head의 소스 동등성·정확 head 재검토·자동 리뷰와 개발 병합은 대기다. 이 문서 작성자는 이를 승인으로 대체하지 않는다. 차단 지적이 있으면 수정·정확한 수정 head 검증·독립 재검토 후 결과를 갱신한다.
 
 - 실제 Google 계정에서 변경 후 latency·private sharing·same-ID/no-duplicate 확인: pending.
 - 변경 후 Galaxy의 실제 성능과 기기 수용: pending. merge 후 고정 서명 APK의 package/certificate를 확인하고 전달해야 하며 아직 확인하지 않았다.
@@ -64,3 +64,5 @@ T1은 중복 대상 및 실제 transport 계약에 맞는 루트 fixture의 한�
 ## 성공 원본의 무결성
 
 684 CI artifact API35 `13383242620` SHA256 `4f95014a6fc1642a013fdbc1c36681ce54a18ff46bf5ce12e27f16a158f77404`, API36 `13384495118` SHA256 `974e780ed4056326008e217e44aa221f5acc75f5829582dd9a88f7f1fb00349d`, JVM `13382953219` SHA256 `ff2bfae9bd70fe1e6769e14904a87e7d7b9d35cbad00bee65f28005ddc378c6c`를 다운로드 ZIP과 대조한 뒤 원본을 파싱했다. 독립 세션도 양API57+20과 최신JVM129 원본을 직접 확인했다. 새 build순서가 모든 플랫폼 ANR를 영구적으로 해결한다고 단정하지 않는다.
+
+현재 exporter는 한 날짜 최대4파일이며 각 파일의 단순 업로드 한도는5,000,000 UTF-8 bytes다. 배치 사전 인코딩으로 최대20,000,000 payload bytes를 보유할 수 있으며 CSV 문자열·읽기 객체·multipart·응답 등을 포함한 전체 heap 상한이 아니다. 임의 길이 batch 입력의 메모리는 O(n)이고 인코딩 뒤 크기 검사라는 기존 한계가 남는다. 현재 coordinator의 bounded exporter 외 호출로 일반화하지 않는다. 실계정/기기 성능·확인 후 외부 sharing 변경·다중 instance/기기 생성 경쟁은 별도 한계다.
