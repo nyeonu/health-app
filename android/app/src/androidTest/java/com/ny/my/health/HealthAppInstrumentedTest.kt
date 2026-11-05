@@ -159,6 +159,42 @@ class HealthAppInstrumentedTest {
     private fun currentScrollPosition(): Float = compose.onNode(hasScrollAction())
         .fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
 
+    private fun sampleFirstLayouts(owner: android.view.View) {
+        val root = owner as? androidx.compose.ui.platform.ViewRootForTest ?: return
+        val tree = owner.viewTreeObserver
+        val listener = object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            var sample = 0
+            override fun onGlobalLayout() {
+                sample++
+                runCatching {
+                    val platform = androidx.core.view.ViewCompat.getRootWindowInsets(owner)
+                        ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or
+                            androidx.core.view.WindowInsetsCompat.Type.displayCutout())
+                    fun visit(node: androidx.compose.ui.semantics.SemanticsNode) {
+                        if (node.config.contains(SemanticsProperties.VerticalScrollAxisRange)) {
+                            val range = node.config[SemanticsProperties.VerticalScrollAxisRange]
+                            val bounds = node.boundsInWindow
+                            println("TOP_LAYOUT_SAMPLE n=$sample value=${range.value()} max=${range.maxValue()} " +
+                                "viewportTop=${bounds.top} viewportBottom=${bounds.bottom} viewportHeight=${bounds.height} " +
+                                "ownerHeight=${owner.height} platformTop=${platform?.top} platformBottom=${platform?.bottom}")
+                        }
+                        node.children.forEach(::visit)
+                    }
+                    visit(root.semanticsOwner.unmergedRootSemanticsNode)
+                }.onFailure { println("TOP_LAYOUT_SAMPLE_UNAVAILABLE n=$sample") }
+                if (sample >= 12 && tree.isAlive) tree.removeOnGlobalLayoutListener(this)
+            }
+        }
+        tree.addOnGlobalLayoutListener(listener)
+        owner.addOnAttachStateChangeListener(object : android.view.View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: android.view.View) = Unit
+            override fun onViewDetachedFromWindow(view: android.view.View) {
+                if (tree.isAlive) tree.removeOnGlobalLayoutListener(listener)
+                view.removeOnAttachStateChangeListener(this)
+            }
+        })
+    }
+
     private fun recreateWithAttachDiagnostics() {
         val monitor = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
         val observer = androidx.test.runner.lifecycle.ActivityLifecycleCallback { activity, stage ->
@@ -166,6 +202,7 @@ class HealthAppInstrumentedTest {
                 activity.findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)
                     .doOnAttach { container ->
                         (container as android.view.ViewGroup).getChildAt(0).doOnAttach { owner ->
+                            sampleFirstLayouts(owner)
                             val insets = androidx.core.view.ViewCompat.getRootWindowInsets(owner)
                                 ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or
                                     androidx.core.view.WindowInsetsCompat.Type.displayCutout())
