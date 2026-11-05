@@ -89,6 +89,7 @@ jobs:
             android/app/build/outputs/androidTest-results/connected/
             android/app/build/reports/androidTests/connected/
             android/app/build/outputs/**/v1-synthetic-ui/*.png
+            android/app/build/outputs/**/v1-synthetic-store-performance/*.json
             android/app/build/outputs/v1-synthetic-process/system-*.png
             android/app/build/outputs/v1-synthetic-process/results.txt
           if-no-files-found: warn
