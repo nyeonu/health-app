@@ -159,6 +159,7 @@ data class SyncMutation(val attemptId: String?, val start: AttemptState?,
 enum class BatchStatus { COMPLETED, PENDING, BLOCKED, MERGED, STALE }
 data class BatchOutcome(val status: BatchStatus, val confirmedFiles: Int,
     val coverage: CoverageSummary?)
+fun SyncState.isValid(): Boolean
 // SyncPlanner — C/SyncPlanner.kt; current state contains enrolled day and durable gaps
 object SyncPlanner {
     fun scopeKey(configuration: SyncConfiguration, access: ReadAccess): ReadScopeKey?
@@ -217,6 +218,8 @@ store transaction은 generation/attempt/scope/revision/current journal을 검사
 Drive reconciliation은 매 실행 root/dataset/file의 현재 private/owned/My Drive/marker/name/parent/identity/완전한 조회를 검증한다. 동일 semantic revision도 과거 성공만으로 skip하지 않는다. 현재 target ID가 같고 metadata sha256Checksum이 현재 exact-scope revision의 고정 generated_at으로 재생성한 실제 UTF-8 CSV bytes의 SHA-256과 같을 때에만 확인을 재사용한다. semantic revision digest와 remote byte digest는 목적이 달라 혼용하지 않는다. Drive v3 공식 discovery File schema의 sha256Checksum은 output-only이며 Drive에 content가 있는 파일에서 가용할 때 제공된다(2026-11-05 https://www.googleapis.com/discovery/v1/apis/drive/v3/rest 직접 조회). 기존 list/write fields에 이 optional field를 추가하고 missing/invalid/mismatch는 현재 확인 재사용을 거절하여 기존 검증된 deterministic upsert를 수행한다. MD5로 보안 확인을 대신하거나 전 파일 media GET을 추가하지 않는다. 기존 GoogleDriveTransport의 metadata 1MiB cap/JSON Accept/no redirect/no retry는 유지한다.
 
 삭제/이동/공유/중복된 기존 target은 BLOCKED로 명시적 복구를 요구하며 suffix나 새 create로 숨기지 않는다. 미확인 create는 lookup과 현재 checksum 대조 후 기존 파일을 채택한다. exact safe existing target의 checksum이 없으면 새 create 대신 같은 ID에 검증된 PATCH로 현재 내용을 확인하고, 명백한 부재가 확인된 경우에만 신규 create를 허용한다. 불명확 조회는 재전송하지 않는다. 현재 metadata+checksum으로 건강함이 확인된 파일은 쓰지 않는다. scope가 BLOCKED이거나 좁아진 read는 원본 dataset 소멸의 증거가 아니다. populated→empty는 REMOTE_STALE로 남기며 자동 삭제하지 않는다.
+
+Core T1의 validation 진입점은 같은 SyncState.kt의 public extension `fun SyncState.isValid(): Boolean`이며 IO 없이 모델/관계 불변식을 검사한다. invalid 입력은 false이고 constructor 예외를 새 계약으로 만들지 않는다. private helper 추출과 안전한 오류 문구는 구현 선택이다. `SyncPlanner.coverage`는 SQL snapshot이 계산한 전 기간 through/count/lastUploadAt을 신뢰하는 view이며 bounded days로 이를 재계산하지 않는다. 현재 exact profile의 recent2 flags만 bounded rows에서 계산할 수 있다. `.days`는 전체 이력이 아니고 수십 년 range를 유닛 helper가 순회하지 않는다. `loadForScope`가 고른 scope key와 현재 access key가 다르면 선택 날짜를 반환하지 않고 재조회 필요/보수적 미확인으로 남긴다. null profile은 complete empty-profile을 만들지 않는다. `PlannedBatch.remainingPending`은 batch 예약으로 차감하지 않는 미완료 수(선택된 pending 포함)이며 key가 맞는 store scopePendingCount를 사용하고 알려지지 않으면 등록~어제 전체 날짜를 보수적 미확인 수로 유지한다. 성공 확인 전 gap 감소를 가정하지 않는다.
 
 ### 결정 로직 위치
 
