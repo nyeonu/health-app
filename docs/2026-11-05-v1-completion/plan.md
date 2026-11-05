@@ -97,19 +97,71 @@ WorkManager 2.11.0의 work-runtime과 work-testing을 같은 버전으로 도입
 아래는 내부 계약이다. 기존 P0 API와 SyncHistory/HistoryStore는 유지한다. 세부 SQLite schema SQL과 codec field/size 상한은 core-store 하위 plan에서 이 계약에 맞춰 확정한다. Android account/URI binding은 app store adapter 내부에만 있고 core에는 opaque generation/destination handle만 전달한다.
 
 ```kotlin
-// SyncState — C/SyncState.kt; credential/payload 없는 metadata
+// SyncState — C/SyncState.kt; exact-scope credential/payload-free metadata
 @JvmInline value class DestinationGeneration(val value: String)
+@JvmInline value class ReadScopeKey(val value: String)
 enum class SyncTrigger { MANUAL, SCHEDULED, CATCH_UP }
 enum class SyncStrategy { DAILY_SNAPSHOT }
 enum class Dataset { DAILY, WORKOUTS, HEART_RATE, SLEEP }
 enum class ReadScope { EXPLICIT_DAY, SUMMARY, WORKOUT_SCOPED, BLOCKED }
-data class ScopedSnapshot(val snapshot: HealthSnapshot, val scopeByType: Map<DataType, ReadScope>, val blockedTypes: Set<DataType>)
+enum class StateStatus { ABSENT, READY, CORRUPT, UNSUPPORTED, UNAVAILABLE }
+enum class DayPhase { PENDING, RUNNING, EMPTY, CONFIRMED, INDETERMINATE, BLOCKED, REMOTE_STALE }
+enum class BlockReason { HISTORY_ACCESS_REQUIRED, SOURCE_ACCESS_REQUIRED, SOURCE_READ_FAILED,
+    SOURCE_LIMIT_EXCEEDED, DESTINATION_BLOCKED, STORE_UNAVAILABLE, RETRY_EXHAUSTED }
 enum class FilePhase { PENDING, RUNNING, CONFIRMED, INDETERMINATE, REMOTE_STALE, BLOCKED }
 data class RevisionKey(val digest: String, val generatedAt: Instant)
-data class FileKey(val generation: DestinationGeneration, val date: LocalDate, val dataset: Dataset, val revision: String)
+data class FileKey(val generation: DestinationGeneration, val date: LocalDate,
+    val scopeKey: ReadScopeKey, val dataset: Dataset, val revision: String)
 data class FileConfirmation(val key: FileKey, val targetHandle: String, val confirmedAt: Instant)
+data class ScopedSnapshot(val snapshot: HealthSnapshot, val scopeByType: Map<DataType, ReadScope>,
+    val blockedTypes: Set<DataType>)
+data class SyncConfiguration(val destinationHandle: String, val enrolledDay: LocalDate,
+    val automatic: Boolean, val categories: Set<DataType>)
+data class ReadAccess(val available: Boolean, val granted: Set<DataType>,
+    val scopeByType: Map<DataType, ReadScope>)
+data class DatasetState(val dataset: Dataset, val revision: RevisionKey, val phase: FilePhase,
+    val populated: Boolean, val targetHandle: String?, val startedAt: Instant?,
+    val confirmedAt: Instant?, val priorConfirmation: FileConfirmation?)
+data class DayState(val date: LocalDate, val scopeKey: ReadScopeKey,
+    val requestedScopes: Map<DataType, ReadScope>, val revision: RevisionKey?, val phase: DayPhase,
+    val scopes: Map<DataType, ReadScope>, val checkedAt: Instant?,
+    val datasets: Map<Dataset, DatasetState>, val blocker: BlockReason?)
+data class CoverageSummary(val checkedThrough: LocalDate?, val uploadedThrough: LocalDate?,
+    val scopeKey: ReadScopeKey?, val scopeCheckedThrough: LocalDate?,
+    val scopeUploadedThrough: LocalDate?, val excludedTypes: Set<DataType>,
+    val scopePendingCount: Long?, val scopeBlockedCount: Long?,
+    val lastUploadAt: Instant?, val recentCheckedDays: Set<LocalDate>,
+    val recentUploadedDays: Set<LocalDate>)
+data class AttemptState(val id: String, val scopeKey: ReadScopeKey,
+    val requestedScopes: Map<DataType, ReadScope>, val trigger: SyncTrigger, val scheduledAt: Instant,
+    val startedAt: Instant?, val finishedAt: Instant?, val dates: List<LocalDate>,
+    val retryBudgetKey: String, val retriesUsed: Int, val pendingTriggers: Set<SyncTrigger>)
+data class SyncState(val version: Int, val generation: DestinationGeneration,
+    val configuration: SyncConfiguration?, val attempt: AttemptState?,
+    val scopeKey: ReadScopeKey?, val requestedScopes: Map<DataType, ReadScope>,
+    val days: Map<LocalDate, DayState>, val oldestPendingDays: List<LocalDate>,
+    val coverage: CoverageSummary)
+data class SyncStateRead(val status: StateStatus, val state: SyncState?)
+data class PlannedBatch(val scopeKey: ReadScopeKey?, val dates: List<LocalDate>,
+    val blocked: Map<LocalDate, BlockReason>, val remainingPending: Long)
+data class DayRevision(val key: RevisionKey, val scopeKey: ReadScopeKey,
+    val scopes: Map<DataType, ReadScope>, val files: Map<Dataset, CsvFile>,
+    val remoteStale: Set<Dataset>)
+data class PlannedFile(val key: FileKey, val file: CsvFile, val byteSha256: String,
+    val previousTargetHandle: String?)
+data class ReconciledFiles(val confirmed: List<FileConfirmation>,
+    val pending: List<PlannedFile>, val blocked: Set<FileKey>)
+enum class CommitStatus { COMMITTED, STALE, INVALID, UNAVAILABLE }
+data class SyncCommit(val status: CommitStatus, val generation: DestinationGeneration?)
+data class SyncMutation(val attemptId: String?, val start: AttemptState?,
+    val day: DayState?, val confirmation: FileConfirmation?,
+    val pendingTriggers: Set<SyncTrigger>?, val finishAt: Instant?)
+enum class BatchStatus { COMPLETED, PENDING, BLOCKED, MERGED, STALE }
+data class BatchOutcome(val status: BatchStatus, val confirmedFiles: Int,
+    val coverage: CoverageSummary?)
 // SyncPlanner — C/SyncPlanner.kt; current state contains enrolled day and durable gaps
 object SyncPlanner {
+    fun scopeKey(configuration: SyncConfiguration, access: ReadAccess): ReadScopeKey?
     fun plan(state: SyncState, todayInSeoul: LocalDate, access: ReadAccess): PlannedBatch
     fun coverage(state: SyncState, todayInSeoul: LocalDate): CoverageSummary
 }
@@ -122,6 +174,10 @@ interface SyncStateStore {
     suspend fun load(): SyncStateRead
     suspend fun transact(expected: DestinationGeneration?, mutation: SyncMutation): SyncCommit
     suspend fun reset(expected: DestinationGeneration?): SyncCommit
+    suspend fun loadForScope(expected: DestinationGeneration, todayInSeoul: LocalDate,
+        access: ReadAccess): SyncStateRead
+    suspend fun loadDay(expected: DestinationGeneration, date: LocalDate,
+        scopeKey: ReadScopeKey): DayState?
 }
 // StorageDestination — C/Ports.kt; CsvFile is memory-only; reconciliation never blind-creates
 interface StorageDestination {
@@ -142,20 +198,30 @@ class SyncExecutionSession {
 }
 ```
 
-`SyncStateRead`는 ABSENT/READY/CORRUPT/UNSUPPORTED/UNAVAILABLE을 구분한다. ABSENT만 새 설정으로 들어갈 수 있다. load/reopen은 데이터를 덮지 않고 invalid schema/reset-marker는 admission을 차단한다. transaction은 기대 generation과 attempt identity를 검사하고 settings·pending·day/file confirmation·retry budget을 한 commit 경계에서 바꾼다. DB는 noBackupFilesDir/sync-state.db의 별도 version1 schema(config/day/dataset/attempt)이며 foundation history DB를 열거나 migration하지 않는다. date와 dataset 키 uniqueness, hash/enum/시각/허용 category 및 크기 제한을 검증하고 예상 밖 값은 fail closed한다. 모든 날짜 행을 한 JSON으로 읽지 않고 필요한 range를 조회한다. codec은 행별 크기 상한·필드 allowlist를 갖는다. reset은 현재 generation 무효화와 새 자동 off 상태를 원자적으로 확인하고 unknown schema/corrupt DB 교체는 별도 확인·marker/재열기 검증 경계를 사용한다. 실패를 ABSENT나 reset 성공으로 쓰지 않는다.
+`SyncStateRead`는 ABSENT/READY/CORRUPT/UNSUPPORTED/UNAVAILABLE을 구분한다. ABSENT와 error status는 state=null이다. READY의 configuration=null은 fresh generation을 가진 내구성 reset tombstone이며 ABSENT와 다르다. tombstone은 automatic off, attempt/scopeKey=null, requestedScopes/days/oldestPendingDays empty, through dates=null, scope counters=0이다. 구성은 있지만 load()가 scope를 선택하지 않은 경우 candidate days는 empty이고 scope counters=null이므로 gap 0으로 표시하지 않는다. 새 구성 expected=null은 ABSENT에서만 허용하며 READY tombstone의 재구성은 그 generation CAS를 요구한다. load/reopen은 데이터를 덮지 않고 invalid schema/reset-marker는 admission을 차단한다.
+
+`ReadScopeKey`는 canonical big-endian 4-byte length-prefixed UTF-8으로 "sync-scope/1"과 정렬된 DataType name/ReadScope name을 인코딩한 lowercase SHA-256 hex64다. active profile은 configured categories∩현재 granted 중 알려진 non-BLOCKED scope 항목이며 configured-active는 excludedTypes로 유지한다. unknown/empty active profile에는 scopeKey가 없고 완료 empty-profile row를 만들지 않는다. DayState/AttemptState의 requestedScopes는 admission 때 고정한 요청이며 DayState.scopes/ScopedSnapshot.scopeByType은 실제 read 결과다. 실행 중 scope가 실패/BLOCKED로 바뀌어도 요청 key 아래 미확인으로 남기며 더 작은 성공 profile로 바꿔치기하지 않는다. FileKey/DayRevision/attempt와 confirmation은 정확한 scopeKey까지 일치해야 한다.
+
+`loadForScope(expected,today,access)`는 같은 읽기 snapshot에서 generation/config/access를 확인하여 scope filtering → 해당 profile 완료일 제외 → floor와 복구 blocker 판단 → oldest 최대7 LIMIT 순서로 후보를 고른다. full-five 미완료 여부로 partial/automatic 후보를 제한하지 않는다. state.days는 exact profile의 oldest7+recent2(최대9일)만 담고 등록일~어제 상태는 streaming/query로 검사한다. recent eligible 두 날짜를 먼저 예약한 뒤 oldest eligible gaps로 합계 최대7 unique ascending 날짜를 만든다. 완료일은 checkedAt과 요청/실제 scope 일치, EMPTY 또는 intended datasets 전부 CONFIRMED로 판정하며 pending/indeterminate/stale 파일이 있으면 gap이다. blocker와 아직 행이 없는 날짜도 pending/count에 보존한다. `loadDay(expected,date,scopeKey)`의 null은 exact row 부재만 의미하고 stale generation/DB 오류는 예외다. planner의 재계산 scopeKey와 state.scopeKey가 다르면 admission을 중단한다.
+
+`CoverageSummary`의 scopeCheckedThrough는 현재 exact profile에서 등록일부터 연속 checked(EMPTY 포함)인 끝날이며 scopeUploadedThrough는 EMPTY/unknown/stale 없이 실제 파일 확인이 연속된 끝날이다. scopePendingCount/scopeBlockedCount와 recent sets도 선택 profile 기준이다. checkedThrough/uploadedThrough는 별도로 5종 모두 EXPLICIT_DAY인 단일 profile만 집계하며 profile들의 합집합으로 만들지 않는다. full-five through=null이어도 partial/automatic scope에서 이미 끝낸 오래된 날짜가 다음 oldest7 slot을 다시 차지하지 않는다. lastUploadAt은 어느 profile이든 실제 확인의 마지막 시각이며 전체 완료 증거가 아니다.
+
+store transaction은 generation/attempt/scope/revision/current journal을 검사하고 settings·pending·day/file confirmation·retry budget을 한 commit 경계에서 바꾼다. DB는 noBackupFilesDir/sync-state.db의 별도 version1 schema(config/day/dataset/attempt)이며 foundation history DB를 열거나 migration하지 않는다. day PK=(generation,date,scopeKey), dataset PK=(generation,date,scopeKey,dataset)로 같은 날짜의 profile을 공존시킨다. request JSON에서 key를 재계산하여 일치 확인하고 실제 scopes와 별도 저장한다. hash/enum/시각/크기·관계 validation을 적용하며 예상 밖 값은 fail closed한다. codec은 행별 크기 상한·필드 allowlist를 갖고 모든 날짜를 한 JSON으로 읽지 않는다. reset은 새 tombstone generation·자동 off·빈 coverage를 원자 commit하며 unknown/corrupt 교체는 별도 확인·marker/재열기 검증 경계를 사용한다. 실패를 ABSENT나 reset 성공으로 쓰지 않는다.
+
+원격 CSV 경로는 기존 dataset/date.csv이므로 profile rows가 공존해도 같은 remote bytes를 공유한다. 실제 writePending 직전 RUNNING journal transaction은 같은 generation/date/dataset의 다른 scope 파일을 INDETERMINATE로 바꾸고 priorConfirmation에 과거 확인을 보존한다. 다른 scope의 requestedScopes/revision/checkedAt은 유지하지만 그 profile의 uploaded-current/through는 멈춘다. remote write 실패/불명확에도 무효화를 유지하며 이후 해당 profile의 fresh source reread+현재 target reconciliation으로만 복원한다. 처음 PENDING revision commit이나 건강한 현재 파일의 무쓰기 reconciliation에는 cross-scope 무효화를 적용하지 않는다. scoped overwrite는 source deletion/REMOTE_STALE의 증거가 아니다.
 
 `upsertTracked`의 default는 순차 upsert로 각 file/ID를 짝지어 callback한다. PrivateDriveUploader는 PR #15 배치 구현의 동일 예약/validation/mutex/최대2 concurrency/직렬 callback 경계를 공유하여 typed pair를 전달한다. 기존 upsertBatch는 ID projection으로 보존하고 positional callback 추론이나 ID만으로 dataset을 추측하지 않는다. callback은 file의 pending journal을 commit한 뒤 완료된다. callback 실패·취소 후 자식 종료와 gate 반환 규칙을 유지한다.
 
-Drive reconciliation은 매 실행 root/dataset/file의 현재 private/owned/My Drive/marker/name/parent/identity/완전한 조회를 검증한다. 동일 semantic revision도 과거 성공만으로 skip하지 않는다. 현재 target ID가 같고 metadata sha256Checksum이 고정 generated_at으로 재생성한 실제 UTF-8 CSV bytes의 SHA-256과 같을 때에만 확인을 재사용한다. semantic revision digest와 remote byte digest는 목적이 달라 혼용하지 않는다. Drive v3 공식 discovery File schema의 sha256Checksum은 output-only이며 Drive에 content가 있는 파일에서 가용할 때 제공된다(2026-11-05 https://www.googleapis.com/discovery/v1/apis/drive/v3/rest 직접 조회). 기존 list/write fields에 이 optional field를 추가하고 missing/invalid/mismatch는 현재 확인 재사용을 거절하여 기존 검증된 deterministic upsert를 수행한다. MD5로 보안 확인을 대신하거나 전 파일 media GET을 추가하지 않는다. 기존 GoogleDriveTransport의 metadata 1MiB cap/JSON Accept/no redirect/no retry는 유지한다.
+Drive reconciliation은 매 실행 root/dataset/file의 현재 private/owned/My Drive/marker/name/parent/identity/완전한 조회를 검증한다. 동일 semantic revision도 과거 성공만으로 skip하지 않는다. 현재 target ID가 같고 metadata sha256Checksum이 현재 exact-scope revision의 고정 generated_at으로 재생성한 실제 UTF-8 CSV bytes의 SHA-256과 같을 때에만 확인을 재사용한다. semantic revision digest와 remote byte digest는 목적이 달라 혼용하지 않는다. Drive v3 공식 discovery File schema의 sha256Checksum은 output-only이며 Drive에 content가 있는 파일에서 가용할 때 제공된다(2026-11-05 https://www.googleapis.com/discovery/v1/apis/drive/v3/rest 직접 조회). 기존 list/write fields에 이 optional field를 추가하고 missing/invalid/mismatch는 현재 확인 재사용을 거절하여 기존 검증된 deterministic upsert를 수행한다. MD5로 보안 확인을 대신하거나 전 파일 media GET을 추가하지 않는다. 기존 GoogleDriveTransport의 metadata 1MiB cap/JSON Accept/no redirect/no retry는 유지한다.
 
 삭제/이동/공유/중복된 기존 target은 BLOCKED로 명시적 복구를 요구하며 suffix나 새 create로 숨기지 않는다. 미확인 create는 lookup과 현재 checksum 대조 후 기존 파일을 채택한다. exact safe existing target의 checksum이 없으면 새 create 대신 같은 ID에 검증된 PATCH로 현재 내용을 확인하고, 명백한 부재가 확인된 경우에만 신규 create를 허용한다. 불명확 조회는 재전송하지 않는다. 현재 metadata+checksum으로 건강함이 확인된 파일은 쓰지 않는다. scope가 BLOCKED이거나 좁아진 read는 원본 dataset 소멸의 증거가 아니다. populated→empty는 REMOTE_STALE로 남기며 자동 삭제하지 않는다.
 
 ### 결정 로직 위치
 
-- SyncPlanner.kt의 object 함수: enrollment/today/floor 경계, recent2 예약 후 oldest gap 채움(max7, unique, ascending), blocked 보존, continuous checked/uploaded coverage. IO 없음.
-- SyncRevision.kt의 object 함수: 기존 DefaultNormalizer와 VersionedCsvExporter로 generatedAt=Instant.EPOCH인 semantic projection을 만들고 schema/category/read-scope 정렬 범위와 dataset bytes에 길이 구분자를 붙여 SHA-256한다. 저장한 최초 revision 시각으로 실제 CSV를 재생성한다. generated_at 문자열 replace나 raw source 순서 hash를 쓰지 않는다. EMPTY/사라진 dataset/허용 범위 변경은 별도 판정한다. raw/CSV를 저장하지 않는다. 날짜별 checked 범위·revision에 EXPLICIT_DAY/SUMMARY/WORKOUT_SCOPED와 BLOCKED를 기록하여 manual과 자동을 합쳐 전체 확인으로 만들지 않는다.
+- SyncPlanner.kt의 object 함수: active profile canonical key·excludedTypes, enrollment/today/floor 경계, exact-scope 완료 제외 후 recent2+oldest gaps(max7, unique, ascending), blocker 보존, strict full-five와 현재 scope의 checked/uploaded coverage를 각각 계산한다. IO 없음.
+- SyncRevision.kt의 object 함수: 기존 DefaultNormalizer와 VersionedCsvExporter로 generatedAt=Instant.EPOCH인 semantic projection을 만들고 "sync-revision/1"·schema0.1·date·scopeKey·정렬된 type/scope·dataset bytes에 big-endian 4-byte 길이 구분자를 붙여 SHA-256한다. 저장한 최초 revision 시각으로 실제 CSV를 재생성한다. generated_at 문자열 replace나 raw source 순서 hash를 쓰지 않는다. previous는 같은 scopeKey의 DayState만 허용한다. 첫 읽기는 admission 요청 scope를 가진 revision=null PENDING row를 사용한다. EMPTY/사라진 dataset/허용 범위 변경은 별도 판정하며 완전한 같은-scope populated→empty read만 REMOTE_STALE 근거다. raw/CSV를 저장하지 않는다. 날짜별 checked 범위·revision에 EXPLICIT_DAY/SUMMARY/WORKOUT_SCOPED와 BLOCKED를 기록하여 manual과 자동을 합쳐 전체 확인으로 만들지 않는다.
 - SyncState.kt의 함수: 확인·중단·generation·attempt/retry 상태 전이의 유효성. store는 이 판정에 SQL 원자성을 제공하고 HealthReader/Drive를 호출하지 않는다.
-- DestinationSync.kt: source 재읽기→revision 결정→durable pending→reconcile→pending write→파일별 commit→day 결과의 IO orchestration. 단순 상태 판정을 IO 사이에 숨기지 않는다.
+- DestinationSync.kt: access→loadForScope→scope 고정 attempt start 후 access 재확인→exact-scope loadDay→source 재읽기→revision 결정→durable pending→reconcile→write 대상 RUNNING과 다른 profile current 무효화→pending write→scope 일치 파일별 commit→day 결과의 IO orchestration. 단순 상태 판정을 IO 사이에 숨기지 않는다.
 - AutomaticHealthReader.kt의 IO 없는 query-plan 함수: 허용된 운동 interval을 날짜와 교차시키고 명시적 bounded HR query를 산출한다. IO adapter는 운동/심박 grant를 각각 확인하고 세션이 없으면 HR query를 하지 않는다. query/page/sample 상한은 날짜 전체에서 기존 budget을 공유한다. source/provider의 record start-time 선택으로 운동 구간의 sample 포함을 안전하게 판정할 근거가 없으면 WORKOUT_SCOPED 상세 결과를 BLOCKED/미확인으로 남긴다. broad before(end)/whole-history 우회는 금지한다. 다른 허용 category는 계속 처리하며 요약은 지원되는 Aggregate만 사용한다. 기존 manual HealthConnectReader의 explicit day/CSV 동작은 보존한다.
 - BoundDriveAuthorization.kt의 IO 없는 결과 판정: mode/hasResolution/token/scope/ticket/generation/account 유효성. raw SDK 예외는 allowlist 오류로 바꾼다.
 - SafTreeConfiguration.kt의 IO 없는 capability 판정: 받은 flags·persisted grant·probe 결과·명시적 수용 capability. 실제 provider IO는 SafDestination에 둔다.
