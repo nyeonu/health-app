@@ -15,7 +15,8 @@ tasks:
   - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: done, tier: standard}
   - {id: T4, title: 실제 SQLite의 원자적 상태 저장, depends_on: [T3], status: in_progress, tier: standard}
   - {id: T5, title: process 공용 admission과 중단 복구, depends_on: [T4], status: pending, tier: standard}
-  - {id: T6, title: OS 강제종료의 실제 commit 검증, depends_on: [T5], status: pending, tier: standard}
+  - {id: T6, title: OS 강제종료의 실제 commit 검증, depends_on: [T5, T7], status: pending, tier: standard}
+  - {id: T7, title: 누적 메타데이터 비용 측정, depends_on: [T3], status: in_progress, tier: standard}
 ---
 
 # 날짜별 복구와 내구성 상태
@@ -220,7 +221,7 @@ fun SyncState.validateMutation(expected: DestinationGeneration?, mutation: SyncM
 
 - `SqliteSyncStateStore`：index는 day(generation,scope_key,phase,date), dataset(generation,scope_key,phase,date), dataset(generation,date,dataset)만 추가한다. requested_scopes_json에서 재계산한 digest가 scope_key와 일치해야 하며 BLOCKED/빈 요청 profile은 저장하지 않는다. scope key는 SHA256 hex64이며 JSON 요청 범위와 실제 scopes를 별도 열로 저장한다. 서로 다른 profile의 같은 날짜·dataset rows는 co-exist하며 동일 profile 새 revision만 그 row를 갱신한다. TEXT byte 상한은 codec+SQL `length(CAST(... AS BLOB))`로 강제한다(행 JSON16KiB, binding8KiB, 나머지는 위 한계). SQLite integer timestamp/enum ordinal은 사용하지 않는다. day/attempt의 필드 일부를 JSON 봉투로 중복 저장하지 않는다.
 
-- `SqliteSyncStateStore`：private binding은 **A/SqliteSyncStateStore.kt 내부** `PrivateDestinationBinding(kind, accountName?, accountType?, treeUri?)`로 한정한다. DRIVE는 name/type만 각1~1024 UTF-8, LOCAL은 treeUri 1~4096 UTF-8, SYNTHETIC은 나머지 null. JSON allowlist는 kind/accountName/accountType/treeUri다. private binding도 이 store 자체 canonical writer/decode→re-encode byte equality를 쓰며 외부 JSON/공백 입력을 허용하는 예외를 두지 않는다. token/authCode/record/CSV는 허용하지 않는다. core state/config에는 binding payload/account name/type/URI를 반환하지 않고 opaque destinationHandle만 준다. app 전용 `configure(expected, configuration, binding): SyncCommit` 및 `readBinding(expected): PrivateDestinationBinding?`은 같은 store에 둔다. configure는 fresh UUID generation+enrolled 어제+binding+automatic off+빈 coverage를 **한 transaction**으로 교체한다. 기존 구성 변경은 expected generation 일치 때만 가능, ABSENT에서만 expected=null 초기 구성 허용. READY tombstone에서 새 구성도 tombstone expected generation을 요구한다. 교체 transaction은 새 generation row를 먼저 insert하고 config.active_generation과 active binding/automatic=0을 CAS update한다. 이전 generation/day/dataset/attempt 행은 삭제·재연결하지 않으며 active pointer가 가리키지 않는 이전 세대의 이력으로 남긴다. active binding은 새 선택의 최소 name/type 또는 URI로 교체하며 이전 binding을 archive에 복제하지 않는다. foundation history는 그대로 둔다. core transact는 private 필드를 읽어 전달하거나 덮어쓰지 않으며 SQL UPDATE 대상을 필요한 열로 한정한다. 이번 PR 실제 계정/선택 UI는 없고 합성 binding만 검사한다.
+- `SqliteSyncStateStore`：private binding은 **A/SqliteSyncStateStore.kt 내부** `PrivateDestinationBinding(kind, accountName?, accountType?, treeUri?)`로 한정한다. DRIVE는 name/type만 각1~1024 UTF-8, LOCAL은 treeUri 1~4096 UTF-8, SYNTHETIC은 나머지 null. JSON allowlist는 kind/accountName/accountType/treeUri다. private binding도 이 store 자체 canonical writer/decode→re-encode byte equality를 쓰며 외부 JSON/공백 입력을 허용하는 예외를 두지 않는다. token/authCode/record/CSV는 허용하지 않는다. core state/config에는 binding payload/account name/type/URI를 반환하지 않고 opaque destinationHandle만 준다. app 전용 `configure(expected, configuration, binding): SyncCommit` 및 `readBinding(expected): PrivateDestinationBinding?`은 같은 store에 둔다. configure는 fresh UUID generation+enrolled 어제+binding+automatic off+빈 coverage를 **한 transaction**으로 교체한다. 기존 구성 변경은 expected generation 일치 때만 가능, ABSENT에서만 expected=null 초기 구성 허용. READY tombstone에서 새 구성도 tombstone expected generation을 요구한다. 교체 transaction은 새 generation row를 먼저 insert하고 config.active_generation과 active binding/automatic=0을 CAS update한다. 이전 generation/day/dataset/attempt 행은 삭제·재연결하지 않으며 active pointer가 가리키지 않는 이전 세대의 이력으로 남긴다. active binding은 새 선택의 최소 name/type 또는 URI로 교체하며 이전 binding을 archive에 복제하지 않는다. foundation history는 그대로 둔다. SDK-free core에 private 필드를 전달하지 않는다. app adapter의 transact는 canonical private binding을 무결성 검사만 하고 폐기하며 private 열을 덮어쓰지 않고 SQL UPDATE 대상을 필요한 열로 한정한다. 이번 PR 실제 계정/선택 UI는 없고 합성 binding만 검사한다.
 
 - `SqliteSyncStateStore`：모든 transaction은 generation CAS와 attempt/scope/revision/current journal 검증 → SQL 변경 → beforeCommit test hook → endTransaction 성공 → COMMITTED 반환 순서다. load/transact/reset은 계정/HC/destination IO를 하지 않는다. confirmation callback의 store commit 실패는 callback 실패로 전파되며 성공 count를 올리지 않는다. reset 정상DB는 사용자 확인 범위에 archived coverage도 포함한다. 한 transaction에서 새 tombstone generation insert→config.active_generation을 새 id로 전환하며 binding=null/automatic=0/reset_epoch+1→dataset 전체 삭제→day 전체 삭제→attempt 전체 삭제→새 tombstone을 제외한 generation 삭제 순서로 진행한다. 따라서 현재/archived 동기화 metadata만 모두 비우고 fresh generation/configuration=null을 반환한다. foundation history DB는 보존한다. unknown/corrupt 복구 reset은 explicit 호출에서만 `.reset` marker 생성→새 empty DB stage→old DB 보존 교체→marker 존재 중 reopen 검증→marker 제거 순서; 실패하면 marker로 admission을 차단하고 UNAVAILABLE, old/stage를 보존한다. symlink/directory/미확인 marker는 임의 삭제하지 않는다. 정상 DB reset은 expected generation CAS가 필수다. corrupt/unknown schema의 명시 복구 reset만 expected=null을 허용하며, 이 경로에서는 정상 READY DB로 판정되면 INVALID로 거부한다. reset marker가 남은 재시도는 자신이 만든 stage/old ownership metadata만 검증 후 이어가고 알 수 없는 파일은 UNAVAILABLE로 보존한다. reset 후 새 configure에도 fresh consent가 필요하며 history/remote/grant는 건드리지 않는다.
 
@@ -454,6 +455,37 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
   ```
 - **주의사항**: T5 후 시작. 기존 host shell의 bounded install/poll/PID/reap 구조를 재사용하되 system settings 전환은 추가하지 않는다. API flags 미확인은 read-only 확인 후 지시 범위만 구현하며 기동/컴파일/검증 실패시 blocked로 보고한다. 일반 discovery 제외는 ignore/Assume skip으로 대체하지 않는다. 공개 evidence는 fixture enum·count·boolean만, DB/CSV/계정/URI/원본 instrumentation dump 업로드 금지.
 
+### T7: 누적 메타데이터 비용 측정
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `android/app/src/androidTest/java/com/ny/my/health/SyncStateStorePerformanceInstrumentedTest.kt` | 신규 | 실제 SQLite synthetic metadata 반복 측정 |
+  | `.github/workflows/android-emulator-tests.yml` | 수정 | 안전한 합성 숫자JSON 산출물 수집 경로 추가 |
+
+- **인터페이스**: 2절 `SqliteSyncStateStore` 참조. 2절 `SyncState` 참조. 2절 `SyncStateCodec` 참조. 제품 API 변경은 없다. 기존 AndroidX PlatformTestStorageRegistry.openOutputFile과 AndroidJUnit4 계측 기반을 재사용한다.
+- **결정 로직**: timing threshold/SLA 없이 올바른 결과와 숫자 산출물 존재를 확인한다. 부정확한 CPU/heap 추정치를 만들지 않는다.
+- **호출 순서**:
+  ```
+  1. N=30/365/3650별 FULL_EXPLICIT(5종)/PARTIAL_SUMMARY(STEPS) profile의 독립 synthetic DB6개를 만든다.
+  2. 최초 등록은 당시 어제로 configure하고 injected today를 고정 측정일로 이동; 실제 SQLite transaction으로 N개 day/DAILY confirmation metadata를 정상 canonical 형식으로 seed한다.
+  3. 각 시나리오 load()/loadForScope() 및 matching confirmation transact를 각각 최초1+반복3회 측정한다.
+  4. confirmation 준비는 측정 밖에서 동일revision INDETERMINATE+prior journal로 만들고 실제 ack commit만 측정하며 결과를 확인한다.
+  5. monotonic elapsedRealtimeNanos와 Process.getElapsedCpuTime(ms)의 실제 delta를 safe JSON으로 기록하고 자기fixture만 정리한다.
+  ```
+- **작성할 테스트**:
+  - "Accumulated metadata measurements report load scoped query and confirmation costs without weakening integrity" — 신규. 실제 함수는 같은 의미의 lowerCamelCase를 허용한다.
+  - 케이스·재사용 근거: 기타(별도 성능검토 P2가 확인한 N+1/full validation 반복)·실제 Android SQLite 계측. 6개 시나리오×3동작×4sample=72개 관측, 모든 commit/read 결과와 null/partial full-coverage 구별을 검증한다. 실제 데이터를 쓰지 않고 SDK-free 숫자를 Android latency로 바꾸지 않는다. 기존 기능·손상·CAS/취소 테스트는 재사용·유지한다.
+- **완료 기준**: 실제양API에서 test PASS/skip0과 JSON72개 표본을 root가 내려받아 검사. source baseline의 metadata 비용만 측정하며 임의최적화/새SLA/기기배터리·Google latency 주장은 없음. 심각한 병목이면 그 실측 근거로 별도 제한 교정 task를 계획한다.
+- **검증 방법**:
+  ```bash
+  cd android
+  ./gradlew :app:compileDebugAndroidTestKotlin
+  ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SyncStateStorePerformanceInstrumentedTest
+  ```
+- **주의사항**: T4 source checkpoint c2b49a2에서 공개된 store API를 진단하는 독립 작업이며 T4완료를 가정하지 않는다. 첫 native실행은 T4회귀 probe와 함께 실행할 수 있고 전체실패와 개별측정PASS를 구분한다. T4가 같은 app compile tree를 편집하므로 source 준비까지만 병렬하고 Gradle은 root단일slot 허가 후 실행한다. test storage는 기존 HealthHomeScreenInstrumentedTest의 PlatformTestStorageRegistry를 그대로 사용해 v1-synthetic-store-performance/metrics.json을 쓴다. workflow artifact에 outputs/**/v1-synthetic-store-performance/*.json 경로만 추가하고 실행/assertion/timeout/skip/이미지설정을 바꾸지 않는다. JSON은 profile enum, N, operation, sample index, elapsedNs, processCpuMs만 허용하며 날짜/계정/URI/UUID/handle/raw/CSV/token/DB dump를 내보내지 않는다. 첫 측정을 cold filesystem이라고 부르지 않는다(첫 reopen/반복 reopen); GC/할당량은 기반 없으면 생략한다.
+
 ## 4. 검증
 
 문서 조립 검증은 실제 `assemble_brief.py`에 `--parent docs/2026-11-05-v1-completion/plan.md`를 주어 pinned parent revision에서 수행했다. T1~T6 모두 exit0/해소실패0이며 T1의 31개 metadata 선언은 parent에서 각각 정확히 한 번 수집됨을 확인했다(자식 DTO 선언0). 실제 변경 파일 집계는 T1~T6=4/5/4/4/3/3, 테스트 집계=4/2/1/1/1/1이다. 9개 담당 기준/테스트 열도 상위와 정확히 일치한다. Shared design의 80줄 권장 상한 경고는 남으며 T1의 최종 크기는 88줄이다. 계약을 생략해 크기를 줄이지 않으며 작업블록은 모두80줄 미만이다. 검증용 브리프는 /tmp에만 있고 구현 실행/위임은 하지 않았다. PR15 병합·실제 API 재확인 gate는 유지한다.
@@ -489,6 +521,9 @@ bash android/ci/verify-sync-state-process-recovery.sh
 |---|---|---|---|---|---|---|---|
 | T2 | 3 (소유자 자동승인에 따른 추가 교정; 기존2회 보존) | root 및 독립 사전 계약 검토: finished 수동 attempt가 새 자동 scope selected snapshot을 영구 invalid로 만들어 새 start 불가 | selected-scope equality는 unfinished attempt에만 적용하고 finished 자체 fingerprint/categories 검증은 유지. fresh id의 새 profile start만 허용 | 승인된 manual/automatic 분리 및 previous finished 교체 계약 불변. 기본한도 초과를 숨기지 않고 현재 자동승인 범위의 제한 교정 | SyncState.kt/SyncStateTest.kt만; 기존unfinished mismatch/start/confirmation 거부 유지 | core64/실패·오류·skip0; 실행자21초·최종 root9초 PASS | v1_core_t2 한정 교정 |
 | T2 | 2/2 | root source 대조: load()는 선택 scope 없이 현재 attempt를 반환하지만 isValid가 attempt.scopeKey와 null selected scope를 무조건 비교해 정상 journal을 거부 | unscoped snapshot은 attempt 자체의 canonical/profile/config 관계만 검사하고 selected scope가 있을 때만 equality 검사; 날짜행/선택 coverage를 unscoped에 혼입하지 않음 | load() 무선택 계약과 엄격한 selected-scope CAS 불변 | SyncState.kt/SyncStateTest.kt만; 기존 mutation·hash·codec 유지 | core64개/실패·오류·skip0; 실행자9초/root7초 PASS(입력동일 UP-TO-DATE XML대조) | v1_core_t2 부분 교정 |
+| T7 | 1/2 | 첫compile 호출이 network sandbox 옵션 없이 실행돼 Gradle local lock socket usable wildcard IP 오류, task전 중단·source변경없음 | 이미검증된 with_additional_permissions network.enabled=true로 같은wrapper명령1회. 환경/테스트/코드불변 | 새로운 외부서비스/credential없음, localGradle socket권한만복원 | 제품파일 수정없음 | 동일focusedcompile network옵션 교정 후21초 PASS; source2파일 고정 | v1_store_measurement_t7 호출옵션 교정 |
+| T4 | 10 (소유자 자동승인에 따른 추가 fixture 교정; 기존회차 보존) | 실제API35 CI41967950562:69/1failure/0error/0skip; row-malformed fixture가 CORRUPT 대신UNSUPPORTED. AOSP15 SQLiteConnection의 기본 locale open이 android_metadata table을 추가함을 공식소스로 확인 | raw fault-injection connection에도 production과 같은 NO_LOCALIZED_COLLATORS 사용·단일의도 fault만 주입. schema allowlist/기대CORRUPT 불변 | 제품schema허용범위 확대/테스트skip/기대완화 없음 | 배정SQLiteTest rawopen4곳만 | row fixture 실제재검증·양API CI 대기 | v1_core_t4 fixture 한정 교정 |
+| T4 | 9 (소유자 자동승인에 따른 독립 검토 교정; 기존회차 보존) | c2b49a2 별도 specP2 reset초기 marker/stage crash교착, qualityImportant2 최초구성 schema-only 중단·일반쓰기의 CORRUPT 우회 | 회귀/seam-only probe로 native실패증거 수집→inactive stage 원자적 게시·일관adapter무결성검증·inactive reset준비로 교정→실제SQLite/process 재검증 및독립재검토 | 초기화원자성·unknown원본보존·privatecore비노출·기존history 유지. 새product범위없음 | DB/store/배정SQLiteTest 총3파일 이내 | native probeFAIL→fixPASS·최신fullverify·양API/host 대기 | v1_core_t4 단계분리 교정 |
 | T4 | 8 (소유자 자동승인에 따른 추가 교정; 기존회차 보존) | batch7 동결검증 중 static 대조: quarantine sidecar의 exists()는 broken symlink를 부재로 받아 rename 덮어쓰기 가능 | saved sidecar도 NOFOLLOW_LINKS 존재검사로 unknown symlink 보존·차단 | 원본/unknownartifact 보존 경계불변; 기본회차 리셋없음 | SqliteSyncStateStore.kt/배정SQLite test만 | executor 영향compile28초 PASS; root 전체 JVM138/0/0/0·APK/lint/testAPK1분37초 PASS; native12개CI대기 | v1_core_t4 한정 교정 |
 | T4 | 7 (소유자 자동승인에 따른 추가 교정; 기존회차 보존) | 실행자 종합 static 대조: JSON syntax오류 분류, ABSENT stale CAS의 부수생성, reset cleanup crash 재시도교착, stage-empty 사전검증 누락, SQLite 동적정수type 허용. generationcap/자동on→resetoff fixture 미검증 | 실패상태·원본보존·CAS/정규타입·정확empty·원자적marker퇴역을 일괄보정. 동일 기준의 native회귀 추가 | 권한/범위/원본보존·코어JSON/DTO/기존history 불변; 새framework없음 | 배정store/database/test 내, 필요scalarcodec만4파일이내 | 일괄fix 전체verify1분53초 PASS; 최종guard 포함root1분37초 PASS; native12개CI대기 | v1_core_t4 한정 교정 |
 | T4 | 6 (소유자 자동승인에 따른 추가 교정; 기존회차 보존) | 실행자 static uncovered: lastUploadAt이 current confirmed_at만 집계하여 새revision/공유target invalidation 후 prior만 남으면 실제 과거확인시각을 잃음 | active generation의 current 및 canonical priorConfirmation.confirmedAt 최대값 집계; 다른generation은 제외 | 마지막확인은 전체완료와 별개·이전목적지현재화금지·prior이력보존 유지 | SqliteSyncStateStore.kt/배정SQLite test만 | prior-only lastUploadAt 보존과 reset/config-switch 분리 검증 대기 | v1_core_t4 한정 교정 |
@@ -560,3 +595,19 @@ T4 fixture 구성: 서로 state를 공유하지 않는 JSON/schema/reset/prior-o
 T4 마지막 NOFOLLOW 보정: owned quarantine sidecar 목적지도 기존 base/completed 목적지와 동일하게 Files.exists(...NOFOLLOW_LINKS)로 검사하며 broken symlink를 덮지 않는다. 해당 synthetic symlink 회귀를 보존하고 executor는 동결된 batch7 결과 후 수정파일/AndroidTest 영향 compile1회, root는 최종 전체 JVM/APK/lint/testAPK 명령을 직접 실행한다. 검증 기대/개별 시나리오를 삭제하거나 재시도 회차를 초기화하지 않는다.
 
 T4 source checkpoint: c637b195035b317bc4897c300e9fbefff3c6bb5c의 실제 source를 root가 최종 전체 명령으로1분37초 검증했다. core64+app74=138/실패·오류·skip0, APK/lint/testAPK PASS이며 native test12개는 compile만 통과했다. 로컬 emulator/KVM이 없어 실제SQLite 실행은 API35/36 CI까지 in_progress로 유지한다. T5/T6 실행 gate는 native 증거 확인 전 넘기지 않는다.
+
+T4 독립 검토 correction9 — 먼저 회귀 재현, 이후 구현:
+1. 첫 단계는 기존 동작을 유지한 internal phase observer(default no-op, enum만, payload없음)와 의미 있는 native 회귀를 추가한다. 최초 configure beforeCommit 예외/취소 후 ABSENT·재시도 가능, 초기 schema후 중단, malformed binding/day/attempt에서 configure/invalidate/transact/정상reset 거부·원본byte보존, reset owner 전/도중·stage schema후 중단 뒤 explicit reset 재시도를 각각 검증한다. default observer는 동작을 바꾸지 않고 단계별 native/후속host fault seam이다. source 및 테스트기대는 그대로 두고 실제 CI 실패→교정 증거를 보존한다.
+2. 같은 probe에서 correction10의 fixture open flag만 고친다. raw4곳 모두 NO_LOCALIZED_COLLATORS를 추가하여 의도한 schema/row fault 외 android_metadata table을 만들지 않는다. production strict schema를 완화하지 않는다.
+3. 실패증거 확보 후 최초 configure의 fully validated DB를 app-private inactive `.init-<UUID>` 위치에 준비하고 schema/config commit·닫기·fsync·정상READY/바인딩/empty coverage 증명 후, canonical path lock 안에서 main DB의 실제부재(NOFOLLOW)를 재확인해 원자적으로 게시하고 parent fsync 뒤 응답한다. 초기 중단이 active schema-only 파일을 남겨선 안 된다. crash 전 inactive artifact는 자동 승인/원본삭제 근거가 아니고 보존하며 다음 명시 configure는 독립 fresh staging으로 정상 재시도 가능하다. 게시 후 응답전 손실은 READY 결과 재조회/CAS로 처리한다. stale nonnull expected의 ABSENT 무생성 계약은 유지한다.
+4. 일반 configure/invalidate/transact/정상reset은 기존 active rows와 canonical private binding을 같은 transaction/path lock에서 검증하여 CORRUPT 상태를 바꾸거나 archive로 숨기거나 격리 없이 지우지 않는다. SDK-free core는 private 값에 접근하지 않으며 app adapter 내부 decode/discard 검증만 허용한다. 모든 UPDATE는 필요한 열만 바꾼다. 같은 transaction 내 이미검증한 rows의 불필요한 중복 scan은 피하되 across-call cache로 검증을 생략하지 않는다.
+5. corrupt reset도 ownership과 exact-empty stage를 비활성 `.reset.prepare-<UUID>` directory에서 준비·fsync·검증한 뒤에만 active `.reset` marker로 원자적 게시한다. owner write/schema-config 사이 중단은 active admission marker를 남기지 않는다. 검증된 marker 게시 후 원본 이동·설치·기존 atomic완료퇴역 protocol을 수행한다. 미완성 비활성 준비물은 임의 기존 active marker/stage를 repair/delete할 권한으로 해석하지 않는다. unknown active marker·unsafe configured stage·symlink/retirement conflict 보존 회귀를 유지한다. 실제 phase별 process kill은 T6 host로 확장한다.
+6. internal observer는 예를 들어 INITIAL_SCHEMA_READY/INITIAL_BEFORE_PUBLISH/INITIAL_PUBLISHED, RESET_OWNER_BEFORE/RESET_OWNER_WRITTEN/RESET_STAGE_SCHEMA_READY/RESET_PREPARED/RESET_MARKER_PUBLISHED 등 실제 작업단계를 enum으로만 노출하고 날짜/경로/binding/CSV/token을 넘기지 않는다. 기존 beforeCommit hook은 유지한다. 테스트는 실제 지점을 사용하고 지원되지 않는 OS 원자성/자동복구를 가정하지 않는다.
+
+독립 성능검토 P2(댓글6649794657)로 T7 진단을 추가했다. 이는 소유자의 병목개선→V1 자동승인 범위에서 계정없는 실제Android metadata 측정이며, 기존기능성공기준/실제SQLite/host gate를 대체하지 않는다. T6와 workflow파일을 공유하여 T6 depends_on에 T7을 추가했고 나머지 제품작업을 병렬화하지 않는다. T4 CI의 기존12개 native source는 API35에서11PASS/1fixture실패이며 T7은 미확인소스의 완료를 주장하지 않는다.
+
+T7 assembly 확인: 해소실패0, Shared design115줄 권장경고와 SqliteSyncStateStore 코드조각 미수집 경고는 schema/메서드가 table·불렛에 충분히 수집된 원문을 대조해 경고①로 판정했다. 새계약을 추정하지 않았다. T7 첫 Gradle은 per-call network옵션 누락으로 task시작 전 local socket 오류이며 기존 환경을 변경하지 않고 권한옵션만 교정한다.
+
+PR16 review probe checkpoint: source 7625f9728331f29be9356fcc784057b5bde646a9는 기본 publication/integrity 동작을 아직 고치지 않고 enum-only seam/회귀19개와 raw fixture flag를 반영했다. 기존12+새19개SQLite + 독립performance1개를 compile했고 root 전체 JVM138/실패·오류·skip0·APK/lint/testAPK1분49초 PASS. 실제Native 회귀 실패와 metadata72개 관측은 다음CI에서 수집한다. c2b49a2의 이전 양API결과는69/1실패/0오류/0skip이며 모두 row-case CORRUPT대신UNSUPPORTED이고 host는미실행이다. artifact digest/XML을 root가 내려받아 확인했다.
+
+교정9 병렬 순서 명확화: probe source를 immutable commit으로 고정하고 CI가 그head에서 시작된 뒤에는 로컬 PhaseB 구현을 계속할 수 있다. PhaseB fix commit 공개/push 및 통과 판정 전에는 이전 immutable probe의 실제Native 실패 증거를 root가 확인한다. 테스트전후 source 분리/실패이력·실제process gate를 약화하지 않으며 CI대기 중 로컬구현만 겹친다. T5실행 gate(T4실제통과)는 그대로다.

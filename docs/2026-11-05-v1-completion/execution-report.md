@@ -23,10 +23,14 @@ T3 오류 분류의 durable contract는 상위 `980a38b`에 기술 보정했고 
 
 ## 미완료 검증
 
-core-store의 현재 head JVM/APK/lint, SQLite instrumentation, 별도 process-kill harness, 독립 스펙 적합성·코드·보안 검토와 한국어 PR 댓글은 완료 후 실제 증거로 갱신한다. 아직 PR을 만들지 않았으며 개발 병합/전체 V1 완료를 주장하지 않는다. 기존 P0 미확인 항목은 [readiness](../P0/pr-readiness.md)의 상태를 유지한다.
+core-store의 현재 head JVM/APK/lint, SQLite instrumentation, 별도 process-kill harness, 독립 스펙 적합성·코드·보안 검토와 한국어 PR 댓글은 완료 후 실제 증거로 갱신한다. [PR #16](https://github.com/nyeonu/health-app/pull/16)을 draft로 열었으며 개발 병합/전체 V1 완료를 주장하지 않는다. 기존 P0 미확인 항목은 [readiness](../P0/pr-readiness.md)의 상태를 유지한다.
 
 core-store 후속: T3 typed failure 수정의 root 통합 JVM138(core64/app74)/실패0·오류0·skip0 + APK/lint/testAPK는1분31초 PASS. 그 뒤 독립 사전 계약 검토가 발견한 finished scope 전환(T2 추가교정3)과 자정 지연floor(T3 추가교정3)를 보정했다. 마지막 root core64/0/0/0은9초 PASS이며 read 직전 floor와 종료시점 coverage today를 재확인한다. 각 기본2회 한도 사용 뒤 추가 교정은 소유자의 자동승인 위임에 따라 누적 표시했고 회차를 초기화하지 않았다. T3 done/T4 in_progress. Android 재통합·실제SQLite·최종PR 독립 검토는 여전히 후속이다.
 
 T3 trigger policy 추가 정합성: 같은 reader/engine에서 MANUAL→SCHEDULED→MANUAL이 다른 요청 scope를 선택하도록 access(trigger) 인자를 필수화했다. 자동 HR은 WORKOUT_SCOPED이며 background unavailable 자동 시도는 source/remote IO 없이 STALE, 이후 수동은 가능함을 합성 검증했다. target33/0/0/0(22초), root 전체core64/0/0/0(10초). 실제 자동 HC reader/권한 admission은 후속이다. T4 최초 전체 build는 nullable core public property의 app-side smartcast 오류로25초 FAIL했고, 같은 행동을 유지한 local binding 교정 뒤 재검증 중이다. SQLite/전체 V1 완료를 아직 주장하지 않는다.
 
 T4 source checkpoint `c637b195035b317bc4897c300e9fbefff3c6bb5c`: 마지막 source 전체를 root 명령으로1분37초 검증했다. core64+app74=138/0/0/0, APK/lint/testAPK PASS. 별도 의미 있는 SQLite instrumentation12개가 compile됐으나 실제 실행은 아직 미완료다. CAS 부수파일 무생성, blocker/stale/prior 보존, scalar 타입, generation cap, 자동off reset, exact empty stage, atomic owned-marker 퇴역과 unknown symlink 보존 fixture를 포함한다. 기본2회 뒤 owner-auto 교정3~8은 childplan에 원인/파일/검증을 누적 기록했으며 초기화하지 않았다. 실제SQLite CI 및 T5/T6/독립최종리뷰가 남아 있으므로 T4는 in_progress다.
+
+PR16 첫 NativeCI [41967950562](https://github.com/nyeonu/health-app/actions/runs/41967950562), head c2b49a2: 양API35/36 XML 각69tests/1failure/0errors/0skipped. SQLite12개중11PASS이며 row-malformed fixture raw locale open의 android_metadata 부수생성으로 기대CORRUPT보다 schemaUNSUPPORTED가 먼저 발생했다. 공식AOSP15 SQLiteConnection locale 동작을 대조했고 raw4곳에 production의NO_LOCALIZED_COLLATORS를 적용한다. schema/기대/skip은 완화하지 않았다. 기존host는Gradle실패로 미실행이다. ZIP SHA256: API35 e669775964d3bb879e959b770df2b9bc92759735522ecfefa465bdfbe6f868cb, API36 f71a8d850b1d16ac2f1f9544d06cbab60b732a78de1b270c28781662a7cffd25.
+
+별도 fresh-context 검토는 초기구성·손상상태 일반쓰기·reset초기중단 지적을 남겼으며 [PR댓글](https://github.com/nyeonu/health-app/pull/16#issuecomment-6649790858)에 각각 보존했다. 보안scope 차단취약점 없음/secret scan184commits 탐지0과 metadata N+1 P2측정요구는 전체승인이 아니다. source 7625f9728331f29be9356fcc784057b5bde646a9의 회귀 probe와 Android metadata 측정1개를 root 전체명령1분49초에 compile/JVM138/0/0/0·APK/lint/testAPK로 확인했다. Native회귀 실패→fix후 통과/성능관측72개와최종head재검토는 아직대기다.
