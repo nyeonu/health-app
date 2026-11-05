@@ -47,7 +47,7 @@ WorkManager 2.11.0의 work-runtime과 work-testing을 같은 버전으로 도입
 
 기존 확인 재사용을 위해 모든 CSV를 media download하는 대안은 추가 전송량과 transport 변경 비용 때문에 선택하지 않았다. 공식 Drive SHA-256 metadata가 있는 경우 재사용하고 없으면 현재 safe target에 기존 upsert로 확인하는 비용을 감수한다.
 
-선행 PR #15의 승인 plan을 읽었다. 실제 병합 전 API를 현재 코드로 간주하지 않는다. 구현 착수 전 그 PR의 reviewed merge head로 rebase하고 Ports/PrivateDriveUploader/SyncCoordinator/test의 변경을 다시 대조한다. 예상 batch API가 다르면 하위 plan과 본 공통 설계를 먼저 보정한다. 성능·원격 privacy 검증을 약화하거나 별도 캐시/병렬화를 추가하지 않는다.
+선행 PR #15의 승인 plan을 읽었다. 실제 병합 전 API를 현재 코드로 간주하지 않는다. 기존 Ports/Android/CI 연결 작업 착수 전 그 PR의 reviewed merge head를 병합하고 Ports/PrivateDriveUploader/SyncCoordinator/test의 변경을 다시 대조한다. 성능 배치의 SDK-free 기능 검증과 독립 기능 적합성이 확인된 동안 별도 worktree의 신규 core 모델·planner·revision(T1/T2)은 기존 포트/API를 쓰지 않아 먼저 구현·유닛 검증할 수 있다. PR #15 코드/검증을 변경하지 않으며 core-store의 T3 및 PR 병합은 선행 성능 PR 병합 뒤 진행한다. 예상 batch API가 다르면 하위 plan과 본 공통 설계를 먼저 보정한다. 성능·원격 privacy 검증을 약화하거나 별도 캐시/병렬화를 추가하지 않는다.
 
 ## 2. 공통 설계
 
