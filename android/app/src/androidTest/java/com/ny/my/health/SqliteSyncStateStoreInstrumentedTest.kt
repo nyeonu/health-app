@@ -764,7 +764,8 @@ class SqliteSyncStateStoreInstrumentedTest {
             if(db.databaseFile.isDirectory) db.databaseFile.deleteRecursively() else SQLiteDatabase.deleteDatabase(db.databaseFile)
             db.resetDirectory.deleteRecursively()
             db.databaseFile.parentFile!!.listFiles()!!.filter {
-                it.name.startsWith("${db.databaseFile.name}.old-") || it.name.startsWith("${db.databaseFile.name}.reset.completed-")
+                it.name.startsWith("${db.databaseFile.name}.old-") || it.name.startsWith("${db.databaseFile.name}.reset.completed-") ||
+                    it.name.startsWith("${db.databaseFile.name}.init-") || it.name.startsWith("${db.databaseFile.name}.reset.prepare-")
             }.forEach { if(it.isDirectory) it.deleteRecursively() else it.delete() }
         }
     }

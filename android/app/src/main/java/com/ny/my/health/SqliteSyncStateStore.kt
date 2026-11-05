@@ -16,6 +16,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.UUID
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -45,11 +46,7 @@ internal class SqliteSyncStateStore internal constructor(
                 // 모든 지원 writer와 같은 경로 잠금을 유지하므로 여러 SELECT도 같은 읽기 snapshot이다.
                 val db = database.openForRead() ?: return@synchronized SyncStateRead(StateStatus.ABSENT, null)
                 db.use {
-                    val state = snapshot(db, date, access)
-                    db.rawQuery("SELECT binding_kind,binding_payload FROM config WHERE id=1",null).use { binding ->
-                        require(binding.moveToFirst())
-                        if (!binding.isNull(0)) decodeBinding(binding.text(0),binding.text(1))
-                    }
+                    val state = snapshot(db,date,access)
                     if (expected != null && state.generation != expected) throw StaleSyncStateException()
                     SyncStateRead(StateStatus.READY, state)
                 }
@@ -73,8 +70,8 @@ internal class SqliteSyncStateStore internal constructor(
         binding: PrivateDestinationBinding): SyncCommit {
         if (!configuration.isValid() || configuration.enrolledDay != today().minusDays(1)) return SyncCommit(CommitStatus.INVALID, expected)
         val payload = try { encodeBinding(binding) } catch (_: Exception) { return SyncCommit(CommitStatus.INVALID, expected) }
-        return write(allowAbsent = true, creationExpected = expected) { db ->
-            val old = optionalMetadata(db)
+        return write(expected,allowAbsent = true) { db,admitted ->
+            val old = admitted?.metadata
             if (old?.generation != expected) return@write SyncCommit(CommitStatus.STALE, old?.generation)
             val generation = fresh()
             insertGeneration(db, generation, configuration.copy(automatic = false))
@@ -101,8 +98,8 @@ internal class SqliteSyncStateStore internal constructor(
 
     }
 
-    suspend fun invalidate(expected: DestinationGeneration): SyncCommit = write { db ->
-        val old = metadata(db)
+    suspend fun invalidate(expected: DestinationGeneration): SyncCommit = write(expected) { db,admitted ->
+        val old = checkNotNull(admitted).metadata
         if (old.generation != expected) return@write SyncCommit(CommitStatus.STALE, old.generation)
         val generation = fresh()
         insertGeneration(db, generation, old.configuration?.copy(automatic = false))
@@ -111,13 +108,14 @@ internal class SqliteSyncStateStore internal constructor(
         SyncCommit(CommitStatus.COMMITTED, generation)
     }
 
-    override suspend fun transact(expected: DestinationGeneration?, mutation: SyncMutation): SyncCommit = write { db ->
-        val meta = metadata(db)
+    override suspend fun transact(expected: DestinationGeneration?, mutation: SyncMutation): SyncCommit = write(expected) { db,admitted ->
+        val admission = checkNotNull(admitted)
+        val meta = admission.metadata
         if (meta.generation != expected) return@write SyncCommit(CommitStatus.STALE, meta.generation)
         val now = today()
-        val scopes = mutation.start?.requestedScopes ?: readAttempt(db, meta, now)?.requestedScopes
+        val scopes = mutation.start?.requestedScopes ?: admission.attempt?.requestedScopes
         val access = scopes?.let { ReadAccess(true, it.keys, it) }
-        val state = snapshot(db, now, access)
+        val state = snapshot(db,now,access,admission)
         val date = mutation.day?.date ?: mutation.confirmation?.key?.date
         val key = mutation.day?.scopeKey ?: mutation.confirmation?.key?.scopeKey
         val current = if (date != null && key != null) readDay(db, meta, date, key, now) else null
@@ -155,8 +153,8 @@ internal class SqliteSyncStateStore internal constructor(
 
     override suspend fun reset(expected: DestinationGeneration?): SyncCommit {
         if (expected == null) return recoverReset()
-        return write { db ->
-            val meta = metadata(db)
+        return write(expected) { db,admitted ->
+            val meta = checkNotNull(admitted).metadata
             if (meta.generation != expected) return@write SyncCommit(CommitStatus.STALE, meta.generation)
             if (meta.resetEpoch == Long.MAX_VALUE) return@write SyncCommit(CommitStatus.INVALID, meta.generation)
             val generation = fresh()
@@ -170,34 +168,69 @@ internal class SqliteSyncStateStore internal constructor(
         }
     }
 
-    private suspend fun write(allowAbsent: Boolean = false, creationExpected: DestinationGeneration? = null, block: (SQLiteDatabase) -> SyncCommit): SyncCommit {
+    private suspend fun write(expected: DestinationGeneration?,allowAbsent: Boolean = false,
+        block: (SQLiteDatabase,Admission?) -> SyncCommit): SyncCommit {
         val coroutine = currentCoroutineContext()
         return withContext(Dispatchers.IO) { synchronized(database.pathLock) {
             try {
-                val existed = database.databaseFile.exists()
-                if (!allowAbsent && !existed) return@synchronized SyncCommit(CommitStatus.UNAVAILABLE, null)
-                if (!existed && creationExpected != null) {
-                    // marker와 symlink 검사는 유지하되 stale 구성 요청은 파일을 만들지 않는다.
-                    database.openForRead().use { check(it == null) }
-                    return@synchronized SyncCommit(CommitStatus.STALE, null)
+                // 읽기 경계가 marker/symlink를 검사하며 ABSENT에서는 파일을 만들지 않는다.
+                val checkedAt = today()
+                val ready = database.openForRead().use { db -> db?.let { validateActive(it,checkedAt) } }
+                if (ready == null) {
+                    if (!allowAbsent) return@synchronized SyncCommit(CommitStatus.UNAVAILABLE,null)
+                    if (expected != null) return@synchronized SyncCommit(CommitStatus.STALE,null)
+                    return@synchronized initialize(coroutine,block)
                 }
                 val result = database.openForWrite().use { db ->
-                    database.transaction(db, {
-                        capacity(db); coroutine.ensureActive(); beforeCommit(); coroutine.ensureActive()
-                        if (!existed) database.observe(SyncStatePhase.INITIAL_BEFORE_PUBLISH)
-                    }) {
-                        if (existed) metadata(db)
-                        block(db)
+                    database.transaction(db,{ capacity(db); coroutine.ensureActive(); beforeCommit(); coroutine.ensureActive() }) {
+                        val meta = metadata(db)
+                        if (meta.generation != expected) SyncCommit(CommitStatus.STALE,meta.generation)
+                        else {
+                            require(meta == ready.metadata)
+                            // 같은 path lock의 read-only 무결성 판정은 이 호출 안에서만 재사용한다.
+                            block(db,Admission(meta,readAttempt(db,meta,checkedAt)))
+                        }
                     }
                 }
                 database.openForRead().use { db -> checkNotNull(db); metadata(db) }
-                if (!existed && result.status == CommitStatus.COMMITTED) database.observe(SyncStatePhase.INITIAL_PUBLISHED)
                 result
             } catch (error: CancellationException) { throw error }
-            catch (_: Exception) { SyncCommit(CommitStatus.UNAVAILABLE, null) }
-        }
+            catch (_: Exception) { SyncCommit(CommitStatus.UNAVAILABLE,null) }
+        } }
     }
 
+    /** 최초 DB는 닫힌 READY 파일을 입증한 뒤에만 active 경로로 게시한다. */
+    private fun initialize(coroutine: CoroutineContext,block: (SQLiteDatabase,Admission?) -> SyncCommit): SyncCommit {
+        val candidate = File(database.databaseFile.parentFile,"${database.databaseFile.name}.init-${UUID.randomUUID()}")
+        check(!present(candidate))
+        val staged = SyncStateDatabase(candidate,database::observe,SyncStatePhase.INITIAL_SCHEMA_READY)
+        val result = staged.openForWrite().use { db ->
+            staged.transaction(db,{ capacity(db); coroutine.ensureActive(); beforeCommit(); coroutine.ensureActive() }) {
+                block(db,null)
+            }
+        }
+        check(result.status == CommitStatus.COMMITTED)
+        staged.openForRead().use { db -> checkNotNull(db); proveInitial(db,checkNotNull(result.generation)) }
+        syncFile(candidate); syncDirectory(checkNotNull(candidate.parentFile))
+        database.observe(SyncStatePhase.INITIAL_BEFORE_PUBLISH)
+        coroutine.ensureActive()
+        check(!present(database.databaseFile) && !present(database.resetDirectory))
+        check(candidate.renameTo(database.databaseFile))
+        syncDirectory(checkNotNull(database.databaseFile.parentFile))
+        database.observe(SyncStatePhase.INITIAL_PUBLISHED)
+        database.openForRead().use { db -> checkNotNull(db); proveInitial(db,checkNotNull(result.generation)) }
+        return result
+    }
+
+    private fun proveInitial(db: SQLiteDatabase,generation: DestinationGeneration) {
+        val admitted = validateActive(db,today())
+        val config = checkNotNull(admitted.metadata.configuration)
+        require(admitted.metadata.generation == generation && admitted.metadata.resetEpoch == 0L && !config.automatic)
+        require(admitted.attempt == null)
+        proveCounts(db)
+        val state = snapshot(db,today(),null,admitted)
+        require(state.isValid() && state.coverage.lastUploadAt == null && state.coverage.checkedThrough == null &&
+            state.coverage.uploadedThrough == null && state.days.isEmpty())
     }
 
     private suspend fun recoverReset(): SyncCommit {
@@ -207,19 +240,11 @@ internal class SqliteSyncStateStore internal constructor(
                 val marker = database.resetDirectory
                 if (Files.isSymbolicLink(marker.toPath()) || Files.isSymbolicLink(database.databaseFile.toPath()) ||
                     (database.databaseFile.exists() && !database.databaseFile.isFile)) return@synchronized SyncCommit(CommitStatus.UNAVAILABLE, null)
-                if (!marker.exists()) {
-                    val status = read(null, today(), null).status
-                    if (status == StateStatus.READY || status == StateStatus.ABSENT) return@synchronized SyncCommit(CommitStatus.INVALID, null)
-                    if (status != StateStatus.CORRUPT && status != StateStatus.UNSUPPORTED) return@synchronized SyncCommit(CommitStatus.UNAVAILABLE, null)
-                    check(marker.mkdir())
-                    syncDirectory(marker.parentFile!!)
-                    database.observe(SyncStatePhase.RESET_MARKER_PUBLISHED)
-                    database.observe(SyncStatePhase.RESET_OWNER_BEFORE)
-                    durableText(File(marker,"owner"),UUID.randomUUID().toString()) {
-                        database.observe(SyncStatePhase.RESET_OWNER_WRITING)
-                    }
-                    syncDirectory(marker)
-                    database.observe(SyncStatePhase.RESET_OWNER_WRITTEN)
+                if (!present(marker)) {
+                    val status = read(null,today(),null).status
+                    if (status == StateStatus.READY || status == StateStatus.ABSENT) return@synchronized SyncCommit(CommitStatus.INVALID,null)
+                    if (status != StateStatus.CORRUPT && status != StateStatus.UNSUPPORTED) return@synchronized SyncCommit(CommitStatus.UNAVAILABLE,null)
+                    prepareReset(marker,coroutine)
                 }
                 check(marker.isDirectory && marker.listFiles()!!.all { it.name in setOf("owner", "stage", "old", "installed", "old-journal", "old-wal", "old-shm") && it.isFile && !Files.isSymbolicLink(it.toPath()) })
                 val owner = readOwner(File(marker,"owner"))
@@ -234,18 +259,10 @@ internal class SqliteSyncStateStore internal constructor(
                     check(readOwner(installed) == owner)
                 }
                 if (!old.exists() && !installed.exists()) {
-                    if (!stage.exists()) {
-                        val staged = SyncStateDatabase(stage,database::observe,SyncStatePhase.RESET_STAGE_SCHEMA_READY)
-                        staged.openForWrite().use { db -> staged.transaction(db) {
-                            val generation = fresh(); insertGeneration(db, generation, null)
-                            db.insertOrThrow("config", null, values("id" to 1,"format_version" to 1,"active_generation" to generation.value,"automatic" to 0,"reset_epoch" to 0))
-                        } }
-                    }
+                    check(stage.isFile && !Files.isSymbolicLink(stage.toPath()))
                     SyncStateDatabase(stage).openForRead().use { checkNotNull(it); proveEmpty(it) }
                     coroutine.ensureActive(); beforeCommit(); coroutine.ensureActive()
-                    syncFile(stage)
-                    syncDirectory(marker)
-                    database.observe(SyncStatePhase.RESET_PREPARED)
+                    check(database.databaseFile.isFile && !Files.isSymbolicLink(database.databaseFile.toPath()))
                     check(database.databaseFile.renameTo(old))
                     syncDirectory(marker); syncDirectory(marker.parentFile!!)
                 }
@@ -290,16 +307,39 @@ internal class SqliteSyncStateStore internal constructor(
                 SyncCommit(CommitStatus.COMMITTED, meta.generation)
             } catch (error: CancellationException) { throw error }
             catch (_: Exception) { SyncCommit(CommitStatus.UNAVAILABLE, null) }
-        }
+        } }
     }
 
+    /** 미완성 owner/schema는 비활성 준비물로 남고 다음 명시 reset은 새 준비물을 쓴다. */
+    private fun prepareReset(marker: File,coroutine: CoroutineContext) {
+        val owner = UUID.randomUUID().toString()
+        val prepared = File(marker.parentFile,"${database.databaseFile.name}.reset.prepare-$owner")
+        check(!present(prepared) && prepared.mkdir())
+        syncDirectory(checkNotNull(prepared.parentFile))
+        database.observe(SyncStatePhase.RESET_OWNER_BEFORE)
+        durableText(File(prepared,"owner"),owner) { database.observe(SyncStatePhase.RESET_OWNER_WRITING) }
+        syncDirectory(prepared)
+        database.observe(SyncStatePhase.RESET_OWNER_WRITTEN)
+        val stage = File(prepared,"stage")
+        val staged = SyncStateDatabase(stage,database::observe,SyncStatePhase.RESET_STAGE_SCHEMA_READY)
+        staged.openForWrite().use { db -> staged.transaction(db) {
+            val generation = fresh(); insertGeneration(db,generation,null)
+            db.insertOrThrow("config",null,values("id" to 1,"format_version" to 1,"active_generation" to generation.value,
+                "automatic" to 0,"reset_epoch" to 0))
+        } }
+        staged.openForRead().use { checkNotNull(it); proveEmpty(it) }
+        check(readOwner(File(prepared,"owner")) == owner)
+        check(prepared.listFiles()!!.map { it.name }.toSet() == setOf("owner","stage"))
+        syncFile(stage); syncDirectory(prepared); syncDirectory(checkNotNull(prepared.parentFile))
+        database.observe(SyncStatePhase.RESET_PREPARED)
+        coroutine.ensureActive()
+        check(!present(marker))
+        check(prepared.renameTo(marker))
+        syncDirectory(checkNotNull(marker.parentFile))
+        database.observe(SyncStatePhase.RESET_MARKER_PUBLISHED)
     }
 
     private data class Metadata(val generation: DestinationGeneration, val configuration: SyncConfiguration?, val resetEpoch: Long)
-    private fun optionalMetadata(db: SQLiteDatabase): Metadata? {
-        db.rawQuery("SELECT count(*) FROM config", null).use { it.moveToFirst(); if (it.getInt(0) == 0) return null; require(it.getInt(0) == 1) }
-        return metadata(db)
-    }
     private fun metadata(db: SQLiteDatabase): Metadata = db.rawQuery(
         "SELECT c.id,c.format_version,c.active_generation,c.automatic,c.reset_epoch,g.destination_handle,g.enrolled_day,g.categories_json,c.binding_kind IS NULL,c.binding_payload IS NULL FROM config c JOIN generation g ON g.id=c.active_generation", null).use { row ->
         require(row.moveToFirst() && row.integer(0) == 1L)
@@ -323,21 +363,37 @@ internal class SqliteSyncStateStore internal constructor(
     private fun proveEmpty(db: SQLiteDatabase): Metadata {
         val meta = metadata(db)
         require(meta.configuration == null && meta.resetEpoch == 0L)
-        for ((table,count) in mapOf("generation" to 1L,"day" to 0L,"dataset" to 0L,"attempt" to 0L)) {
-            db.rawQuery("SELECT count(*) FROM $table",null).use { require(it.moveToFirst() && it.getLong(0) == count) }
-        }
+        proveCounts(db)
         return meta
     }
 
-    private fun snapshot(db: SQLiteDatabase, date: LocalDate, access: ReadAccess?): SyncState {
-        val meta = metadata(db)
-        val config = meta.configuration
-        // 선택 범위와 무관하게 active 행의 손상을 성공 상태로 숨기지 않는다.
+    private fun proveCounts(db: SQLiteDatabase) {
+        for ((table,count) in mapOf("config" to 1L,"generation" to 1L,"day" to 0L,"dataset" to 0L,"attempt" to 0L)) {
+            db.rawQuery("SELECT count(*) FROM $table",null).use { require(it.moveToFirst() && it.getLong(0) == count) }
+        }
+    }
+
+    private data class Admission(val metadata: Metadata,val attempt: AttemptState?)
+
+    /** private binding은 adapter에서 정규성만 확인하고 core snapshot에는 전달하지 않는다. */
+    private fun validateActive(db: SQLiteDatabase,date: LocalDate,meta: Metadata = metadata(db)): Admission {
         db.rawQuery("SELECT date,scope_key FROM day WHERE generation=?",arrayOf(meta.generation.value)).use { rows ->
             while (rows.moveToNext()) readDay(db,meta,SyncStateCodec.decodeDate(rows.text(0)),
                 ReadScopeKey(SyncStateCodec.decodeDigest(rows.text(1))),date)
         }
-        val attempt = readAttempt(db, meta, date)
+        val attempt = readAttempt(db,meta,date)
+        db.rawQuery("SELECT binding_kind,binding_payload FROM config WHERE id=1",null).use { binding ->
+            require(binding.moveToFirst())
+            if (!binding.isNull(0)) decodeBinding(binding.text(0),binding.text(1))
+        }
+        return Admission(meta,attempt)
+    }
+
+    private fun snapshot(db: SQLiteDatabase,date: LocalDate,access: ReadAccess?,
+        admitted: Admission = validateActive(db,date)): SyncState {
+        val meta = admitted.metadata
+        val config = meta.configuration
+        val attempt = admitted.attempt
         if (config == null) {
             require(attempt == null)
             return SyncState(1, meta.generation, null, null, null, emptyMap(), emptyMap(), emptyList(), emptyCoverage())
@@ -535,6 +591,7 @@ internal class SqliteSyncStateStore internal constructor(
     }
     private fun emptyCoverage() = CoverageSummary(null,null,null,null,null,emptySet(),0,0,null,emptySet(),emptySet())
     private fun fresh() = DestinationGeneration(UUID.randomUUID().toString())
+    private fun present(file: File) = Files.exists(file.toPath(),java.nio.file.LinkOption.NOFOLLOW_LINKS)
     private fun classify(error: Exception) = when(error) {
         is UnsupportedSyncSchemaException, is UnsupportedOperationException -> StateStatus.UNSUPPORTED
         is SQLiteDatabaseCorruptException, is IllegalArgumentException, is JSONException -> StateStatus.CORRUPT
