@@ -48,15 +48,6 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Build APKs before emulator startup
-        shell: bash
-        run: |
-          compile_sdkmanager="${ANDROID_HOME:?}/cmdline-tools/latest/bin/sdkmanager"
-          test -x "$compile_sdkmanager"
-          yes | "$compile_sdkmanager" --licenses >/dev/null || true
-          "$compile_sdkmanager" --install "platforms;android-36" "build-tools;36.0.0"
-          (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest)
-
       - name: Run account-free Android UI and lifecycle instrumentation
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -70,7 +61,8 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           # Host-only hold methods must never enter normal discovery (no suite skips).
           script: |
-            # Clear a known launcher startup dialog before the account-free tests.
+            (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest)
+            # Fresh synthetic images can show a Pixel Launcher ANR during compilation.
             # Clear only that launcher before tests; never suppress Health App failures.
             adb shell am force-stop com.google.android.apps.nexuslauncher
             (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.ny.my.health.HistoryProcessRecoveryInstrumentedTest)

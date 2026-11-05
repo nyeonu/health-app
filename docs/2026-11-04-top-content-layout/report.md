@@ -8,7 +8,7 @@
 
 실제 원본에서 최초 native content/Compose owner는 창 전체, 재생성 후에는 시스템 inset만큼 줄어드는 차이를 확인했다. SideEffect만 적용한 후보는 이 상태에서 여백이 중복 적용되어 폐기했다. 공식 [AOSP15 PhoneWindow](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-15.0.0_r1/core/java/com/android/internal/policy/PhoneWindow.java), [ActivityThread](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-15.0.0_r1/core/java/android/app/ActivityThread.java) 및 설치 AndroidX 바이트코드에는 보존된 Window의 기본 content-inset 적용이 등록된 뒤 edge enforcement 초기화가 이어지는 경로가 있다. 이는 관측과 일치하는 소스 근거이며 실제 OS의 private 필드를 읽어 확정한 것은 아니다.
 
-현재 후보는 `enableEdgeToEdge()` 전에 `WindowCompat.setDecorFitsSystemWindows(window, false)`로 보존된 창의 fitting 정책을 맞추고, 정규화된 창에서 최초 inset을 listener 설치 뒤 단발 SideEffect로 전달한다. owner별 nonSaveable flag는 root inset이 있을 때 dispatch한 뒤에만 켠다. 매 recomposition에 반복 전달하지 않으며 null일 때 자동 재시도를 보장한다고 주장하지 않는다. 지연·픽셀 offset 보정·재스크롤·커스텀 scroll 복원 알고리즘은 사용하지 않는다. 기존 implemented 스펙·의존성·권한은 바꾸지 않는다. 동의/권한/명시적 업로드 계속/중단/로컬 이력/진단 복사 계약을 유지한다.
+최종 구현은 `enableEdgeToEdge()` 전에 `WindowCompat.setDecorFitsSystemWindows(window, false)`로 보존된 창의 fitting 정책을 맞추고, 정규화된 창에서 최초 inset을 listener 설치 뒤 단발 SideEffect로 전달한다. owner별 nonSaveable flag는 root inset이 있을 때 dispatch한 뒤에만 켠다. 매 recomposition에 반복 전달하지 않으며 null일 때 자동 재시도를 보장한다고 주장하지 않는다. 지연·픽셀 offset 보정·재스크롤·커스텀 scroll 복원 알고리즘은 사용하지 않는다. 기존 implemented 스펙·의존성·권한은 바꾸지 않는다. 동의/권한/명시적 업로드 계속/중단/로컬 이력/진단 복사 계약을 유지한다.
 
 ## 회귀 검증
 
@@ -37,16 +37,18 @@
 | 진단 `793f12b`, subset CI41944722470 | API35는6개 중 복원1개 실패. native owner/frame은0,0/1080×2400/padding0으로 정상화됐지만 value1320/max1511로 위치 손실은 남았다. 단독 후보를 해결 완료로 표시하지 않는다. |
 | `bddfc29` 전체 CI41945124863 | fitting 단독 소스의 전체 실행이며 결합 후보의 통과 근거로 세지 않는다. |
 | 진단 `384aa8b`, subset CI41946158204 | API35/36 각각6개 중 capture 전 focus2개 실패, 오류/skip0. 두 버전 모두 global-layout에서 value1511/max1511/owner2400/viewport191..2274를 관측했고 복원 경계/offset 단언 뒤 capture 진입에서 실패했다. 실제 화면은 API35 Launcher ANR, API36 Process system ANR다. 픽셀/전체 회귀 통과로 표시하지 않는다. |
-| 현재 결합 후보의 기능 테스트 | 임시 관찰자가 없는 소스로 정확한 offset/안전 영역/픽셀 단언을 유지하고 로컬 전체 검증 및 API35/36 각각 Android57개·host20개 검증·독립 재검토를 진행한다. |
+| 최종 `cbfbe0a`, [전체 CI41946115031](https://github.com/nyeonu/health-app/actions/runs/41946115031) | API35/36 각각 Android57개(새 native2개 포함), 실패/오류/skip0. 각각 host8 recovery+4 settings+8 cleanup=20개, PID 교체와 killed hold0 확인. 각70PNG 중5상태의 root/Window 쌍을 직접 열어 확인했고 총10쌍의 전체 RGBA가 정확히 일치한다. 복원 offset1511→1511, 상단0, safe rect128..2337, viewport191..2274다. |
 
-원본 JVM CI41938627257의 XML14파일은109개(core41/app68), 실패/오류/skip0이다. 별도 fresh-context 리뷰어가 직접 읽었다. fitting 단독 후보의 로컬 전체 검증1분17초 및 임시 관찰자 제거 후1분14초는 통과했다. 결합 후보의 실제 결과는 후속으로 기록한다. 이전 취소/superseded 실행은 성공으로 세지 않는다.
+최종 소스 `cbfbe0a40e3929c8fd5da524de4c133ec194a27b`의 [JVM/APK/lint CI41946115061](https://github.com/nyeonu/health-app/actions/runs/41946115061)는 성공했다. 다운로드한 XML14파일에서109개(core41/app68), 실패/오류/skip0을 확인했다. 로컬 전체 JVM·APK·lint·테스트 APK 빌드도1분10초에 통과했다. 해당 소스까지12커밋 secret scan은 발견0이다. 이전 취소/superseded 실행은 성공으로 세지 않는다.
 
-별도 세션들은 전체 diff와 원본을 검토했고 캡처 불일치, scroll 복원 손실, outer attach의 listener 미설치 순서를 지적했다. 환경 중단 후 새 fresh-context 세션에서 이전 보고서/PR 코멘트 결론을 승계하지 않고 전체를 다시 검토했다. 각 지적·수정·정확한 head·재검토 및 최종 처분은 [PR #14](https://github.com/nyeonu/health-app/pull/14) 코멘트에 보존한다. 새 원본 전에는 Important 해결 완료나 APPROVE로 표시하지 않는다.
+다운로드한 전체 Android 보고서 artifact는 API35 `13379731083`(SHA256 `6477b269f16dc5aa0a32bde1d427fdd8fd755ac2d6d2a4aaa720ae61ec1ab571`), API36 `13379466790`(SHA256 `e73b110a899671519c6c712fbd2d14c3ed19b60f7415d3b0c1bba870d0fdb045`)이다. ZIP digest를 확인한 뒤 원본 XML·host 결과·PNG를 검사했다.
+
+별도 세션들은 전체 diff와 원본을 검토했고 캡처 불일치, scroll 복원 손실, outer attach의 listener 미설치 순서를 지적했다. 환경 중단 후 새 fresh-context 세션에서 이전 보고서/PR 코멘트 결론을 승계하지 않고 전체를 다시 검토했다. 최종 독립 세션은 양API의57개+host20개, 원본20PNG 및10쌍 전체 픽셀 일치, 복원1511 유지와2400높이 owner를 직접 확인해 기존 Important를 해결로 처분하고 정확한 `cbfbe0a` 코드에 APPROVE를 내렸다. 최종 문서 커밋은 같은 Android/CI 트리를 유지하며 해당 head의 별도 재검토를 거친다. 각 지적·수정·정확한 head·재검토 및 최종 처분은 [PR #14](https://github.com/nyeonu/health-app/pull/14) 코멘트에 보존한다.
 
 ## CI와 남은 확인
 
 API35/36 Google APIs·Pixel6 합성 환경을 각각 실행한다. API36 이미지의 최소 userdata 크기는2048M 설정으로 줄지 않아, disposable runner의 이 Kotlin/JVM 빌드에 미사용인 .NET/NDK 공간을 확보한다. 실제 부팅 성공을 확인했다. Launcher/System UI ANR는 앱 결함과 구분해 원본을 보존하며 가상 기기에4코어/4096M RAM을 명시한다. 확인된 Launcher만 테스트 전 정리하며 Health App/System UI의 ANR를 숨기거나 실패를 재시도하지 않는다. [action 입력 계약](https://github.com/ReactiveCircus/android-emulator-runner/blob/v2/action.yml)을 확인했다.
 
-결합 진단에도 플랫폼 ANR가 남아 cold Gradle 컴파일을 가상 기기 부팅 전 별도 step으로 옮긴다. compile SDK36/build-tools를 먼저 준비하고 앱/테스트 APK를 빌드하며 실패하면 그 step에서 job이 실패한다. 이후 runner에서는 기존 connected 전체 테스트와 host 검증을 실행한다. 초기 시스템과 cold 컴파일의 자원 경합을 줄이는 교정 후보이며 실제 ANR 원인을 자원 경합으로 확정한 것은 아니다. package 비활성화·System UI/시스템 프로세스 종료·ANR 무시·테스트 재시도는 추가하지 않는다.
+결합 진단의 플랫폼 ANR를 보고 컴파일을 부팅 전으로 옮기는 예비 변경 `103e2d7`을 올렸으나, 기존 설정의 최종 전체 실행이 양API 모두 성공한 것을 확인해 이 예비 변경을 되돌렸다. 최종 Android/CI 트리는 실제 통과한 `cbfbe0a`와 동일하다. 예비 변경 실행의 취소는 통과 근거가 아니다. 플랫폼 ANR가 영구적으로 해결됐다고 주장하지 않으며 package 비활성화·System UI/시스템 프로세스 종료·ANR 무시·테스트 재시도는 추가하지 않는다.
 
 로컬 emulator/KVM은 없어 OS 실행은 CI에서 검증한다. API35/36 합성 결과는 실제 Galaxy Android16 설치·같은 상단 영역·회전/navigation mode·TalkBack을 대신하지 않는다. 해당 기기 확인과 기존 P0/계정/별도 키 백업 미확인은 그대로 유지한다. 업로드 성능 개선은 별도 후속이다.
