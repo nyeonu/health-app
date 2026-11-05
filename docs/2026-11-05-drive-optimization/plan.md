@@ -19,7 +19,7 @@ tasks:
   - id: T2
     title: 실제 TLS 전후 분포와 오류 검증
     depends_on: [T1]
-    status: in_progress
+    status: done
     tier: standard
   - id: T3
     title: 실행 증거와 남은 수용 조건 기록
@@ -53,6 +53,8 @@ tasks:
 | `android/app/src/test/java/com/ny/my/health/DriveBatchPerformanceTest.kt` | 신규 | 경로 기반 실제 TLS 비교·오류·취소 | T2 |
 | `docs/2026-11-05-drive-optimization/execution-report.md` | 신규 | 실행·측정·독립 검토와 미확인 항목 | T3 |
 | `docs/implementation-plan.md` | 수정 | 검증된 한정 최적화 진행 상태 연결 | T3 |
+| `docs/2026-11-04-top-content-layout/report.md` | 수정 | PR14 상단 표시의 소유자 실기기 확인만 반영 | T3 |
+| `docs/backlog/layout-refinement.md` | 수정 | 상단 표시 user-reported PASS와 나머지 기기 미확인 분리 | T3 |
 | `AGENTS.md` | 수정 | 2026-11-05 소유자 자동 승인 위임과 한계 기록 | T3 |
 
 ### 인터페이스
@@ -96,7 +98,7 @@ class SyncProfiling {
 
 ### 결정 로직 위치
 
-- 입력 검증은 PrivateDriveUploader.kt의 IO 없는 private validateExport(file: CsvFile)에 둔다(단일·배치 재사용). metadata 검증은 기존 validate/id를 유지한다.
+- 입력 검증은 PrivateDriveUploader.kt의 IO 없는 private prepare(file: CsvFile)에 둔다(단일·배치 재사용). metadata 검증은 기존 validate/id를 유지한다.
 - 확인 수·실패/취소 상태는 별도 정책 클래스를 만들지 않고 SyncCoordinator.sync와 배치의 coroutine 상태 경계에 둔다. 이는 IO orchestration이며 인위적인 pure helper를 추가하지 않는다.
 - nearest-rank 계산은 DriveBatchPerformanceTest.kt 안의 IO 없는 private helper로 둔다. 정렬 후 ceil(n*p)-1번째를 선택하며 작은 고정 표본으로 검증한다.
 
@@ -241,12 +243,15 @@ T2 완료 후 시작.
   |---|---|---|
   | `docs/2026-11-05-drive-optimization/execution-report.md` | 신규 | 실행·측정·독립 검토와 미확인 항목 |
   | `docs/implementation-plan.md` | 수정 | 검증된 한정 최적화 진행 상태 연결 |
+  | `docs/2026-11-04-top-content-layout/report.md` | 수정 | PR14 상단 표시의 소유자 실기기 확인만 반영 |
+  | `docs/backlog/layout-refinement.md` | 수정 | 상단 표시 user-reported PASS와 나머지 기기 미확인 분리 |
   | `AGENTS.md` | 수정 | 2026-11-05 소유자 자동 승인 위임과 한계 기록 |
 
 - **인터페이스**: 없음.
 - **결정 로직**: 없음.
 - **작성할 테스트**: 신규 없음. 문서 일치 조건은 전체 검증 항목 3·4로 직접 확인한다.
 - **완료 기준**:
+  - 소유자는 PR14 APK 업데이트 후 최초 진입/상단 복귀에서 제목·날짜 문구가 정상으로 보인다고 답했다. 이 범위만 user-reported PASS로 layout 보고서/백로그에 반영하고 회전/navigation/TalkBack/P0는 미확인으로 유지한다. 원본 화면·건강 값·개인 시각은 복사하지 않는다. 근거 PR14 코멘트6647681407.
   - 실행 보고서에 명령·revision·실제 테스트 수/실패/skip·APK/lint·CI URL/결과·serial/optimized 비교표·분리된 실패/취소·측정 방법과 한계를 기록한다. 미실행 항목은 pending/미확인으로 표시한다.
   - docs/implementation-plan.md는 이 한정 개선의 실제 근거 링크만 추가한다. P0/Galaxy/TalkBack/실계정/더 넓은 V1 체크는 기존 상태를 유지한다.
   - AGENTS.md에 2026-11-05 소유자 위임을 기록한다: V1 범위 spec/plan/implementation/되돌릴 수 있는 수정/독립 검토/검토·검증된 PR 개발 병합 자동 승인. 실제 기기·계정 수용 통과, 실제 background toggle/login, secret 노출 승인은 포함하지 않으며 한국어 PR·fresh-context 독립 검토 의무를 유지한다. 다음 세션은 승인된 범위에 반복 승인 질문을 하지 않는다.
@@ -280,6 +285,7 @@ T2 완료 후 시작.
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T2 | 1/2 | target TLS14개 중 새6개 실패: NETWORK 기대가 RESPONSE_INVALID, empty response+CloseSocket fixture. 성공만 memoize하여 실패 때 campaign 반복 | 실제 nonempty body 중단+단일 HTTP2 stream reset으로 IO 오류를 유발; 설치5.3.0 javap에서 SocketEffect.CloseStream(int)·onResponseBody 확인 | NETWORK 기대값/HTTP·취소·privacy·요청/분포 단언 유지; 실패 Result도 memoize하여 같은 표본 재수집 금지 | DriveBatchPerformanceTest.kt만; production·기존 baseline/transport 전부 보존 | target14개/0실패·오류·skip,43초 PASS; root 전체 검증 대기 | drive_batch_t2 부분 교정 후 root 확인 |
 | T1 | 1/2 | root 읽기 검토: batch의 중복 relativePath 입력이 같은 날짜의 병렬 POST를 허용할 수 있고 root 변화 fixture는 malformed 응답과 검색 미노출을 구분하지 않았다. 기존53개 PASS는 이 입력 경계를 검증하지 않음 | 승인된 unique-file 전제와 같은-instance 중복 방지 경계를 요청 전 검증하고 실제 검색 의미의 fixture 추가 | 기존 입력 경로·보안 검사·cold 생성 보존; duplicate-input 거부/filtered-old-ID 미재사용을 보강 | PrivateDriveUploader.kt, PrivateDriveBatchTest.kt; 기존 모든 단언/파일 보존 | prefix 미실행; core55개/0실패·오류·skip, 실행자22초/root7초 PASS | drive_batch_t1 부분 보완 후 root 재검증 |
 
 ## 환경 준비 기록
