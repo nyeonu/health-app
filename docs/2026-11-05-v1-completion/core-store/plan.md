@@ -12,7 +12,7 @@ branch: feat/v1-completion
 tasks:
   - {id: T1, title: 등록 이후 bounded 날짜 계획, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 재읽기 revision과 scope별 확인, depends_on: [T1], status: done, tier: standard}
-  - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: pending, tier: standard}
+  - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: in_progress, tier: standard}
   - {id: T4, title: 실제 SQLite의 원자적 상태 저장, depends_on: [T3], status: pending, tier: standard}
   - {id: T5, title: process 공용 admission과 중단 복구, depends_on: [T4], status: pending, tier: standard}
   - {id: T6, title: OS 강제종료의 실제 commit 검증, depends_on: [T5], status: pending, tier: standard}
@@ -102,7 +102,7 @@ tasks:
 // ScopedHealthReader — access chooses requested profile before querying a date
 interface ScopedHealthReader {
     suspend fun access(): ReadAccess
-    suspend fun readScoped(date: LocalDate): ScopedSnapshot
+    suspend fun readScoped(date: LocalDate, requestedScopes: Map<DataType, ReadScope>): ScopedSnapshot
 }
 // DestinationSync — attempt is created by the session with the selected scope already bound
 class DestinationSync(store: SyncStateStore, reader: ScopedHealthReader,
@@ -488,3 +488,5 @@ bash android/ci/verify-sync-state-process-recovery.sh
 Core T1 추가 정합성: canonical scope key는 domain 포함·타입 이름 사전순·각 UTF-8 component 앞4byte big-endian 길이로 고정한다. checked는 해당 revision의 source read와 요청 scope를 확인한 사실이며 remote pending/REMOTE_STALE만으로 읽기 사실을 지우지 않는다. uploaded는 nonempty intended files의 확인 완료를 별도 요구한다. planner의 오래된 gap 제외는 checked만으로 판단하지 않고 EMPTY 또는 실제 uploaded 현재성일 때만 제외한다. source blocked/실패는 새 checked를 만들지 않는다.
 
 T2 canonical revision component 명확화: 각 component는 UTF-8 앞4byte big-endian 길이이며 순서가 sync-revision/1 → 0.1 → ISO date → admitted scopeKey hex → actual scope map의 DataType.name 사전순(type.name,scope.name 각기) → Dataset.name 사전순(dataset.name,relativePath,canonical CSV content 각기)이다. positive grant는 actual non-BLOCKED scope keys와 정확히 같아 별도 JSON component를 중복 추가하지 않는다. EMPTY 고정 vector도 이 형식을 사용한다.
+
+T3 실행 선행 증거: PR15는 master bf071e19e4e52c285e075b3dfe3db09e1bda8135로 병합됐고 이 worktree에 1cbf860c6c431edd437a5d039fe1d36eafade2f6로 반영했다. 실제 Ports.upsertBatch 기본 순차와 PrivateDriveUploader의 최대2/고유입력/콜백 계약을 다시 확인했다. 병합 후 root 전체 JVM137개(core63/app74)·APK/lint/testAPK가2분21초에 통과했다. ScopedHealthReader.readScoped에는 admission의 requestedScopes를 명시 전달하여 구성 밖 읽기와 일중 권한 변경 때 profile 축소 바꿔치기를 막는다. 응답 scopeByType은 요청 key를 그대로 가지며 읽기 불가 타입은 BLOCKED, HealthSnapshot.grantedTypes는 실제 positive read scope keys여야 한다. 현재 전체 grant는 별도 access() 사실로 유지한다.
