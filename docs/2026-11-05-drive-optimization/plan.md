@@ -24,7 +24,7 @@ tasks:
   - id: T3
     title: 실행 증거와 남은 수용 조건 기록
     depends_on: [T2]
-    status: pending
+    status: done
     tier: light
 ---
 
@@ -285,7 +285,7 @@ T2 완료 후 시작.
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
-| T2 | 1/2 | target TLS14개 중 새6개 실패: NETWORK 기대가 RESPONSE_INVALID, empty response+CloseSocket fixture. 성공만 memoize하여 실패 때 campaign 반복 | 실제 nonempty body 중단+단일 HTTP2 stream reset으로 IO 오류를 유발; 설치5.3.0 javap에서 SocketEffect.CloseStream(int)·onResponseBody 확인 | NETWORK 기대값/HTTP·취소·privacy·요청/분포 단언 유지; 실패 Result도 memoize하여 같은 표본 재수집 금지 | DriveBatchPerformanceTest.kt만; production·기존 baseline/transport 전부 보존 | target14개/0실패·오류·skip,43초 PASS; root 전체 검증 대기 | drive_batch_t2 부분 교정 후 root 확인 |
+| T2 | 1/2 | target TLS14개 중 새6개 실패: NETWORK 기대가 RESPONSE_INVALID, empty response+CloseSocket fixture. 성공만 memoize하여 실패 때 campaign 반복 | 실제 nonempty body 중단+단일 HTTP2 stream reset으로 IO 오류를 유발; 설치5.3.0 javap에서 SocketEffect.CloseStream(int)·onResponseBody 확인 | NETWORK 기대값/HTTP·취소·privacy·요청/분포 단언 유지; 실패 Result도 memoize하여 같은 표본 재수집 금지 | DriveBatchPerformanceTest.kt만; production·기존 baseline/transport 전부 보존 | target14개/0실패·오류·skip,43초 PASS; root 전체 JVM129개·APK·lint·testAPK 1분29초 PASS | drive_batch_t2 부분 교정 후 root 확인 |
 | T1 | 1/2 | root 읽기 검토: batch의 중복 relativePath 입력이 같은 날짜의 병렬 POST를 허용할 수 있고 root 변화 fixture는 malformed 응답과 검색 미노출을 구분하지 않았다. 기존53개 PASS는 이 입력 경계를 검증하지 않음 | 승인된 unique-file 전제와 같은-instance 중복 방지 경계를 요청 전 검증하고 실제 검색 의미의 fixture 추가 | 기존 입력 경로·보안 검사·cold 생성 보존; duplicate-input 거부/filtered-old-ID 미재사용을 보강 | PrivateDriveUploader.kt, PrivateDriveBatchTest.kt; 기존 모든 단언/파일 보존 | prefix 미실행; core55개/0실패·오류·skip, 실행자22초/root7초 PASS | drive_batch_t1 부분 보완 후 root 재검증 |
 
 ## 환경 준비 기록

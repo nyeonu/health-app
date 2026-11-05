@@ -51,4 +51,9 @@ API35/36 Google APIs·Pixel6 합성 환경을 각각 실행한다. API36 이미�
 
 결합 진단의 플랫폼 ANR를 보고 컴파일을 부팅 전으로 옮기는 예비 변경 `103e2d7`을 올렸으나, 기존 설정의 최종 전체 실행이 양API 모두 성공한 것을 확인해 이 예비 변경을 되돌렸다. 최종 Android/CI 트리는 실제 통과한 `cbfbe0a`와 동일하다. 예비 변경 실행의 취소는 통과 근거가 아니다. 플랫폼 ANR가 영구적으로 해결됐다고 주장하지 않으며 package 비활성화·System UI/시스템 프로세스 종료·ANR 무시·테스트 재시도는 추가하지 않는다.
 
-로컬 emulator/KVM은 없어 OS 실행은 CI에서 검증한다. API35/36 합성 결과는 실제 Galaxy Android16 설치·같은 상단 영역·회전/navigation mode·TalkBack을 대신하지 않는다. 해당 기기 확인과 기존 P0/계정/별도 키 백업 미확인은 그대로 유지한다. 업로드 성능 개선은 별도 후속이다.
+로컬 emulator/KVM은 없어 OS 실행은 CI에서 검증한다. API35/36 합성 결과는 실제 Galaxy Android16 설치·같은 상단 영역·회전/navigation mode·TalkBack을 대신하지 않는다. 회전/navigation mode·TalkBack 및 기존 P0/계정/별도 키 백업 미확인은 그대로 유지한다. 업로드 성능 개선은 별도 후속이다.
+
+
+## 소유자 실기기 관찰 — 2026-11-05
+
+[PR14 코멘트6647681407](https://github.com/nyeonu/health-app/pull/14#issuecomment-6647681407)에서 소유자는 PR14 APK 업데이트 후 최초 진입과 상단 복귀에서 제목·날짜 문구가 정상으로 보인다고 답했다. 이 관찰 범위만 **user-reported PASS**다. 원본 화면·건강값·개인 날짜/시각은 복사하지 않는다. 실제 기기 회전·navigation mode·TalkBack·대형 글꼴 등 나머지 기기 수용과 기존 P0/계정/키 백업은 미확인으로 유지한다. 이 보고는 독립 실기기 측정이나 성능 검증을 대신하지 않는다.
