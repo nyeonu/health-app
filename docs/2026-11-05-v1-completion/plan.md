@@ -65,6 +65,7 @@ WorkManager 2.11.0의 work-runtime과 work-testing을 같은 버전으로 도입
 | A/SyncExecutionSession.kt | 신규 | process 공용 gate·pending merge·중단 복구 | core-store; manual-drive; automation-ui |
 | CT/SyncStateTest.kt, CT/SyncPlannerTest.kt, CT/SyncRevisionTest.kt, CT/DestinationSyncTest.kt | 신규 | 의미·경계·실패·동시성 baseline | core-store |
 | AI/SqliteSyncStateStoreInstrumentedTest.kt, AI/SyncStateProcessRecoveryInstrumentedTest.kt | 신규 | 실제 재열기·schema·commit 중단·generation | core-store |
+| AI/SyncExecutionSessionInstrumentedTest.kt | 신규 | 동일path 공용gate·취소·복구·trigger receipt 실제통합 | core-store |
 | android/ci/verify-sync-state-process-recovery.sh | 신규 | 기존 history host harness와 분리한 강제종료 검사 | core-store |
 | A/BoundDriveAuthorization.kt, A/DriveApiDestination.kt | 신규 | 계정 고정·fresh credential·file reconciliation | manual-drive |
 | C/PrivateDriveUploader.kt | 수정 | 현재 metadata SHA-256 reconciliation·typed 확인 배치 | manual-drive |
@@ -318,3 +319,5 @@ SAF capability 오판은 truncate 실패나 suffix 중복을 만들 수 있으�
 |---|---|---|---|---|---|
 
 실행 중 기술 보정(2026-11-05): core-store T3의 generic PENDING은 자동 재시도 권한을 뜻하지 않는다. 승인 spec의 제한된 transient retry와 불명확 create 금지를 보존하기 위해 고정된 목적지 실패 사유3종과 RETRYABLE outcome을 저장 전 계약에 추가한다. provider 메시지/예외 cause/개인정보는 경계에 전달하지 않는다. 실제 Drive 오류 매핑은 manual-drive, worker budget 소비/백오프는 automation-ui 소유이며 core-store는 합성 경계의 분류·저장·planner 영구차단만 검증한다. source unknown 예외는 기존 SOURCE_READ_FAILED를 유지하고 service의 확인된 transient 매핑은 해당 adapter 계획에서 별도로 정의한다.
+
+실행 중 검증 배치 보정(2026-11-05): 공용session의 실제SQLite concurrency tests를 별도 SyncExecutionSessionInstrumentedTest.kt에 둔다. 기존 SQLstore fixture와 성공기준을 삭제하지 않으며, 측정된 metadata N+1 보정과 session 구현의 파일 충돌을 피한다. 별도 Android synthetic store 측정은 full/partial·30/365/3650행에서 실제 비용을 확인했고, 그 근거에 따라 core-store 안에서 streaming bulk 조회를 보정한다. 기존4개PR/WorkManager·실계정·SAF 범위와 승인 spec은 바꾸지 않는다. 계정없는CI의 GoogleSdkSetup ANR은 image/permission/assertion을 바꾸지 않고 해당 setup package의 시작 간섭만 제거해 재검증한다.
