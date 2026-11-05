@@ -16,10 +16,13 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalView
 import androidx.core.view.ViewCompat
-import androidx.core.view.doOnAttach
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
@@ -62,6 +65,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         model = ViewModelProvider(this)[SyncViewModel::class.java]
         setContent {
+            val owner = LocalView.current
+            val initialInsetsDispatched = remember(owner) { mutableStateOf(false) }
             val state by model.state.collectAsState()
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -96,13 +101,14 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-        }
-        // 첫 측정 전에 현재 inset을 전달해 복원된 스크롤이 임시 큰 viewport에 잘리지 않게 한다.
-        val host = findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)
-        host.doOnAttach { container ->
-            // Compose 1.9.2는 inner owner의 attach에서 content와 inset listener를 설치한다.
-            (container as android.view.ViewGroup).getChildAt(0).doOnAttach { owner ->
-                ViewCompat.getRootWindowInsets(owner)?.let { ViewCompat.dispatchApplyWindowInsets(owner, it) }
+            // DisposableEffect의 inset listener 설치 뒤, 첫 측정 전에 한 번만 전달한다.
+            SideEffect {
+                if (!initialInsetsDispatched.value) {
+                    ViewCompat.getRootWindowInsets(owner)?.let {
+                        ViewCompat.dispatchApplyWindowInsets(owner, it)
+                        initialInsetsDispatched.value = true
+                    }
+                }
             }
         }
     }
