@@ -166,3 +166,8 @@ Hosted fixed signing now passed using owner-provided Repository Secrets after co
 ## Deferred performance follow-up
 
 The user requests later investigation of slow sync/upload, including measured bottleneck analysis before considering bounded parallelism or other changes. [Backlog and evidence limits](backlog/sync-performance.md). One UI attempt-to-success interval is about 11 seconds and includes authorization/user wait; it is not an upload-only benchmark. No optimization or instrumentation is started during P0 acceptance.
+
+
+## V1 Drive 배치 한정 개선 — 2026-11-05
+
+[실행 증거와 남은 수용 조건](2026-11-05-drive-optimization/execution-report.md): clean 소스 `fdda2399304e578340f14af4d208d42e96549730`의 core55+app74=129개(실패/오류/skip0), APK/lint/테스트 APK 빌드 통과. 동일 지연 local TLS의 warm 3CSV에서 요청12→10·최대 활성1→2와 배치 한정 EXECUTION/DRIVE_TOTAL p50/p95 감소를 확인했다. JVM/APK/lint CI는 성공했고 API35/36 684 head의 양API CI는 각각57개+host20개, JVM CI129개와 fresh-context 스펙 적합성 검증이 통과했다. PR #15의 독립 품질/보안/성능은 정확9cd head에서 모두 APPROVE이며 최종 문서 head 재검토·병합은 대기다. 실제 Google 변경 후 latency/privacy/same-ID, Galaxy 성능·TalkBack·P0 및 더 넓은 V1 체크는 완료 처리하지 않는다. 기존 문단은 각 당시의 이력으로 보존한다.

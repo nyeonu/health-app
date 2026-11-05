@@ -1,0 +1,68 @@
+# Drive 배치 한정 최적화 실행 증거
+
+## 범위와 현재 판정
+
+승인된 [스펙](spec.md)·[계획](plan.md)의 배치 내 앱 루트 재사용과 최대2개 파일 작업만 다룬다. 영속 ID cache·자동 재시도·추가 권한·인증·CSV/읽기 계약 변경은 없다. 로컬 JVM129·합성 비교·양API 각각57+host20 및 독립 스펙 적합성 검증이 통과했다. [PR #15](https://github.com/nyeonu/health-app/pull/15)의 별도 세션 품질·보안·성능 검토도 모두 APPROVE이며, 아래 원본·소스 동일성에 근거해 최종 문서 head를 재검토한다. 개발 병합·V1 전체 완료·실기기/실계정 성능 수용은 이 문서의 검토 승인으로 대신하지 않는다.
+
+## 검증 소스와 실행
+
+- 실제 검증 소스: `fdda2399304e578340f14af4d208d42e96549730`, 측정 당시 `dirty=false`.
+- 실행 명령(Android 프로젝트): `python /workspace/tooling/run-health-command.py ./gradlew --offline --no-daemon :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:assembleDebugAndroidTest`.
+- 전체 결과: `BUILD SUCCESSFUL in 1m 29s`, 84 actionable tasks(12 executed, 72 up-to-date). 테스트 XML 16개에서 core 55 + app 74 = 129개, 실패 0·오류 0·skip 0을 확인했다. APK·lint·테스트 APK 빌드 통과. Gradle 작업의 UP-TO-DATE/SKIPPED 표시는 테스트 XML의 skip 수와 다르다.
+- 실행 환경 내부 원본: `/workspace/tooling/v1-drive-whole-root.log`, `/workspace/tooling/v1-drive-fdda-evidence/{core,app}/` 및 `performance-summary.csv`. 이 경로는 로컬 증거 보관 위치이며 저장소에 원본 덤프를 추가하지 않는다.
+- [JVM/APK/lint CI 41953996190](https://github.com/nyeonu/health-app/actions/runs/41953996190): 성공. artifact `13381514892`의 ZIP SHA256 `25771b599d7f2a4b07853c0f484bde7534c47ef7d1731e6f709284ad7697a8cf`를 확인했고 XML은 129개·실패/오류/skip 0이다. 로컬 보관 위치는 `/workspace/tooling/v1-drive-fdda-ci-jvm`이다.
+- [API35/36 instrumentation CI 41953996200](https://github.com/nyeonu/health-app/actions/runs/41953996200): 실패. ZIP digest 확인 후 양쪽 XML 각각57개/3실패/0오류·skip, native 경계2개와 clipboard1개의 focus timeout을 확인했다. initial 원본 PNG는 양쪽 모두 Pixel Launcher ANR dialog이며 host는 미실행이다. 로컬 테스트 APK 빌드는 emulator 실행 증거가 아니다.
+- PLAN 복구1/2에서 APK 컴파일을 emulator boot 전 step으로 옮겼다. 같은 SDK/이미지/자원/전체 테스트/timeout/단언/host를 유지하고 Android 소스는 fdda와 동일하다. 자원 경합은 교정 가설이며 ANR 원인이나 영구 해결을 확정하지 않는다. 새 workflow head `684c440ab02e3869a4cde3ee687a8ec4d4699d0f`의 [CI41956052247](https://github.com/nyeonu/health-app/actions/runs/41956052247)는 양API 각각57개/실패·오류·skip0 + host20개(8recovery/4settings/8cleanup), killed hold 성공집계0, PNG70개씩으로 성공했다. [같은 head JVM/APK/lint41956052264](https://github.com/nyeonu/health-app/actions/runs/41956052264)도129개/실패·오류·skip0이다. 새 성공을 과거 실패의 통과로 바꾸지 않는다. Health App/System UI 종료·package 비활성화·ANR 무시·테스트 재시도/skip은 추가하지 않는다.
+
+T1은 중복 대상 및 실제 transport 계약에 맞는 루트 fixture의 한정 교정을 거쳤다. T2 첫 실행은 14개 중 6개가 실패했다. 빈 응답의 `onResponseStart CloseSocket`이 의도한 NETWORK 대신 RESPONSE_INVALID를 만들었고, 승인된 한정 복구에서 비어 있지 않은 body와 `onResponseBody CloseStream(2)`를 사용했다. 기대 오류 분류와 단언을 유지한 재실행은 14개 전부 통과(43초)했다. 최종 판단은 이 중간 결과나 dirty 측정값이 아닌 위 clean 소스의 전체 129개 결과와 아래 clean 요약에 따른다.
+
+## 합성 지연 측정 방법
+
+`DriveBatchPerformanceTest`는 같은 합성 warm private 3CSV tree에 실제 `GoogleDriveTransport`/OkHttp와 local TLS를 사용한다. production client 설정에서 local TLS 신뢰와 routing만 대체했다. endpoint 응답 headers 지연 40ms, 경로별 별도 유지 연결 풀, 각 경로 전체 배치 예열 3회 후 성공 10회씩 수집했다. serial/optimized 순서는 paired 교대이며 예열 표본은 제외한다. `System.nanoTime`과 정렬 nearest-rank를 사용한다. Java `21.0.13+9-LTS`, Linux/amd64, harness SHA256 `f0013ca647741e25069d8fd100f44a7af36e1d09b9a73e38a5548714e6f8364b`다.
+
+이 harness의 `EXECUTION`은 `DRIVE_TOTAL`을 감싸며 두 stage 모두 `uploader.upsertBatch` 호출과 확인 콜백만 측정한다. coordinator의 Health Connect 읽기·정규화·CSV 생성·이력·인증/사용자 대기·UI는 포함하지 않는다. 두 stage의 작은 차이는 wrapper 경계 차이다. 과거 무지연 `SyncProfilingBaselineTest`의 coordinator 전체 실행과 범위·지연이 다르므로 harness 간 시간은 직접 비교하지 않는다. Drive 벽시계 시간과 서로 겹치는 operation/request 누적 시간을 합산하거나 동일 값으로 보지 않는다.
+
+## Clean 소스의 성공 분포
+
+단위 ns. 경로별 n=10이며 실패는 모두 0이다. 아래 값은 최종 clean `performance-summary.csv`와 같다.
+
+| 경로 | stage | n | p50(ns) | p95(ns) | 표본당 요청 | 최대 활성 요청 | 실패 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| serial | EXECUTION | 10 | 511129315 | 526807311 | 12 | 1 | 0 |
+| optimized | EXECUTION | 10 | 387688905 | 439237075 | 10 | 2 | 0 |
+| serial | DRIVE_TOTAL | 10 | 511118418 | 526796394 | 12 | 1 | 0 |
+| optimized | DRIVE_TOTAL | 10 | 387678780 | 439227180 | 10 | 2 | 0 |
+
+이 조건에서 두 stage의 p50/p95가 모두 감소하고 성공 확인 파일 수는 각 3개다. n=10 nearest-rank p95는 열 번째 값, 즉 관측 최댓값이다. 실제 사용자 p95·초 단위 SLA·실제 개선율·Google/Galaxy 성능을 뜻하지 않는다. 소유자가 제공한 과거 실제 업데이트/생성 관찰은 각각 n=1이며 이 합성 분포와 섞지 않는다.
+
+## 실패·취소를 분리한 결과
+
+성공 분포에 포함하지 않은 각 시나리오는 요청 8개, 두 write가 겹친 상태에서 실패/취소를 주입한다. 확인 콜백은 0개이며 세 번째 파일 작업은 시작하지 않는다.
+
+| 시나리오 | 분류 | EXECUTION 실패 | EXECUTION 취소 | write 완료 | write 실패 | write 취소 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| HTTP | HTTP | 1 | 0 | 0 | 1 | 1 |
+| network | NETWORK | 1 | 0 | 0 | 1 | 1 |
+| body | RESPONSE_INVALID | 1 | 0 | 0 | 1 | 1 |
+| metadata | TARGET_REJECTED | 1 | 0 | 0 | 1 | 1 |
+| cancel | 해당 없음 | 0 | 1 | 0 | 0 | 2 |
+
+각 stage/operation/request의 started=completed+failed+cancelled와 종료 후 active=false를 검사했다. 실패 시 sibling 종료를 기다리며, 이후 같은 uploader의 명시적 재호출은 요청 10개로 3개를 확인한다. 자동 재시도는 추가하지 않았다. 클라이언트 취소가 이미 전송된 원격 write를 되돌리거나 서버 처리를 중단한다고 주장하지 않는다.
+
+## 독립 검토와 남은 수용
+
+별도 fresh-context 적합성 세션은 d82 head에서 배치13+coordinator9+TLS6=28개를 --rerun-tasks로 직접 실행해0실패·오류·skip,1분5초 PASS와 전체 보존 XML129개를 확인했다. 요청12→10·최대활성1→2와 합성 p50/p95 감소도 재현했다. 기능·경계·문서 기준19개 PASS이며 공개 댓글 기준도 [코멘트6648000963](https://github.com/nyeonu/health-app/pull/15#issuecomment-6648000963) 원문 확인으로 PASS다. 최종 독립 세션이 정확684 head의 workflow delta·두API/JVM 원본·공개 한국어 최신head 검토 댓글을 직접 대조하여 잔여 게이트를 PASS로 갱신했다. 전체 적합성 PASS, 차단 구현 결함 없음이다. 이전 FAIL은 실패 CI의 실제 상태로 보존하고 새 source 성공과 구분한다. 품질·보안·성능의 서로 다른 fresh-context 세션이 정확 `9cd76ff3abf50cc97a2eedcd50cb564b64ea9686`의 전체 관련 diff·코드/단언·원본을 각각 독립 검토해 모두 APPROVE, 새 Critical/Important/Suggestion 없음으로 판정했다. 보안은 incremental gitleaks7커밋/약122646바이트/발견0을 직접 확인했다. 최종 문서 head의 소스 동등성·정확 head 재검토·자동 리뷰와 개발 병합은 대기다. 이 문서 작성자는 이를 승인으로 대체하지 않는다. 차단 지적이 있으면 수정·정확한 수정 head 검증·독립 재검토 후 결과를 갱신한다.
+
+- 실제 Google 계정에서 변경 후 latency·private sharing·same-ID/no-duplicate 확인: pending.
+- 변경 후 Galaxy의 실제 성능과 기기 수용: pending. merge 후 고정 서명 APK의 package/certificate를 확인하고 전달해야 하며 아직 확인하지 않았다.
+- 다중 uploader instance/다중 기기 생성 경쟁은 보장하지 않는다. 배치 mutex는 같은 instance에만 적용된다.
+- 루트/대상 검증 직후 외부 공유 설정이 바뀌는 경쟁을 원자적으로 차단하지 못한다. 지속 private 상태나 실제 SLA를 보장하지 않는다.
+- 실제 계정·회전/navigation·TalkBack·기존 P0 미확인은 그대로 유지한다. PR14의 최초 진입/상단 복귀 표시만 [소유자 user-reported PASS](../2026-11-04-top-content-layout/report.md)로 별도 기록한다.
+
+공개 기록은 합성 집계와 비식별 결과만 포함한다. 실제 건강값·CSV 본문·계정/원격 ID/링크·credential·예외 원문은 포함하지 않는다.
+
+## 성공 원본의 무결성
+
+684 CI artifact API35 `13383242620` SHA256 `4f95014a6fc1642a013fdbc1c36681ce54a18ff46bf5ce12e27f16a158f77404`, API36 `13384495118` SHA256 `974e780ed4056326008e217e44aa221f5acc75f5829582dd9a88f7f1fb00349d`, JVM `13382953219` SHA256 `ff2bfae9bd70fe1e6769e14904a87e7d7b9d35cbad00bee65f28005ddc378c6c`를 다운로드 ZIP과 대조한 뒤 원본을 파싱했다. 독립 세션도 양API57+20과 최신JVM129 원본을 직접 확인했다. 새 build순서가 모든 플랫폼 ANR를 영구적으로 해결한다고 단정하지 않는다.
+
+현재 exporter는 한 날짜 최대4파일이며 각 파일의 단순 업로드 한도는5,000,000 UTF-8 bytes다. 배치 사전 인코딩으로 최대20,000,000 payload bytes를 보유할 수 있으며 CSV 문자열·읽기 객체·multipart·응답 등을 포함한 전체 heap 상한이 아니다. 임의 길이 batch 입력의 메모리는 O(n)이고 인코딩 뒤 크기 검사라는 기존 한계가 남는다. 현재 coordinator의 bounded exporter 외 호출로 일반화하지 않는다. 실계정/기기 성능·확인 후 외부 sharing 변경·다중 instance/기기 생성 경쟁은 별도 한계다.

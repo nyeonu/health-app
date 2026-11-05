@@ -293,4 +293,32 @@ class SyncCoordinatorTest {
         assertEquals(selectedDates, readDates)
         assertEquals(listOf("daily/2026-10-29.csv", "daily/2026-10-30.csv"), uploadedPaths)
     }
+    @Test
+    fun `Coordinator succeeds only after every nonblank verified confirmation`() = runBlocking {
+        for (blank in listOf(false, true)) {
+            val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val profiling = SyncProfiling()
+            var singles = 0
+            val uploader = object : DriveUploader {
+                override suspend fun upsert(file: CsvFile): String { singles++; error("배치 API를 사용해야 한다") }
+                override suspend fun upsertBatch(files: List<CsvFile>, onConfirmed: suspend (String) -> Unit) {
+                    onConfirmed("synthetic-confirmed")
+                    entered.complete(Unit)
+                    release.await()
+                    if (blank) onConfirmed(" ")
+                }
+            }
+            val coordinator = SyncCoordinator(reader(snapshot().copy(steps = 42)), DefaultNormalizer(), VersionedCsvExporter(), uploader, clock, profiling)
+            val task = async { coordinator.sync(date) }
+            entered.await()
+            assertEquals(false, task.isCompleted)
+            assertEquals(true, profiling.snapshot().stages.getValue(ProfileStage.DRIVE_TOTAL).active)
+            release.complete(Unit)
+            assertEquals(SyncResult(if (blank) SyncStatus.FAILED else SyncStatus.SUCCESS, 1, if (blank) "UPLOAD_FAILED" else null), task.await())
+            assertEquals(0, singles)
+            assertEquals(false, profiling.snapshot().stages.getValue(ProfileStage.DRIVE_TOTAL).active)
+        }
+    }
+
 }

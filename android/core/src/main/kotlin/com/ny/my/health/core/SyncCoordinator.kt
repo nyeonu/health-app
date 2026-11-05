@@ -40,10 +40,8 @@ class SyncCoordinator(
             profiling?.start(ProfileStage.DRIVE_TOTAL)
             var driveOutcome = ProfileOutcome.FAILED
             try {
-                for (file in files) {
-                    currentCoroutineContext().ensureActive()
-                    val remoteId = uploader.upsert(file)
-                    if (remoteId.isBlank()) return SyncResult(SyncStatus.FAILED, uploadedFiles, errorCode)
+                uploader.upsertBatch(files) { remoteId ->
+                    check(remoteId.isNotBlank()) { "Unconfirmed Drive upload" }
                     uploadedFiles++
                 }
                 currentCoroutineContext().ensureActive()

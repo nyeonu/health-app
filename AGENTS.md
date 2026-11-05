@@ -60,3 +60,9 @@ Build a minimal, reliable, privacy-first Android app that reads user-authorized 
 - Avoid exact alarms and battery-optimization exemptions for routine daily exports; they are unnecessary, can cost power, and can be permission restricted. If exact-time functionality is ever proposed, justify it separately before implementation.
 ## Definition of done
 A task is done only when code exists, automated verification was run where supported, and any device-only or account-only manual validation is explicitly identified as pending. Do not confuse a mock test with real Health Connect, Google OAuth, or ChatGPT integration.
+
+## 소유자 자동 승인 위임 (2026-11-05)
+
+- 소유자는 기존 V1 범위의 spec/plan/implementation, 되돌릴 수 있는 수정, 독립 검토와 검토·검증된 PR의 개발 병합을 자동 승인했다. 다음 세션은 이 승인 범위에 반복 승인 질문을 하지 않는다. 범위 확대는 기존 별도 승인 경계를 유지한다.
+- 실제 기기·계정 수용 통과, 실제 background toggle/login 실행, secret 노출 승인은 포함하지 않는다. 수행하지 않은 Galaxy/TalkBack/P0/실계정 검증은 pending으로 유지하며 개발 병합을 V1 출시 승인으로 해석하지 않는다.
+- 한국어 PR 제목·설명·에이전트 댓글과 fresh-context 별도 세션 독립 검토, 현재 head 검증·차단 지적 수정·재검토·PR 댓글 기록 의무는 그대로 유지한다.

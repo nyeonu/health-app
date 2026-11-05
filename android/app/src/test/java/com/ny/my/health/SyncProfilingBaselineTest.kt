@@ -130,7 +130,10 @@ class SyncProfilingBaselineTest {
                         }
                     }
                     val uploader = PrivateDriveUploader(GoogleDriveTransport("synthetic-test-token", local.client), profiling)
-                    val coordinator = SyncCoordinator(reader, DefaultNormalizer(), VersionedCsvExporter(), uploader, clock, profiling)
+                    val serial = object : DriveUploader {
+                        override suspend fun upsert(file: CsvFile): String = uploader.upsert(file)
+                    }
+                    val coordinator = SyncCoordinator(reader, DefaultNormalizer(), VersionedCsvExporter(), serial, clock, profiling)
                     val expected = script(local, scenario == "cold1CSV", scenario == "warm3CSV")
                     val before = local.server.requestCount
                     val result = profiling.measure(ProfileStage.EXECUTION) { coordinator.sync(date) }
