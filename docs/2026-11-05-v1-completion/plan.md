@@ -107,7 +107,8 @@ enum class ReadScope { EXPLICIT_DAY, SUMMARY, WORKOUT_SCOPED, BLOCKED }
 enum class StateStatus { ABSENT, READY, CORRUPT, UNSUPPORTED, UNAVAILABLE }
 enum class DayPhase { PENDING, RUNNING, EMPTY, CONFIRMED, INDETERMINATE, BLOCKED, REMOTE_STALE }
 enum class BlockReason { HISTORY_ACCESS_REQUIRED, SOURCE_ACCESS_REQUIRED, SOURCE_READ_FAILED,
-    SOURCE_LIMIT_EXCEEDED, DESTINATION_BLOCKED, STORE_UNAVAILABLE, RETRY_EXHAUSTED }
+    SOURCE_LIMIT_EXCEEDED, DESTINATION_BLOCKED, STORE_UNAVAILABLE, RETRY_EXHAUSTED,
+    DESTINATION_TRANSIENT_FAILURE, DESTINATION_RECONCILIATION_REQUIRED, ACCOUNT_AUTHORIZATION_BLOCKED }
 enum class FilePhase { PENDING, RUNNING, CONFIRMED, INDETERMINATE, REMOTE_STALE, BLOCKED }
 data class RevisionKey(val digest: String, val generatedAt: Instant)
 data class FileKey(val generation: DestinationGeneration, val date: LocalDate,
@@ -156,7 +157,7 @@ data class SyncCommit(val status: CommitStatus, val generation: DestinationGener
 data class SyncMutation(val attemptId: String?, val start: AttemptState?,
     val day: DayState?, val confirmation: FileConfirmation?,
     val pendingTriggers: Set<SyncTrigger>?, val finishAt: Instant?)
-enum class BatchStatus { COMPLETED, PENDING, BLOCKED, MERGED, STALE }
+enum class BatchStatus { COMPLETED, PENDING, BLOCKED, MERGED, STALE, RETRYABLE }
 data class BatchOutcome(val status: BatchStatus, val confirmedFiles: Int,
     val coverage: CoverageSummary?)
 fun SyncState.isValid(): Boolean
@@ -315,3 +316,5 @@ SAF capability 오판은 truncate 실패나 suffix 중복을 만들 수 있으�
 
 | 원인·근거 | 준비 조치 | 조치 사용/1 | 확인 명령·결과 | 확인 사용/1 | 다음 조치 |
 |---|---|---|---|---|---|
+
+실행 중 기술 보정(2026-11-05): core-store T3의 generic PENDING은 자동 재시도 권한을 뜻하지 않는다. 승인 spec의 제한된 transient retry와 불명확 create 금지를 보존하기 위해 고정된 목적지 실패 사유3종과 RETRYABLE outcome을 저장 전 계약에 추가한다. provider 메시지/예외 cause/개인정보는 경계에 전달하지 않는다. 실제 Drive 오류 매핑은 manual-drive, worker budget 소비/백오프는 automation-ui 소유이며 core-store는 합성 경계의 분류·저장·planner 영구차단만 검증한다. source unknown 예외는 기존 SOURCE_READ_FAILED를 유지하고 service의 확인된 transient 매핑은 해당 adapter 계획에서 별도로 정의한다.
