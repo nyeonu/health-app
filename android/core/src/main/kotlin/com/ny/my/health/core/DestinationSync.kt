@@ -132,11 +132,15 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                         FileKey(generation, date, attempt.scopeKey, dataset, old.revision.digest),
                         requireNotNull(old.targetHandle), requireNotNull(old.confirmedAt)) else old.priorConfirmation
                 }
+                fun unresolvedCreate(old: DatasetState?): Boolean = old != null && old.targetHandle == null &&
+                    old.phase in setOf(FilePhase.RUNNING, FilePhase.INDETERMINATE,
+                        FilePhase.REMOTE_STALE, FilePhase.BLOCKED)
                 val files = revision.files.mapValues { (dataset, _) ->
                     val old = previous.datasets[dataset]
                     // 과거 확인은 이력이며 현재 원격 대상의 안전성은 매번 다시 검증한다.
                     DatasetState(dataset, revision.key,
-                        if (old?.revision == revision.key && old.phase == FilePhase.CONFIRMED)
+                        if (unresolvedCreate(old) ||
+                            (old?.revision == revision.key && old.phase == FilePhase.CONFIRMED))
                             FilePhase.INDETERMINATE else FilePhase.PENDING,
                         true, old?.targetHandle, clock.instant(), null, prior(dataset))
                 }.toMutableMap()
@@ -153,7 +157,8 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                     PlannedFile(
                         FileKey(generation, date, attempt.scopeKey, dataset, revision.key.digest), file,
                         MessageDigest.getInstance("SHA-256").digest(file.content.toByteArray(Charsets.UTF_8))
-                            .joinToString("") { "%02x".format(it.toInt() and 255) }, files[dataset]?.targetHandle)
+                            .joinToString("") { "%02x".format(it.toInt() and 255) }, files[dataset]?.targetHandle,
+                        createMayHaveSucceeded = unresolvedCreate(files[dataset]))
                 }
                 try {
                     if (planned.isNotEmpty()) {

@@ -295,6 +295,56 @@ class SyncExecutionSessionInstrumentedTest {
         } finally { f.close(); other.close() }
     }
 
+    @Test
+    fun unknownCreateSurvivesRereadCancellationAndSqliteReopenWithoutBlindCreate() = runBlocking {
+        for (changed in listOf(false, true)) for (found in listOf(false, true)) {
+            val f = Fixture()
+            try {
+                f.configure()
+                // Synthetic remote create succeeds, but its confirmation is lost.
+                f.write = { _, _ -> }
+                assertEquals(BatchStatus.PENDING, f.session().run(SyncTrigger.MANUAL, f.generation).status)
+                assertEquals(1, f.writes.get())
+                val exposed = f.day()!!
+                assertNull(exposed.blocker)
+                assertEquals(FilePhase.INDETERMINATE, exposed.datasets.getValue(Dataset.DAILY).phase)
+                assertNull(exposed.datasets.getValue(Dataset.DAILY).targetHandle)
+                if (changed) f.steps = 13
+                fun reopenedStore() = SqliteSyncStateStore(SyncStateDatabase(f.file), { f.date })
+                f.reconcile = { files ->
+                    assertTrue(files.single().createMayHaveSucceeded)
+                    val durable = reopenedStore().loadDay(f.generation, f.date.minusDays(1), f.key)!!
+                    assertEquals(FilePhase.INDETERMINATE, durable.datasets.getValue(Dataset.DAILY).phase)
+                    assertEquals(changed, exposed.revision != durable.revision)
+                    throw CancellationException("합성 재확인 이전 재중단")
+                }
+                try {
+                    f.session().run(SyncTrigger.MANUAL, f.generation)
+                    fail("재확인 이전 취소를 전파해야 한다")
+                } catch (_: CancellationException) { }
+                val reopened = reopenedStore().loadDay(f.generation, f.date.minusDays(1), f.key)!!
+                assertEquals(FilePhase.INDETERMINATE, reopened.datasets.getValue(Dataset.DAILY).phase)
+                assertNull(reopened.datasets.getValue(Dataset.DAILY).targetHandle)
+                f.reconcile = { files ->
+                    assertTrue(files.single().createMayHaveSucceeded)
+                    if (!found) throw DestinationException(BlockReason.DESTINATION_RECONCILIATION_REQUIRED)
+                    ReconciledFiles(files.map { f.confirmation(it.key) }, emptyList(), emptySet())
+                }
+                val outcome = f.session(alias = true).run(SyncTrigger.MANUAL, f.generation)
+                assertEquals(if (found) BatchStatus.COMPLETED else BatchStatus.BLOCKED, outcome.status)
+                assertEquals(1, f.writes.get())
+                val final = reopenedStore().loadDay(f.generation, f.date.minusDays(1), f.key)!!
+                if (found) {
+                    assertTrue(final.isUploaded())
+                    assertEquals("synthetic-target-DAILY", final.datasets.getValue(Dataset.DAILY).targetHandle)
+                } else {
+                    assertEquals(BlockReason.DESTINATION_RECONCILIATION_REQUIRED, final.blocker)
+                    assertEquals(FilePhase.INDETERMINATE, final.datasets.getValue(Dataset.DAILY).phase)
+                }
+            } finally { f.close() }
+        }
+    }
+
     private class Fixture {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val file = File(context.noBackupFilesDir, "session-${UUID.randomUUID()}.db")
@@ -313,6 +363,8 @@ class SyncExecutionSessionInstrumentedTest {
         val writes = AtomicInteger()
         val accesses = CopyOnWriteArrayList<SyncTrigger>()
         var onAccess: suspend () -> Unit = {}
+        var steps = 12L
+        var reconcile: suspend (List<PlannedFile>) -> ReconciledFiles = { ReconciledFiles(emptyList(), it, emptySet()) }
         var write: suspend (List<PlannedFile>, suspend (FileConfirmation) -> Unit) -> Unit = { files, confirm ->
             files.forEach { confirm(confirmation(it.key)) }
         }
@@ -322,12 +374,12 @@ class SyncExecutionSessionInstrumentedTest {
             }
             override suspend fun readScoped(date: LocalDate, requestedScopes: Map<DataType, ReadScope>): ScopedSnapshot {
                 reads.incrementAndGet()
-                return ScopedSnapshot(HealthSnapshot(date, 12, emptyList(), emptyList(), emptyList(), emptyList(), scopes.keys),
+                return ScopedSnapshot(HealthSnapshot(date, steps, emptyList(), emptyList(), emptyList(), emptyList(), scopes.keys),
                     requestedScopes, emptySet())
             }
         }
         val destination = object : StorageDestination {
-            override suspend fun reconcile(files: List<PlannedFile>) = ReconciledFiles(emptyList(), files, emptySet())
+            override suspend fun reconcile(files: List<PlannedFile>) = this@Fixture.reconcile(files)
             override suspend fun writePending(files: List<PlannedFile>, onConfirmed: suspend (FileConfirmation) -> Unit) {
                 writes.incrementAndGet(); write(files, onConfirmed)
             }

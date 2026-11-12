@@ -53,8 +53,9 @@ data class PlannedBatch(val scopeKey: ReadScopeKey?, val dates: List<LocalDate>,
 data class DayRevision(val key: RevisionKey, val scopeKey: ReadScopeKey,
     val scopes: Map<DataType, ReadScope>, val files: Map<Dataset, CsvFile>,
     val remoteStale: Set<Dataset>)
+/** Memory-only projection: without a freshly proven safe target, uncertainty forbids create. */
 data class PlannedFile(val key: FileKey, val file: CsvFile, val byteSha256: String,
-    val previousTargetHandle: String?)
+    val previousTargetHandle: String?, val createMayHaveSucceeded: Boolean = false)
 data class ReconciledFiles(val confirmed: List<FileConfirmation>,
     val pending: List<PlannedFile>, val blocked: Set<FileKey>)
 enum class CommitStatus { COMMITTED, STALE, INVALID, UNAVAILABLE }

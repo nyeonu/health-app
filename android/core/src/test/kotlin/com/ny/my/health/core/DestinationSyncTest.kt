@@ -115,7 +115,7 @@ class DestinationSyncTest {
         var reads = 0
         var readFailure: Exception? = null
         var blocked = false
-        var steps = 12L
+        var steps: Long? = 12L
         var beforeRead: () -> Unit = {}
         val reader = object : ScopedHealthReader {
             override suspend fun access(trigger: SyncTrigger): ReadAccess {
@@ -168,7 +168,11 @@ class DestinationSyncTest {
                 val confirmed = files.mapNotNull { file -> remote[file.file.relativePath]?.takeIf {
                     it.first.byteSha256 == file.byteSha256
                 }?.second?.copy(key = file.key, confirmedAt = observedAt) }
-                return ReconciledFiles(confirmed, files.filter { file -> confirmed.none { it.key == file.key } }, emptySet())
+                val pending = files.filter { file -> confirmed.none { it.key == file.key } }
+                if (reconcileMode == "unresolved-absent" &&
+                    pending.any { it.createMayHaveSucceeded && it.previousTargetHandle == null })
+                    throw DestinationException(BlockReason.DESTINATION_RECONCILIATION_REQUIRED)
+                return ReconciledFiles(confirmed, pending, emptySet())
             }
             override suspend fun writePending(files: List<PlannedFile>, onConfirmed: suspend (FileConfirmation) -> Unit) {
                 beforeWrite()
@@ -193,6 +197,115 @@ class DestinationSyncTest {
         suspend fun run(trigger: SyncTrigger = SyncTrigger.MANUAL) = engine
             .run(trigger, store.state.generation, store.state.attempt!!.id)
         fun day() = store.rows.getValue(date to store.state.scopeKey!!)
+    }
+
+    @Test
+    fun `Reread journal preserves unknown create uncertainty before reconciliation is interrupted again`() = runBlocking {
+        val fixture = Fixture(mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY))
+        fixture.omitAck = true
+        assertEquals(BatchStatus.PENDING, fixture.run().status)
+        assertNull(fixture.day().blocker)
+        val exposed = fixture.day().datasets.getValue(Dataset.DAILY)
+        assertEquals(FilePhase.INDETERMINATE, exposed.phase)
+        assertNull(exposed.targetHandle)
+        assertEquals(1, fixture.written.size)
+
+        fixture.store.admit()
+        fixture.observedAt = now.plusSeconds(60)
+        var rereadJournal: DatasetState? = null
+        fixture.beforeReconcile = { files ->
+            val key = files.single().key
+            rereadJournal = fixture.store.rows.getValue(key.date to key.scopeKey).datasets.getValue(key.dataset)
+            assertTrue(files.single().createMayHaveSucceeded)
+            throw CancellationException("합성 재확인 직전 재중단")
+        }
+        try {
+            fixture.run()
+            fail("재확인 직전 취소를 전파해야 한다")
+        } catch (_: CancellationException) { }
+
+        assertNotNull(rereadJournal)
+        assertNull(rereadJournal!!.targetHandle)
+        assertEquals("이미 노출된 null-handle create의 불확실성은 재조회 journal에도 남아야 한다",
+            FilePhase.INDETERMINATE, rereadJournal!!.phase)
+        assertEquals(1, fixture.written.size)
+
+        // Recreate the synthetic store and engine from durable rows only; no PlannedFile survives.
+        val reopened = Fixture(mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY))
+        reopened.store.state = fixture.store.state
+        reopened.store.rows.putAll(fixture.store.rows)
+        reopened.store.sequence = fixture.store.sequence
+        reopened.store.admit()
+        reopened.reconcileMode = "unresolved-absent"
+        reopened.beforeReconcile = { assertTrue(it.single().createMayHaveSucceeded) }
+        assertEquals(BatchStatus.BLOCKED, reopened.run().status)
+        assertEquals(BlockReason.DESTINATION_RECONCILIATION_REQUIRED, reopened.day().blocker)
+        assertTrue(reopened.written.isEmpty())
+    }
+
+    @Test
+    fun `Unknown null handle remains unresolved across changed revision and conservative phases`() = runBlocking {
+        for (phase in listOf(FilePhase.RUNNING, FilePhase.INDETERMINATE, FilePhase.BLOCKED)) {
+            val f = Fixture(mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY))
+            f.omitAck = true
+            assertEquals(BatchStatus.PENDING, f.run().status)
+            val old = f.day()
+            f.store.rows[date to old.scopeKey] = old.copy(datasets = old.datasets.mapValues { (_, file) -> file.copy(phase = phase) })
+            f.store.admit()
+            f.steps = 13
+            f.observedAt = now.plusSeconds(60)
+            f.remote.clear()
+            f.reconcileMode = "unresolved-absent"
+            f.beforeReconcile = { files ->
+                assertTrue(phase.name, files.single().createMayHaveSucceeded)
+                assertNotEquals(old.revision, f.day().revision)
+                assertEquals(FilePhase.INDETERMINATE, f.day().datasets.getValue(Dataset.DAILY).phase)
+            }
+            assertEquals(BatchStatus.BLOCKED, f.run().status)
+            assertEquals(BlockReason.DESTINATION_RECONCILIATION_REQUIRED, f.day().blocker)
+            assertEquals(1, f.written.size)
+        }
+    }
+
+    @Test
+    fun `Unknown create survives empty roundtrip while fresh pending and proven targets remain usable`() = runBlocking {
+        val fresh = Fixture(mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY))
+        fresh.beforeReconcile = { throw CancellationException("합성 첫 쓰기 이전 취소") }
+        try { fresh.run(); fail("취소를 전파해야 한다") } catch (_: CancellationException) { }
+        assertEquals(FilePhase.PENDING, fresh.day().datasets.getValue(Dataset.DAILY).phase)
+        assertTrue(fresh.written.isEmpty())
+        fresh.store.admit()
+        fresh.beforeReconcile = { assertFalse(it.single().createMayHaveSucceeded) }
+        assertEquals(BatchStatus.COMPLETED, fresh.run().status)
+        assertEquals(1, fresh.written.size)
+
+        val f = Fixture(mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY))
+        f.beforeReconcile = { assertFalse(it.single().createMayHaveSucceeded) }
+        f.omitAck = true
+        assertEquals(BatchStatus.PENDING, f.run().status)
+        f.store.admit()
+        f.steps = null
+        f.beforeReconcile = { fail("빈 데이터셋은 원격 쓰기를 요청하지 않는다") }
+        assertEquals(BatchStatus.BLOCKED, f.run().status)
+        assertEquals(FilePhase.REMOTE_STALE, f.day().datasets.getValue(Dataset.DAILY).phase)
+        assertNull(f.day().datasets.getValue(Dataset.DAILY).targetHandle)
+        f.store.admit()
+        f.steps = 12
+        f.omitAck = false
+        f.beforeReconcile = { assertTrue(it.single().createMayHaveSucceeded) }
+        // The unchanged remote body is fresh evidence and can be adopted without another create.
+        assertEquals(BatchStatus.COMPLETED, f.run().status)
+        assertEquals(1, f.written.size)
+        val confirmed = f.day().datasets.getValue(Dataset.DAILY)
+        f.store.admit()
+        f.steps = 13
+        f.beforeReconcile = { files ->
+            assertFalse(files.single().createMayHaveSucceeded)
+            assertEquals(confirmed.targetHandle, files.single().previousTargetHandle)
+            assertEquals(confirmed.targetHandle, f.day().datasets.getValue(Dataset.DAILY).priorConfirmation?.targetHandle)
+        }
+        assertEquals(BatchStatus.COMPLETED, f.run().status)
+        assertEquals(2, f.written.size)
     }
 
     @Test
