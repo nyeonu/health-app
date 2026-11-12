@@ -182,7 +182,13 @@ interface SyncStateStore {
         access: ReadAccess): SyncStateRead
     suspend fun loadDay(expected: DestinationGeneration, date: LocalDate,
         scopeKey: ReadScopeKey): DayState?
+    suspend fun loadUnresolvedCreates(expected: DestinationGeneration, date: LocalDate): Set<Dataset>?
 }
+// SyncStateStore.loadUnresolvedCreates: current generation/date, ALL scope profiles.
+// Returns null only on generation mismatch; unavailable/corrupt/unsupported throws, never empty.
+// Unknown null-handle RUNNING/INDETERMINATE/REMOTE_STALE/BLOCKED is physical-file uncertainty.
+// SQLite validates every day/dataset of that date using existing generation/date indexes,
+// two ordered cursors or equivalent bounded date scan, not whole history or per-file N+1.
 // PlannedFile.createMayHaveSucceeded: memory-only projection of durable unresolved null-handle write.
 // Reread/new revision must retain that unresolved state, including through REMOTE_STALE.
 // Destination may adopt a freshly proven target or update a safely resolved existing target;
