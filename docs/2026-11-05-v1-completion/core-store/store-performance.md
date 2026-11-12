@@ -54,3 +54,5 @@ T8 변경 직전 source `cb89da7783eb8420fca0440cf7b29e61955bca95`의 [양API �
 |36/PARTIAL_SUMMARY|3909.59 → 3656.21|7424.24 → 3820.21|7331.93 → 3881.13|
 
 이 관측은 session 전체의 source/remote IO 대기나 실기기 성능을 증명하지 않는다. DB open의 schema/FK/quick_check와 전체active 무결성 검증은 남는다. 최종 후보e62는 제품source/측정fixture가 같지만 독립 품질 지적Q1의hotjournal복구가미해결이며 after PASS를 PR전체승인·모든강제종료PASS로쓰지않는다.
+
+독립 대조에서36개 반복median 비교 셀 중34개 감소·2개 증가를 확인했다. API36 PARTIAL_SUMMARY LOAD는30행36.90→41.86ms(+13.45%),365행384.69→396.67ms(+3.11%)이며,3650행 첫reopen도3696.63→3693.35ms로거의같다. 따라서 bulk/scoped/confirmation 개선방향을지지하지만작은partial LOAD나전체batch의균일개선을주장하지않는다.

@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-05
 parent: ../plan.md
-parent_rev: 82aa56c90b0eecb68629a4bd5888ae9e1ef28070
+parent_rev: 222bdc4baa7d68e31ba52f2321520b9b0e5e3d62
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feat/v1-completion
@@ -14,12 +14,13 @@ tasks:
   - {id: T2, title: 재읽기 revision과 scope별 확인, depends_on: [T1], status: done, tier: standard}
   - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: done, tier: standard}
   - {id: T4, title: 실제 SQLite의 원자적 상태 저장, depends_on: [T3], status: done, tier: standard}
-  - {id: T5, title: process 공용 admission과 중단 복구, depends_on: [T4], status: in_progress, tier: standard}
-  - {id: T6, title: OS 강제종료의 실제 commit 검증, depends_on: [T4, T7, T9], status: in_progress, tier: standard}
+  - {id: T5, title: process 공용 admission과 중단 복구, depends_on: [T4], status: done, tier: standard}
+  - {id: T6, title: OS 강제종료의 실제 commit 검증, depends_on: [T4, T7, T9], status: done, tier: standard}
   - {id: T7, title: 누적 메타데이터 비용 측정, depends_on: [T3], status: done, tier: standard}
-  - {id: T8, title: 측정된 metadata 반복 조회 축소, depends_on: [T4, T7], status: in_progress, tier: standard}
+  - {id: T8, title: 측정된 metadata 반복 조회 축소, depends_on: [T4, T7], status: done, tier: standard}
   - {id: T9, title: 계정없는 emulator bootstrap 안정화, depends_on: [T7], status: done, tier: light}
   - {id: T10, title: 실제 hot journal Android 재현, depends_on: [T4, T7, T9], status: in_progress, tier: standard}
+  - {id: T11, title: 검증된 SQLite crash rollback, depends_on: [T4, T7, T9], status: pending, tier: standard}
 ---
 
 # 날짜별 복구와 내구성 상태
@@ -299,9 +300,49 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
 ### HotJournalSpillProbe: 정상 rollback 경로의 실제 Android 재현
 
 - `HotJournalSpillProbe`：기존16사례를보존하고 reset-spill-before 한사례를추가하여17verifier/17cleanup·죽인holdPASS0으로확장한다. 현재작업은미수정source에서실제실패를입증하는test-only probe이며정상reopen READY를기대한다. readonly오류를기대PASS로변경/skip하지않는다.
-- `HotJournalSpillProbe`：고정합성today와약20,000개연속eligible과거date(enrolled=today-20000, 모든date>=1970/오늘미만), canonical요청scope와유효EMPTY또는CONFIRMED day/최소한참조FK구조·필요dataset를rawSQL단일seed transaction으로넣는다. store전체load READY와rowcounts/구성/binding/최초coverage를seed전용privateowner에증명한뒤정상reset(expectedGeneration)을호출한다. metadatacap과scope/field validation을우회하는잘못된행을넣지않는다. 기존performancefixture는변경하지않고같은SQLseed패턴을참조할수있다.
+- `HotJournalSpillProbe`：고정합성today와4,096개연속eligible과거date(enrolled=today-4096, 모든date>=1970/오늘미만), canonical요청scope와유효CONFIRMED day/최소한참조FK구조·각dataset의정확4096 UTF8byte ASCII syntheticopaquehandle을rawSQL단일seed transaction으로넣어16MiB이상을확보한다. 실제spill증명없이는크기만으로통과못한다. scope문자열/statement등상수는loop밖에서재사용하며최초전체READY/canonical/fullcoverage/row검증은유지하고중복preseedscoped검증만생략가능하다. reopen검증은그대로다. store전체load READY와rowcounts/구성/binding/최초coverage를seed전용privateowner에증명한뒤정상reset(expectedGeneration)을호출한다. metadatacap과scope/field validation을우회하는잘못된행을넣지않는다. 기존performancefixture는변경하지않고같은SQLseed패턴을참조할수있다.
 - `HotJournalSpillProbe`：실제beforeCommit hook에서mainDB digest가reset직전baseline과달라졌고 -journal이regular/NOFOLLOW이며SQLite rollback journal첫8byte magic d9d505f920a163d7·충분한크기가존재함을확인한뒤hold한다. 단순nonempty/임의sleep으로spill을가정하지않는다. seed가spill을만들지못하면진단후실패로보고한다. no-newtimeout/PRAGMAcache/spill/durability변경, 충분한boundedrows로실제cache넘김을만든다.
 - `HotJournalSpillProbe`：host 실제kill/newPID후 최초store.load READY/이전generation·구성/binding/rowcounts/checked·uploadcoverage를확인하여원래committed상태로SQLite rollback이가능해야한다. 이어 store.invalidate(expectedGeneration):SyncCommit으로정상mutation COMMITTED/새generation을확인한다. destination/enrollment/categories/binding동일·automaticoff이며old day는archived로남아있고새coverage는비어있음을검증한다. 원격/health IO0, 자동reset/삭제로성공을만들지않는다. probe수정전현재source에서는이expectation실패가예상되며Android실패증거확인전productionfix를공개하지않는다.
+
+
+### SyncStateHotJournalRecovery: 검증된 rollback 예외
+
+```kotlin
+// SyncStateHotJournalRecovery — new app-private helper; no core/public port or schema change
+internal class SyncStateHotJournalRecovery(private val database: SyncStateDatabase) {
+    fun recover(validateContent: (android.database.sqlite.SQLiteDatabase) -> Unit,
+        checkCancelled: () -> Unit)
+    companion object {
+        fun guardSidecarPaths(databaseFile: java.io.File)
+    }
+}
+// SyncStateDatabase — additive methods, existing constructor/lock/schema/reset remain
+internal fun openAdmittedRead(validateContent: (android.database.sqlite.SQLiteDatabase) -> Unit,
+    checkCancelled: () -> Unit): android.database.sqlite.SQLiteDatabase?
+internal fun openExistingForRollback(): android.database.sqlite.SQLiteDatabase
+// SyncStatePhase — retain all existing values; add four payload-free fault phases
+internal enum class SyncStatePhase {
+    INITIAL_SCHEMA_READY, INITIAL_BEFORE_PUBLISH, INITIAL_PUBLISHED,
+    RESET_OWNER_BEFORE, RESET_OWNER_WRITING, RESET_OWNER_WRITTEN,
+    RESET_STAGE_SCHEMA_READY, RESET_PREPARED, RESET_MARKER_PUBLISHED,
+    HOT_RAW_SAVED, HOT_CANARY_VALIDATED, HOT_BEFORE_ORIGINAL, HOT_ORIGINAL_ROLLED_BACK
+}
+```
+
+- `SyncStateHotJournalRecovery`：recover는canonical pathLock을소유한호출에서만동작하며IO worker를새로만들지않는다. 평상시readonlyopen성공은scratch/RW없이그대로반환한다. openAdmittedRead는실제SQLiteReadOnlyDatabaseException에서만helper를호출하며message/추정code776으로분기하지않는다. 일반BUSY/IO/CORRUPT/UNSUPPORTED/ABSENT·resetmarker는복구승격대상이아니다. reset allowMarker=true(stage/installed)에는이일반fallback을적용하지않는다.
+- `SyncStateHotJournalRecovery`：guardSidecarPaths는첫nativereadonlyopen전에도정확한DB/-journal/-wal/-shm의existingentry종류/NOFOLLOW를확인한다. symlink/directory/special/hardlink(nlink!=1)는거부한다. regular-journal의EOF8byte가magic d9d505f920a163d7이면지원하지않는master/super참조후보로nativeopen전거부한다. helper대상은WAL/SHM부재·표준SQLite header(format1/read/writeversion1)·journal첫magic과page/sector크기·충분한record길이가입증된단일DELETE pair뿐이다. header/EOF shortread·IO·파일변화·모호함은failclosed,검증불가를불일치/정상으로해석하지않는다. footerchecksum/길이를완화하여외부path를허용하지않는다.
+- `SyncStateHotJournalRecovery`：sourceFD는Os.open O_NOFOLLOW/fstat로regular·nlink1·privateparent내부를확인하고64KiB등boundedbuffer로copy/hash한다. device/inode/size/전체SHA256를처음과원본RW직전에비교하며sourceDB/journal/sidecar/marker집합도동일해야한다. JavaSQLite pathopen의NOFOLLOW보장을꾸며내지않고same-app privateparent+singleprocess pathLock과직전identity재검사가전제다.
+- `SyncStateHotJournalRecovery`：원본raw DB/journal을noBackup parent의독립prepareUUIDdir에보관·file/dir fsync·프로토콜증명후동일pair fingerprint의complete dir로atomicpublish한다. 예: basename.hot-journal.prepare-UUID → basename.hot-journal-SHA256. complete dir는manifest와raw/state.db,raw/state.db-journal만허용한다. manifest는 protocol=sync-hot-journal/1·ownerUUID·두digest·두size만canonical고정형식으로저장(최대512bytes 자체writer상한),raw를SQLite로열지않는다. 동일complete pair는모든owner/layout/hash를재검증해재사용하여동일실패마다raw중복증가를막는다. 기존manifest도NOFOLLOW FD/regular/nlink·512byte사전상한·정확필드/순서/정규형/re-encode byte동일·owner/dir fingerprint/실제raw size/hash일치를검증하며초과/unknown/모호한입력은원본RW없이거부한다. incompleteprepare는active로채택하지않고unknown/충돌/symlink를읽거나삭제하지않는다.
+- `SyncStateHotJournalRecovery`：완전raw에서별도workUUIDdir의state.db/state.db-journal을만들어기존파일전용RW로native rollback한다. source와work는동일flags/NO_LOCALIZED_COLLATORS/no-delete handler/DELETE·FULL·foreignkeys조건이다. recovery opener는CREATE/upgrade/reset/schema생성없음; strict rollback-header/read-writeversion1·WAL/SHM부재·외부footer거부후에만candidate/original에동일하게명시DELETE/FULL을선택하고open후DELETE/FULL을검사한다. Android15/16은journalmode생략시SQLiteGlobal property/resource 기본TRUNCATE를택하므로생략을preserve-mode로오해하지않는다. original에대한선택은candidate전체검증·원본불변뒤이며unknownWAL을DELETE로변환하지않는다. schema/version/FK/quick_check와Store callback전체검증성공후닫고원본불변재검사한다. 그다음만original existing-only native rollback→동일전체검증→닫기→원래readonlyadmission재진입이다. 앱이journal삭제/편집/replay/원본자동restore를하지않는다.
+- `SyncStateHotJournalRecovery`：validateContent는Store의같은validateActive(고정KST date)+capacity검사를사용하여binding정규형·정확attempt·비선택profile포함모든active day/dataset를검사한다. schema만정상인malformedmetadata는통과못한다. scratch Admission/핸들을original READY/CAS proof로재사용하지않는다. load/loadForScope/loadDay/loadCurrentAttempt/readBinding와write pre-admission이공통openAdmittedRead를사용한다. 원래메서드의stale/null/error계약및정상narrowheader의coverage비주장은유지한다.
+- `SyncStateHotJournalRecovery`：checkCancelled는source/native전및copychunk/검증사이에서호출하고원본RW전취소면원본bytes불변이다. native rollback중에는실제동기호출/close가끝날때까지pathLock을보유하고그뒤취소를전파한다. 실패/취소/디스크부족때raw와원본을보존하고성공/빈state/reset으로바꾸지않는다. work는자기owner/entry모두NOFOLLOW입증후만정리하며unknown entry가있으면어느것도선삭제하지않는다. raw는성공후에도보존하고retention정책/UI를새로추가하지않는다. 단계enum seam은defaultnoop이며경로/계정/내용을노출하지않는다.
+
+### HotJournalRecoveryChecks: 요구 기반 검증
+
+- `HotJournalRecoveryChecks`：기존SQLite32·Session9·성능72/API·host17의기대/단언을유지한다. auxiliary Native fault fixture는한정된작은syntheticDB에서test-only 작은cache를사용해확실한dirty pair를복제할수있으나production설정/실제20kOSprobe조건은절대바꾸지않는다. livewriter를beforeCommit hook에정지해DB/journal을함께복사하고원래writer는throw로정리한다. 이복제는실제OSkill의대체증거가아니며faultpartition실행용이다. schema/metadata유효성과실제header/main변화를증명한다.
+- `HotJournalRecoveryChecks`：정상pair의최초load/scopedload/day/header/binding/write(invalidate) 각entry가복원된committed metadata를반환하고raw원본쌍보존·정상mutation/이전archive격리·동일pair재시도rawdedupe를확인한다. 건강/remote IO0이며새confirmation시각을꾸미지않는다. 정상no-journal fastpath는helper artifact/RW 없음이다.
+- `HotJournalRecoveryChecks`：지원하지않는user_version/extra schema와지원schema의malformedbinding/비선택scopeleaf/attempt관계인dirty pair는work검증실패·original DB/journal byte동일·originalRW0이다. regularfooter참조후보·WAL/SHM·symlink/hardlink/unknownentry·원본hash변화도원본RW0/외부sentinel불변/모든unknown파일보존이다. footer실패를정상으로우회하지않는다.
+- `HotJournalRecoveryChecks`：HOT_RAW_SAVED/HOT_CANARY_VALIDATED/HOT_BEFORE_ORIGINAL에서CE/failure를주입해원본불변·raw보존·다음동일process/새Store재시도가가능함을검증하고,HOT_ORIGINAL_ROLLED_BACK후주입은확인성공을꾸미지않으면서다음readonlyload에복원값이있음을확인한다. rawcopy완료전부분실패도inactive준비물재채택없이재시도가능해야한다. 공개artifact에raw/filemanifest/account/URI/UUID/예외원문을추가하지않는다. helperbackup이추가된실제hostcleanup은정확한protocol/owner/layout/전체entry검증후만지운다.
 
 ## 3. 작업
 
@@ -589,7 +630,7 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
 
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
-  | `android/app/src/androidTest/java/com/ny/my/health/SyncStateProcessRecoveryInstrumentedTest.kt` | 수정 | 실제spill 20,000행 reset-before hold/reopen 회귀 |
+  | `android/app/src/androidTest/java/com/ny/my/health/SyncStateProcessRecoveryInstrumentedTest.kt` | 수정 | 실제spill 4096행×4096byte handle reset-before hold/reopen 회귀 |
   | `android/ci/verify-sync-state-process-recovery.sh` | 수정 | 기존16보존+새1사례/17count/고정진단allowlist |
 
 - **인터페이스**: 2절 `HotJournalSpillProbe`와 2절 `SqliteSyncStateStore`, 2절 `SyncState` 참조. 기존fixture/store/host 메서드만활용하고제품API/DB/engine/기타test는수정하지않는다.
@@ -600,6 +641,31 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
 - **완료 기준**: shell/YAML/각runnerline문법·APK/testAPK compile, 실제API35/36 source미수정probe에서spill증명후read-only실패또는정확한반증확인. 실패를별도probe로기록하고제품통과를의미하지않음. finalmerge는수정후같은17사례/기능/후측정이모두PASS필수다.
 - **검증 방법**: `bash -n android/ci/verify-sync-state-process-recovery.sh`; android cwd `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`; 실제PR양API workflow.
 - **주의사항**: root의독점Gradlegrant필수, 최초compile실패시중단보고. 개별seed loop별store.transact를20,000번호출하지않는다. 임의cache/durability조정·timeout확대·원본read-only오류를기대값으로수용·raw출력공개금지. source현head에고정한후CI실행중다른inactive설계작업만가능하며productionfix공개는Android실패증거확인뒤다.
+
+
+### T11: 검증된 SQLite crash rollback
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `android/app/src/main/java/com/ny/my/health/SyncStateHotJournalRecovery.kt` | 신규 | private raw/work pair·NOFOLLOW·native rollback 검증 |
+  | `android/app/src/main/java/com/ny/my/health/SyncStateDatabase.kt` | 수정 | typed recovery 경계·기존파일전용open·enum seam |
+  | `android/app/src/main/java/com/ny/my/health/SqliteSyncStateStore.kt` | 수정 | 모든최초entry의fullvalidator/cancellation 연결 |
+  | `android/app/src/androidTest/java/com/ny/my/health/SqliteSyncStateStoreInstrumentedTest.kt` | 수정 | 요구기반fault/보존/retry/cancel/entry회귀 |
+  | `android/app/src/androidTest/java/com/ny/my/health/SyncStateProcessRecoveryInstrumentedTest.kt` | 수정 | raw/work artifact의소유cleanup만보완 |
+
+- **인터페이스**: 2절 `SyncStateHotJournalRecovery`, 2절 `SyncStateDatabase`, 2절 `SyncStatePhase`, 2절 `HotJournalRecoveryChecks` 참조. Store/core public포트/schema/기존history는변경하지않는다.
+- **결정 로직**: header/footer·marker/sidecar/metadata부적합은원본RW거부, 실제typedreadonly+정상단일DELETE pair+work전체검증+원본불변때만native rollback허용. 판정은helper의순수bytepredicate/validation 함수, 파일protocol은helper, SQLiteopen검사는Database, privatebinding/active무결성은기존Storevalidator가소유한다.
+- **호출 순서**: readonlyfastpath→typedfailure→FD/pair/footer분류→durable raw보존→별도worknative rollback/fullvalidate→원본identity/hash재확인→원래경로native rollback/fullvalidate→기존readonlyadmission.
+- **작성할 테스트**:
+  - "Validated hot journals restore committed state through every store entry without fabricating confirmations" — 신규, 정상/entry/원본backup/dedupe(①③④⑤).
+  - "Unsupported or malformed recovered pairs preserve original bytes without a writable original open" — 신규, schema/binding/비선택leaf/attempt(③④⑤).
+  - "Unsafe rollback sidecars and changed source pairs never follow external paths or delete unknown files" — 신규, footer/파일종류/identity/unknownentry(③④).
+  - "Interrupted rollback preparation retains raw evidence and safely retries without inventing success" — 신규, 단계CE/failure/다음Store(③④⑤).
+- **완료 기준**: 기존모든회귀보존/새Native 실제양API PASS·17OS실제spill verifier/cleanup PASS·같은72/API성능재측정·원본미지원/손상보존/모든entry검증·최종독립Q1재검토통과. 고정probe CI시작뒤별도worktree에서local authoring가능하나productionfix공개/완료판정전에는미수정Android 실제실패증거를root가확인해야한다. sourcefix완료를컴파일로대신하지않는다.
+- **검증 방법**: android cwd `./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:assembleDebugAndroidTest`; 최종PR API35/36 workflow 및safe artifact 원본대조.
+- **주의사항**: 최초compile앞root독점grant필수. 실패시중단보고/숨은교정루프금지. unknownWAL/ATTACH나rawcopy자체를sandbox로간주하지않는다. 원격/계정/권한/의존성추가없음. rootADR009 Proposed에원본비변경문구의정확한예외를기록했고최종독립적합성후만Accepted다.
 
 ## 4. 검증
 
@@ -768,3 +834,17 @@ Important Q1 추가회귀: finalquality exacte62 별도세션이데스크톱SQLi
 T10 recovery1/2 — 조립통계test0으로인라인작성할테스트항목을기존동일행동명의들여쓴bullet로표기보정했다. 테스트기대/API/source무변경, 조립test1/참조0실패확인후위임한다.
 
 T10 recovery2/2 — 실행자가현재configure의등록일=yesterday강제와20,000일이전등록fixture의동일config재configure기대충돌을발견했다. 정상mutation재개증명은기존invalidate(expectedGeneration) CAS로바꿔같은구성/등록일/binding·자동off·새빈coverage/oldarchive보존을확인한다. sourceAPI/정상reopen기대/기존16case변경없음, 잘못된configure기대를고집하지않는다.
+
+parent_rev 8beb945 재검토: 기존source/스펙/metadata스키마/권한범위는유지하고ImportantQ1을닫을검증된rollback helper 파일과ADR009 Proposed를추가했다. 일반read의절대비변경문구는정상fastpath에유지하며알려진crash복구예외만구체화했다. 새서버/권한/건강payload저장은없고기존raw metadata pair를noBackup에보존한다. 실제Androidfailure와후속독립검증전sourcefix완료가아니다.
+
+T11 실행전계획: Q1 요구를기존원자성/원본보존의범위에서구체화했다. T10 immutable Android actual실패확인이선행의존성이며아직source구현지시가아니다. fullvalidator없이schema만보거나allreadRW/journal삭제로수정하지않는다. ADR009 Proposed/parent8beb를승인범위의결정기록으로삼고기존006결정은승계한다.
+
+T11 recovery1/2 — 브리프검토에서추가phase선언이주석조각이라Shared에누락됨을발견했다. 기존9값과새HOT접두4값의동일enum계약을실제선언블록으로표기하고명시참조를추가, 체크항목의축약phase표기도정확한기존계약명으로맞췄다. source/API/기대정책변경없는브리프전달교정이며재조립후모든4상수포함을확인한다.
+
+T11 recovery2/2 — 공식AOSP15/16 사전조사로journalmode생략이preserve가아니며SQLiteGlobal debug.sqlite.journalmode/resource의기본TRUNCATE를선택함을확인했다. recoveryopener를strictrollbackpair분류후candidate/original동일명시DELETE/FULL로보정하되original은canary전체검증/원본불변후에만열고unknownWAL전환은여전히금지한다. 또한별도보안preflight의manifest reader사전512byte/정규형/owner·dirhash·rawhash검증실패거부를기존프로토콜에명시했다. core/publicAPI/스키마/원본보존/회차를유지한다.
+
+T10 recovery3 (owner-auto 추가교정;앞선2회보존) — e8a93/CI43141798089 API35는Native99완료뒤새case seed-ready60초에서marker전실패하여Q1을입증하지못했다. API36은UTP Maven기존좌표resolve실패로Native0/산출물0이며두POM의현재공식repo200은외부환경근거일뿐CI성공은아니다. 실행중rerun API는403(alreadyrunning)으로재실행을만들지않았다. 품질독립세션의동등조건검토에따라4096행×유효상한4096byte합성handle로실제pager bytes를넘기고main변경+journalmagic/NOFOLLOW증명을유지,seed상수/statement재사용과중복preseedscoped관찰만제거한다. timeout/첫READY·복원전체행·coverage/generation/binding/후속invalidate기대와기존16case는그대로다. Android20kPASS로표현하지않고데스크톱20k와구분한다.
+
+T11 recovery3 (owner-auto 일정한정추가교정;계획교정2회보존) — Q1은실제데스크톱SQLite로확인됐고새동등Androidprobe를immutable commit에고정해CI를시작한다. T11 의존성은기존T4/T7/T9 actualgate로두고, test-only T10source compile/pin뒤별도worktree에서localfix작성은겹칠수있다. T10 actual실패확인전fix공개/완료판정금지및최종양API17host/모든회귀/동일성능/독립Q1재검토gate는그대로다. T10과겹치는ProcessTest는authoring동결snapshot에서분기하고추가test보정과충돌시둘모두보존해재통합한다.
+
+실제e62/CI43139507838 원본대조완료: 양API각99/0/0/0, 새16recovery+16cleanup/holdPASS0, 기존historyhost20. ZIP SHA256 API35 c7958e6ce0f49f34c9c92dd1d9fd2fc230a599104177d37c7c0346cce115ff85/API36 01af04d4119a6c9d319535537fa2d7f685b742eae4c683994dc6a46b51782b34. T5/T6/T8 지정범위done이며새Q1은T10/T11로전체병합을계속차단한다. Q1수정뒤전체회귀를다시검증한다.
