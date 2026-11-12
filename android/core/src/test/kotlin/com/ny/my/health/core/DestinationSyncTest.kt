@@ -26,6 +26,9 @@ class DestinationSyncTest {
         val generation = DestinationGeneration("00000000-0000-0000-0000-000000000001")
         val rows = mutableMapOf<Pair<LocalDate, ReadScopeKey>, DayState>()
         val currentObservedAfterFullRead = mutableListOf<Boolean>()
+        var unresolvedError: Exception? = null
+        var unresolvedStale = false
+        val unresolvedDates = mutableListOf<LocalDate>()
         var fullReads = 0
         var currentReads = 0
         var beforeCurrent: () -> Unit = {}
@@ -70,6 +73,16 @@ class DestinationSyncTest {
         override suspend fun loadDay(expected: DestinationGeneration, date: LocalDate, scopeKey: ReadScopeKey): DayState? {
             check(expected == state.generation)
             return rows[date to scopeKey]
+        }
+        override suspend fun loadUnresolvedCreates(expected: DestinationGeneration, date: LocalDate): Set<Dataset>? {
+            unresolvedDates += date
+            unresolvedError?.let { throw it }
+            if (unresolvedStale || expected != state.generation) return null
+            return rows.filterKeys { it.first == date }.values.flatMap { day ->
+                check(day.isValid(state.generation, state.configuration!!.enrolledDay, this@DestinationSyncTest.date.plusDays(2)))
+                day.datasets.values.filter { it.targetHandle == null && it.phase in setOf(FilePhase.RUNNING,
+                    FilePhase.INDETERMINATE, FilePhase.REMOTE_STALE, FilePhase.BLOCKED) }.map { it.dataset }
+            }.toSet()
         }
         override suspend fun reset(expected: DestinationGeneration?) = SyncCommit(CommitStatus.INVALID, generation)
         override suspend fun transact(expected: DestinationGeneration?, mutation: SyncMutation): SyncCommit {
@@ -197,6 +210,84 @@ class DestinationSyncTest {
         suspend fun run(trigger: SyncTrigger = SyncTrigger.MANUAL) = engine
             .run(trigger, store.state.generation, store.state.attempt!!.id)
         fun day() = store.rows.getValue(date to store.state.scopeKey!!)
+    }
+
+    @Test
+    fun `New scope preserves unknown create from another scope for the same physical dataset`() = runBlocking {
+        val f = Fixture(mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY))
+        f.omitAck = true
+        assertEquals(BatchStatus.PENDING, f.run().status)
+        val explicit = f.day()
+        assertNull(explicit.blocker)
+        assertEquals(FilePhase.INDETERMINATE, explicit.datasets.getValue(Dataset.DAILY).phase)
+        assertNull(explicit.datasets.getValue(Dataset.DAILY).targetHandle)
+        assertEquals(1, f.written.size)
+
+        val summary = mapOf(DataType.STEPS to ReadScope.SUMMARY)
+        f.store.admit(summary)
+        f.access = ReadAccess(true, summary.keys, summary)
+        assertNotEquals(explicit.scopeKey, f.store.state.scopeKey)
+        assertNull(f.store.rows[date to f.store.state.scopeKey!!])
+        f.remote.clear()
+        f.reconcileMode = "unresolved-absent"
+        f.beforeReconcile = { files ->
+            assertTrue("다른 범위의 같은 physical dataset에 남은 create 불확실성을 보존해야 한다",
+                files.single().createMayHaveSucceeded)
+            assertEquals(FilePhase.INDETERMINATE, f.day().datasets.getValue(Dataset.DAILY).phase)
+        }
+        val inspect = f.beforeReconcile
+        f.beforeReconcile = { files -> inspect(files); throw CancellationException("합성 새 범위 journal 뒤 재중단") }
+        try { f.run(); fail("취소를 전파해야 한다") } catch (_: CancellationException) { }
+        assertEquals(1, f.written.size)
+        val reopened = Fixture(summary)
+        reopened.store.state = f.store.state
+        reopened.store.rows.putAll(f.store.rows)
+        reopened.store.sequence = f.store.sequence
+        reopened.store.admit()
+        reopened.reconcileMode = "unresolved-absent"
+        reopened.beforeReconcile = { assertTrue(it.single().createMayHaveSucceeded) }
+        assertEquals(BatchStatus.BLOCKED, reopened.run().status)
+        assertEquals(BlockReason.DESTINATION_RECONCILIATION_REQUIRED, reopened.day().blocker)
+        assertTrue(reopened.written.isEmpty())
+    }
+
+    @Test
+    fun `Reduced grants adopt a freshly proven target despite another scope unknown create`() = runBlocking {
+        val f = Fixture()
+        f.omitAck = true
+        assertEquals(BatchStatus.PENDING, f.run().status)
+        val previousWrites = f.written.size
+        val reduced = mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY)
+        f.store.admit(reduced)
+        f.access = ReadAccess(true, reduced.keys, reduced)
+        f.beforeReconcile = { assertTrue(it.single().createMayHaveSucceeded) }
+        assertEquals(BatchStatus.COMPLETED, f.run().status)
+        assertEquals(previousWrites, f.written.size)
+        assertTrue(f.day().isUploaded())
+    }
+
+    @Test
+    fun `Uncertainty queries exclude other dates and generations and fail closed on stale or unavailable reads`() = runBlocking {
+        val f = Fixture(mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY))
+        f.omitAck = true
+        assertEquals(BatchStatus.PENDING, f.run().status)
+        assertEquals(setOf(Dataset.DAILY), f.store.loadUnresolvedCreates(f.store.generation, date))
+        assertTrue(f.store.loadUnresolvedCreates(f.store.generation, date.minusDays(1))!!.isEmpty())
+        assertNull(f.store.loadUnresolvedCreates(DestinationGeneration("00000000-0000-0000-0000-000000000099"), date))
+        val freshGeneration = Fixture(mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY))
+        val nextGeneration = DestinationGeneration("00000000-0000-0000-0000-000000000099")
+        freshGeneration.store.state = freshGeneration.store.state.copy(generation = nextGeneration)
+        assertTrue(freshGeneration.store.loadUnresolvedCreates(nextGeneration, date)!!.isEmpty())
+        for (stale in listOf(false, true)) {
+            val blocked = Fixture(mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY))
+            if (stale) blocked.store.unresolvedStale = true
+            else blocked.store.unresolvedError = IllegalStateException("합성 손상 또는 사용 불가")
+            assertEquals(if (stale) BatchStatus.STALE else BatchStatus.PENDING, blocked.run().status)
+            assertEquals(listOf(date), blocked.store.unresolvedDates)
+            assertEquals(0, blocked.reads)
+            assertTrue(blocked.reconciledDatasets.isEmpty())
+            assertTrue(blocked.written.isEmpty())
+        }
     }
 
     @Test

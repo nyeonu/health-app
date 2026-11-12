@@ -52,6 +52,8 @@ interface SyncStateStore {
         return state.attempt.takeIf { state.generation == expected }
     }
     suspend fun loadDay(expected: DestinationGeneration, date: LocalDate, scopeKey: ReadScopeKey): DayState?
+    /** All profiles of this generation/date; only a stale generation returns null, read failures throw. */
+    suspend fun loadUnresolvedCreates(expected: DestinationGeneration, date: LocalDate): Set<Dataset>?
 }
 
 /** 파일 본문은 메모리에서만 전달하며 불명확한 기존 대상을 새로 만들지 않는다. */

@@ -82,6 +82,46 @@ internal class SqliteSyncStateStore internal constructor(
 
     }
 
+    override suspend fun loadUnresolvedCreates(expected: DestinationGeneration, date: LocalDate): Set<Dataset>? = withContext(Dispatchers.IO) {
+        val coroutine = currentCoroutineContext()
+        val checkedAt = today()
+        synchronized(database.pathLock) {
+            val db = admittedRead(checkedAt,coroutine) ?: throw IllegalStateException("동기화 DB가 없습니다")
+            db.use {
+                val meta = metadata(db)
+                if (meta.generation != expected) return@synchronized null
+                val unresolved = mutableSetOf<Dataset>()
+                val args = arrayOf(expected.value,date.toString())
+                // Both primary keys start with generation/date; consume all profiles together,
+                // including non-selected profiles and unmatched dataset rows.
+                db.rawQuery("SELECT * FROM day WHERE generation=? AND date=? ORDER BY scope_key",args).use { days ->
+                    db.rawQuery("SELECT * FROM dataset WHERE generation=? AND date=? ORDER BY scope_key,dataset",args).use { datasets ->
+                        var hasDataset = datasets.moveToFirst()
+                        while (days.moveToNext()) {
+                            coroutine.ensureActive()
+                            val files = linkedMapOf<Dataset,DatasetState>()
+                            while (hasDataset && datasets.s("scope_key") == days.s("scope_key")) {
+                                coroutine.ensureActive()
+                                val file = decodeDataset(datasets)
+                                require(files.put(file.dataset,file) == null)
+                                hasDataset = datasets.moveToNext()
+                            }
+                            val day = decodeDay(days,files,meta,checkedAt)
+                            for (file in day.datasets.values) {
+                                if (file.targetHandle == null && file.phase in setOf(FilePhase.RUNNING,
+                                        FilePhase.INDETERMINATE,FilePhase.REMOTE_STALE,FilePhase.BLOCKED))
+                                    unresolved += file.dataset
+                            }
+                        }
+                        require(!hasDataset)
+                    }
+                }
+                coroutine.ensureActive()
+                unresolved.toSet()
+            }
+        }
+    }
+
     suspend fun configure(expected: DestinationGeneration?, configuration: SyncConfiguration,
         binding: PrivateDestinationBinding): SyncCommit {
         if (!configuration.isValid() || configuration.enrolledDay != today().minusDays(1)) return SyncCommit(CommitStatus.INVALID, expected)

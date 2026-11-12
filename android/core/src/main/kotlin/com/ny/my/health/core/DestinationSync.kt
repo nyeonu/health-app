@@ -113,6 +113,8 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                     activeDay = null
                     continue
                 }
+                val unresolved = store.loadUnresolvedCreates(generation, date) ?: throw Halt(BatchStatus.STALE)
+                current()
                 val snapshot = try { reader.readScoped(date, attempt.requestedScopes) }
                 catch (cancel: CancellationException) { throw cancel }
                 catch (_: Exception) {
@@ -132,14 +134,14 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                         FileKey(generation, date, attempt.scopeKey, dataset, old.revision.digest),
                         requireNotNull(old.targetHandle), requireNotNull(old.confirmedAt)) else old.priorConfirmation
                 }
-                fun unresolvedCreate(old: DatasetState?): Boolean = old != null && old.targetHandle == null &&
-                    old.phase in setOf(FilePhase.RUNNING, FilePhase.INDETERMINATE,
-                        FilePhase.REMOTE_STALE, FilePhase.BLOCKED)
+                fun unresolvedCreate(dataset: Dataset, old: DatasetState?): Boolean = dataset in unresolved ||
+                    (old != null && old.targetHandle == null && old.phase in setOf(FilePhase.RUNNING,
+                        FilePhase.INDETERMINATE, FilePhase.REMOTE_STALE, FilePhase.BLOCKED))
                 val files = revision.files.mapValues { (dataset, _) ->
                     val old = previous.datasets[dataset]
                     // 과거 확인은 이력이며 현재 원격 대상의 안전성은 매번 다시 검증한다.
                     DatasetState(dataset, revision.key,
-                        if (unresolvedCreate(old) ||
+                        if (unresolvedCreate(dataset, old) ||
                             (old?.revision == revision.key && old.phase == FilePhase.CONFIRMED))
                             FilePhase.INDETERMINATE else FilePhase.PENDING,
                         true, old?.targetHandle, clock.instant(), null, prior(dataset))
@@ -158,7 +160,7 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                         FileKey(generation, date, attempt.scopeKey, dataset, revision.key.digest), file,
                         MessageDigest.getInstance("SHA-256").digest(file.content.toByteArray(Charsets.UTF_8))
                             .joinToString("") { "%02x".format(it.toInt() and 255) }, files[dataset]?.targetHandle,
-                        createMayHaveSucceeded = unresolvedCreate(files[dataset]))
+                        createMayHaveSucceeded = unresolvedCreate(dataset, files[dataset]))
                 }
                 try {
                     if (planned.isNotEmpty()) {

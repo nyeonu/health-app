@@ -345,6 +345,87 @@ class SyncExecutionSessionInstrumentedTest {
         }
     }
 
+    @Test
+    fun crossScopeUnknownCreatesSurviveNewJournalCancellationAndSqliteReopen() = runBlocking {
+        for (found in listOf(false, true)) {
+            val f = Fixture()
+            try {
+                f.configure()
+                f.write = { _, _ -> }
+                assertEquals(BatchStatus.PENDING, f.session().run(SyncTrigger.MANUAL, f.generation).status)
+                val summary = mapOf(DataType.STEPS to ReadScope.SUMMARY)
+                f.access = ReadAccess(true, summary.keys, summary)
+                val summaryKey = SyncPlanner.scopeKey(f.config, ReadAccess(true, summary.keys, summary))!!
+                fun reopenedStore() = SqliteSyncStateStore(SyncStateDatabase(f.file), { f.date })
+                assertNull(reopenedStore().loadDay(f.generation, f.date.minusDays(1), summaryKey))
+                assertEquals(setOf(Dataset.DAILY), reopenedStore().loadUnresolvedCreates(f.generation, f.date.minusDays(1)))
+                f.reconcile = { files ->
+                    assertTrue(files.single().createMayHaveSucceeded)
+                    val journal = reopenedStore().loadDay(f.generation, f.date.minusDays(1), summaryKey)!!
+                    assertEquals(FilePhase.INDETERMINATE, journal.datasets.getValue(Dataset.DAILY).phase)
+                    throw CancellationException("합성 새 범위 journal 뒤 재중단")
+                }
+                try { f.session().run(SyncTrigger.MANUAL, f.generation); fail("취소를 전파해야 한다") }
+                catch (_: CancellationException) { }
+                assertEquals(setOf(Dataset.DAILY), reopenedStore().loadUnresolvedCreates(f.generation, f.date.minusDays(1)))
+                f.reconcile = { files ->
+                    assertTrue(files.single().createMayHaveSucceeded)
+                    if (!found) throw DestinationException(BlockReason.DESTINATION_RECONCILIATION_REQUIRED)
+                    ReconciledFiles(files.map { f.confirmation(it.key) }, emptyList(), emptySet())
+                }
+                assertEquals(if (found) BatchStatus.COMPLETED else BatchStatus.BLOCKED,
+                    f.session(alias = true).run(SyncTrigger.MANUAL, f.generation).status)
+                assertEquals(1, f.writes.get())
+                val result = reopenedStore().loadDay(f.generation, f.date.minusDays(1), summaryKey)!!
+                if (found) assertTrue(result.isUploaded())
+                else assertEquals(BlockReason.DESTINATION_RECONCILIATION_REQUIRED, result.blocker)
+                assertTrue(reopenedStore().loadUnresolvedCreates(f.generation, f.date.minusDays(2))!!.isEmpty())
+                val next = f.store().invalidate(f.generation)
+                assertEquals(CommitStatus.COMMITTED, next.status)
+                assertNull(reopenedStore().loadUnresolvedCreates(f.generation, f.date.minusDays(1)))
+                assertTrue(reopenedStore().loadUnresolvedCreates(next.generation!!, f.date.minusDays(1))!!.isEmpty())
+            } finally { f.close() }
+        }
+    }
+
+    @Test
+    fun physicalUncertaintyReadRejectsMalformedOtherProfilesOrphansAndUnavailableDatabases() = runBlocking {
+        for (damage in listOf("day", "dataset", "orphan", "unsupported", "corrupt", "absent")) {
+            val f = Fixture()
+            try {
+                if (damage != "absent") {
+                    f.configure()
+                    f.write = { _, _ -> }
+                    assertEquals(BatchStatus.PENDING, f.session().run(SyncTrigger.MANUAL, f.generation).status)
+                    val summary = mapOf(DataType.STEPS to ReadScope.SUMMARY)
+                    f.access = ReadAccess(true, summary.keys, summary)
+                    f.reconcile = { throw CancellationException("합성 다른 범위 journal 준비") }
+                    try { f.session().run(SyncTrigger.MANUAL, f.generation); fail("취소를 전파해야 한다") }
+                    catch (_: CancellationException) { }
+                    if (damage == "corrupt") f.file.writeText("합성 손상")
+                    else f.db.openForWrite().use { db ->
+                        when (damage) {
+                            "day" -> db.execSQL("UPDATE day SET phase='INVALID' WHERE scope_key=?", arrayOf(f.key.value))
+                            "dataset" -> db.execSQL("UPDATE dataset SET phase='INVALID' WHERE scope_key=?", arrayOf(f.key.value))
+                            "orphan" -> {
+                                db.setForeignKeyConstraintsEnabled(false)
+                                db.execSQL("DELETE FROM day WHERE scope_key=?", arrayOf(f.key.value))
+                            }
+                            "unsupported" -> db.version = 2
+                        }
+                    }
+                }
+                val generation = if (damage == "absent") DestinationGeneration(UUID.randomUUID().toString()) else f.generation
+                try {
+                    SqliteSyncStateStore(SyncStateDatabase(f.file), { f.date })
+                        .loadUnresolvedCreates(generation, f.date.minusDays(1))
+                    fail("$damage 조회 실패를 빈 집합으로 바꾸면 안 된다")
+                } catch (cancel: CancellationException) { throw cancel }
+                catch (_: Exception) { }
+            } finally { f.close() }
+        }
+    }
+
     private class Fixture {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val file = File(context.noBackupFilesDir, "session-${UUID.randomUUID()}.db")
@@ -354,7 +435,7 @@ class SyncExecutionSessionInstrumentedTest {
         val clock = Clock.fixed(time, ZoneOffset.UTC)
         val config = SyncConfiguration("synthetic-session", date.minusDays(1), false, setOf(DataType.STEPS))
         val scopes = mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY)
-        val access = ReadAccess(true, scopes.keys, scopes)
+        var access = ReadAccess(true, scopes.keys, scopes)
         val key = SyncPlanner.scopeKey(config, access)!!
         private var configuredGeneration: DestinationGeneration? = null
         val generation: DestinationGeneration get() = requireNotNull(configuredGeneration)
