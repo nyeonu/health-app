@@ -23,7 +23,7 @@ tasks:
   - id: T3
     title: journal 이후 쓰기와 읽기 전용 Drive 재조정
     depends_on: [T1]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T4
     title: 현재 세대의 target 증거와 명시 복구 원자성
@@ -38,7 +38,7 @@ tasks:
   - id: T6
     title: gate 소유자만 실행 credential을 준비
     depends_on: [T4]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T7
     title: 명시 계속으로만 전경 수동 batch 실행
@@ -535,3 +535,7 @@ root의 실행 전 source 검토에서 requirePresent checksum 판정이 MD5만 
 ### T4 복구 1/2 — 독립 검토의 orphan fixture 분리성
 
 독립 quality review는 `34147fdffea4d623db0690568a1c6ea6b5878893`에서 차단0/Suggestion1을 보고했다. orphan fixture의 raw open만 NO_LOCALIZED_COLLATORS가 없어 locale metadata 생성이 broad rejection의 다른 원인이 될 가능성이 있다(실제 생성 관찰은 아직 없음). 배정 test 파일만 raw open flag를 기존 DB와 동일하게 하고 schema 이름이 fixture 전후 동일함을 단언한다. day를 지우기 전에 FK off, 지운 뒤 dataset row가 orphan임을 확인하며 기존 거부·bytes 보존 기대를 유지한다. production 파일/기능/거부 정책 변경은 없다. 다음 Native 실행에서 실제 검증하고 최신 head 재검토한다.
+
+### T6 source 체크포인트 및 T3 분류 해석
+
+T6 prepared-session3개+기존12개를 보존한 testAPK 컴파일을 author1분18초/root13초로 확인했다. 준비 factory는 gate owner 등록·복구 뒤, source access/planner 전에만 호출되고 busy factory는 소비하지 않는다. credential-bound engine은 지역 변수이며 native15개 실제 실행은 pending이다. T6 in_progress 유지. T3의 POST 분류는 401/403만 account blocked이고 나머지 실패는 보수적으로 reconciliation required를 유지한다. 명시적4xx도 원격 mutation 부재를 새 보장으로 가정하지 않으며 blind create/자동 재시도는 금지다. lookup/PATCH의 명시 transient 분류는 그대로다.
