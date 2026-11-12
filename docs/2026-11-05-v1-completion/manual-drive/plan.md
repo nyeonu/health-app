@@ -531,3 +531,7 @@ root가 android/에서 상대 docs 경로로 문서 기록을 시도해 FileNotF
 ### T3 복구 1/2 — 재사용 digest 계약
 
 root의 실행 전 source 검토에서 requirePresent checksum 판정이 MD5만 있는 metadata도 재사용하는 것을 발견했다. 승인 parent의 SHA-256 metadata 재사용 계약에 따라 reuse는 유효한 exact sha256Checksum을 필수로 한다. MD5만 있거나 SHA가 없으면 safe existing same-ID PATCH pending이며 이전 확인으로 채택하지 않는다. fresh write ACK는 checksum 부재를 허용하되 존재하는 SHA/MD5는 일치해야 한다. T3 assigned uploader와 reconciliation test만 보정하며 MD5-only same-ID PATCH 및 SHA exact adoption을 단언한다. 아직 Gradle 미실행이며 baseline·동시2·callback·single-use·read-only 계약은 보존한다.
+
+### T4 복구 1/2 — 독립 검토의 orphan fixture 분리성
+
+독립 quality review는 `34147fdffea4d623db0690568a1c6ea6b5878893`에서 차단0/Suggestion1을 보고했다. orphan fixture의 raw open만 NO_LOCALIZED_COLLATORS가 없어 locale metadata 생성이 broad rejection의 다른 원인이 될 가능성이 있다(실제 생성 관찰은 아직 없음). 배정 test 파일만 raw open flag를 기존 DB와 동일하게 하고 schema 이름이 fixture 전후 동일함을 단언한다. day를 지우기 전에 FK off, 지운 뒤 dataset row가 orphan임을 확인하며 기존 거부·bytes 보존 기대를 유지한다. production 파일/기능/거부 정책 변경은 없다. 다음 Native 실행에서 실제 검증하고 최신 head 재검토한다.

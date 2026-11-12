@@ -91,3 +91,5 @@ PR16 병합 master `4b98aee1119ded1f1c6553e92198ac004d30fa87`에서 9T 계획을
 최초 브리프는 T1 217줄/6671추정토큰, T2 219줄/6726추정토큰, T4 217줄/6666추정토큰이며 모두 상세 Shared design47줄·해소 실패0이었다. PLAN 복구1은 조립기 표기 보정이다. T2 복구1은 새 의존성 없이 기존 core JSON parser를 이용하는 fifth-file predicate 경계 보정이다. T1/T2/T4 분리 authoring을 시작했으며 Gradle은 아직 실행하지 않았다.
 
 manual-drive T1은 root verify25/0/0/0으로 완료했다. T4는 testAPK 컴파일을 author/root가 각각 확인했으며 실제 SQLite/Native 동작은 CI pending이다. 검증 전후 production/test source가 바뀌지 않도록 build slot과 edit freeze를 운영한다. T1 마지막 page100×1000 fixture 보완 후 root가 다시 실행했다.
+
+manual-drive 중간 통합 head34147fd(이후 문서만 변경) root 전체 검증: `/workspace/tooling/pr17-checkpoint-t124.log` BUILD SUCCESSFUL3분8초. actual XML core72+app80=152/0/0/0, APK/lint/testAPK 통과. Android SQLite2개는 compile만 확인한 상태이며 CI43169661306 실행 결과 대기다. 독립 quality 중간 검토에서 차단0·Suggestion1(orphan fixture 분리성)으로 test-only 보정을 배정했다.
