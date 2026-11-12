@@ -22,7 +22,7 @@ fail() {
   case "$current_fixture" in
     pending-before|pending-after|confirm-before|confirm-after|running|reset-before|reset-after|\
     initial-schema-ready|initial-before-publish|initial-published|reset-owner-before|reset-owner-writing|\
-    reset-owner-written|reset-stage-schema-ready|reset-prepared|reset-marker-published) safe_fixture=$current_fixture ;;
+    reset-owner-written|reset-stage-schema-ready|reset-prepared|reset-marker-published|reset-spill-before) safe_fixture=$current_fixture ;;
   esac
   case "$current_stage" in
     install|instrumentation|seed-ready|force-stop|reopen|cleanup|complete) safe_stage=$current_stage ;;
@@ -89,7 +89,7 @@ ready() {
 }
 for fixture in pending-before pending-after confirm-before confirm-after running reset-before reset-after \
   initial-schema-ready initial-before-publish initial-published reset-owner-before reset-owner-writing \
-  reset-owner-written reset-stage-schema-ready reset-prepared reset-marker-published; do
+  reset-owner-written reset-stage-schema-ready reset-prepared reset-marker-published reset-spill-before; do
   current_fixture=$fixture
   current_stage=seed-ready
   seed_output="$scratch/seed-$fixture"
@@ -100,6 +100,10 @@ for fixture in pending-before pending-after confirm-before confirm-after running
   invoke seedAndHoldUntilHostKillsProcess "$seed_output" -e fixture "$fixture" &
   job=$!
   ready "$seed_output"
+  if [[ "$fixture" == reset-spill-before ]]; then
+    grep -Eq '^SYNC_STATE_SPILL main_digest_changed=true journal_magic_verified=true journal_regular=true seeded_rows=20000 pid=[0-9]+' "$seed_output" || fail
+    printf 'spill fixture=reset-spill-before main_digest_changed=true journal_magic_verified=true journal_regular=true seeded_rows=20000\n' >>"$evidence"
+  fi
   dead_pid=$(sed -n 's/.*SYNC_STATE_READY pid=\([0-9]*\).*/\1/p' "$seed_output" | head -1)
   [[ "$dead_pid" =~ ^[0-9]+$ ]] || fail
   live_pids=$(timeout 5s adb shell pidof "$app" 2>"$scratch/pidof-error" | tr -d '\r') || fail
@@ -135,7 +139,7 @@ done
 current_fixture=NONE
 current_stage=complete
 current_output=''
-[[ "$recovery_count" == 16 && "$cleanup_count" == 16 ]] || fail
+[[ "$recovery_count" == 17 && "$cleanup_count" == 17 ]] || fail
 printf 'complete=true recovery_verifier_tests=%s cleanup_tests=%s killed_holds_counted_as_pass=0\n' \
   "$recovery_count" "$cleanup_count" >>"$evidence"
-echo 'complete=true recovery_verifier_tests=16 cleanup_tests=16 killed_holds_counted_as_pass=0'
+echo 'complete=true recovery_verifier_tests=17 cleanup_tests=17 killed_holds_counted_as_pass=0'

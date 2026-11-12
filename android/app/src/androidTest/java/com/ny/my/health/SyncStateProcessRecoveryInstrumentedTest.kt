@@ -1,5 +1,6 @@
 package com.ny.my.health
 
+import android.content.ContentValues
 import android.os.Bundle
 import android.os.Process
 import android.util.Base64
@@ -40,11 +41,17 @@ class SyncStateProcessRecoveryInstrumentedTest {
     private val access = ReadAccess(true, scopes.keys, scopes)
     private val key = SyncPlanner.scopeKey(config, access)!!
     private val revision = RevisionKey("a".repeat(64), time)
+    private val spillRows = 20_000
+    private val spillEnrolled = today.minusDays(spillRows.toLong())
+    private val spillConfig = config.copy(enrolledDay = spillEnrolled, categories = DataType.entries.toSet())
+    private val spillScopes = spillConfig.categories.associateWith { ReadScope.EXPLICIT_DAY }
+    private val spillAccess = ReadAccess(true, spillScopes.keys, spillScopes)
+    private val spillKey = SyncPlanner.scopeKey(spillConfig, spillAccess)!!
     private val id = "00000000-0000-4000-8000-000000000001"
     private val fixtures = setOf("pending-before", "pending-after", "confirm-before", "confirm-after", "running",
         "reset-before", "reset-after", "initial-schema-ready", "initial-before-publish", "initial-published",
         "reset-owner-before", "reset-owner-writing", "reset-owner-written", "reset-stage-schema-ready",
-        "reset-prepared", "reset-marker-published")
+        "reset-prepared", "reset-marker-published", "reset-spill-before")
     private val phases = mapOf("initial-schema-ready" to SyncStatePhase.INITIAL_SCHEMA_READY,
         "initial-before-publish" to SyncStatePhase.INITIAL_BEFORE_PUBLISH,
         "initial-published" to SyncStatePhase.INITIAL_PUBLISHED,
@@ -122,6 +129,86 @@ class SyncStateProcessRecoveryInstrumentedTest {
         }
     }
 
+    private fun spillDay(generation: DestinationGeneration, date: LocalDate) = DayState(date, spillKey,
+        spillScopes, revision, DayPhase.CONFIRMED, spillScopes, time, mapOf(Dataset.DAILY to
+            DatasetState(Dataset.DAILY, revision, FilePhase.CONFIRMED, true, "synthetic-spill-target",
+                time, time.plusSeconds(1), null)), null).also {
+        assertTrue(it.isValid(generation, spillEnrolled, today))
+    }
+
+    private suspend fun seedSpill(): DestinationGeneration {
+        assertFalse(spillEnrolled.isBefore(LocalDate.of(1970, 1, 1)))
+        // 등록 시계만 고정한 뒤 측정 시계로 되돌리며 기존 성능 fixture는 변경하지 않는다.
+        val initial = SqliteSyncStateStore(SyncStateDatabase(file), { spillEnrolled.plusDays(1) })
+        val generation = initial.configure(null, spillConfig, binding).also {
+            assertEquals(CommitStatus.COMMITTED, it.status)
+        }.generation!!
+        val database = SyncStateDatabase(file)
+        database.openForWrite().use { db -> database.transaction(db) {
+            repeat(spillRows) { offset ->
+                val day = spillDay(generation, spillEnrolled.plusDays(offset.toLong()))
+                val leaf = day.datasets.getValue(Dataset.DAILY)
+                db.insertOrThrow("day", null, ContentValues().apply {
+                    put("generation", generation.value); put("date", day.date.toString()); put("scope_key", spillKey.value)
+                    put("requested_scopes_json", SyncStateCodec.encodeScopes(spillScopes))
+                    put("revision", revision.digest); put("generated_at", time.toString()); put("phase", day.phase.name)
+                    put("scopes_json", SyncStateCodec.encodeScopes(spillScopes)); put("checked_at", time.toString()); putNull("blocker")
+                })
+                db.insertOrThrow("dataset", null, ContentValues().apply {
+                    put("generation", generation.value); put("date", day.date.toString()); put("scope_key", spillKey.value)
+                    put("dataset", leaf.dataset.name); put("revision", revision.digest); put("generated_at", time.toString())
+                    put("phase", leaf.phase.name); put("populated", 1); put("target_handle", leaf.targetHandle)
+                    put("started_at", time.toString()); put("confirmed_at", leaf.confirmedAt.toString()); putNull("prior_confirmation_json")
+                })
+            }
+        } }
+        assertSpillState(store().load(), generation)
+        update { it.put("generation", generation.value).put("spillRows", spillRows).put("baselineDigest", digest(file)) }
+        return generation
+    }
+
+    private suspend fun assertSpillState(read: SyncStateRead, generation: DestinationGeneration) {
+        assertEquals(StateStatus.READY, read.status)
+        val state = read.state!!
+        assertTrue(state.isValid()); assertEquals(generation, state.generation); assertEquals(spillConfig, state.configuration)
+        assertEquals(binding, store().readBinding(generation)); assertNull(state.attempt)
+        assertEquals(date, state.coverage.checkedThrough); assertEquals(date, state.coverage.uploadedThrough)
+        assertEquals(time.plusSeconds(1), state.coverage.lastUploadAt)
+        assertTrue(state.days.isEmpty()); assertTrue(state.oldestPendingDays.isEmpty())
+        assertNull(state.coverage.scopeCheckedThrough); assertNull(state.coverage.scopeUploadedThrough)
+        assertNull(state.coverage.scopePendingCount); assertNull(state.coverage.scopeBlockedCount)
+        assertTrue(state.coverage.recentCheckedDays.isEmpty()); assertTrue(state.coverage.recentUploadedDays.isEmpty())
+        val scoped = store().loadForScope(generation, today, spillAccess)
+        assertEquals(StateStatus.READY, scoped.status)
+        val selected = scoped.state!!
+        assertEquals(spillKey, selected.scopeKey); assertEquals(spillScopes, selected.requestedScopes)
+        assertEquals(date, selected.coverage.scopeCheckedThrough); assertEquals(date, selected.coverage.scopeUploadedThrough)
+        assertEquals(0L, selected.coverage.scopePendingCount); assertEquals(0L, selected.coverage.scopeBlockedCount)
+        val recent = setOf(today.minusDays(2), date)
+        assertEquals(recent, selected.days.keys); assertEquals(recent, selected.coverage.recentCheckedDays)
+        assertEquals(recent, selected.coverage.recentUploadedDays); assertTrue(selected.oldestPendingDays.isEmpty())
+        for (day in selected.days.values) assertEquals(spillDay(generation, day.date), day)
+        assertEquals(1, count("generation")); assertEquals(1, count("config")); assertEquals(0, count("attempt"))
+        assertEquals(spillRows, count("day")); assertEquals(spillRows, count("dataset"))
+        SyncStateDatabase(file).openForRead()!!.use { db ->
+            db.rawQuery("PRAGMA foreign_key_check", null).use { assertFalse(it.moveToFirst()) }
+        }
+    }
+
+    private fun proveSpillAndHold(): Nothing {
+        val journal = File(root, "${file.name}-journal")
+        safe(file); safe(journal)
+        assertTrue(Files.isRegularFile(journal.toPath(), LinkOption.NOFOLLOW_LINKS))
+        assertTrue(journal.length() > 512L)
+        val magic = journal.inputStream().use { input -> ByteArray(8).also { assertEquals(8, input.read(it)) } }
+        assertArrayEquals(byteArrayOf(0xd9.toByte(), 0xd5.toByte(), 0x05, 0xf9.toByte(),
+            0x20, 0xa1.toByte(), 0x63, 0xd7.toByte()), magic)
+        assertNotEquals(owned().getString("baselineDigest"), digest(file))
+        update { it.put("mainDigestChanged", true).put("journalMagicVerified", true).put("journalRegular", true) }
+        marker("SYNC_STATE_SPILL main_digest_changed=true journal_magic_verified=true journal_regular=true seeded_rows=20000")
+        hold()
+    }
+
     @Test fun seedAndHoldUntilHostKillsProcess(): Unit = runBlocking {
         gate()
         check(!present(owner) && artifactRoots().isEmpty()) { "기존 fixture를 보존합니다" }
@@ -129,6 +216,11 @@ class SyncStateProcessRecoveryInstrumentedTest {
         if (kind().startsWith("initial-")) {
             store(observer = { if (it == phases.getValue(kind())) hold() }).configure(null, config, binding)
             error("최초 구성 observer에 도달하지 않았습니다")
+        }
+        if (kind() == "reset-spill-before") {
+            val generation = seedSpill()
+            store(hook = { proveSpillAndHold() }).reset(generation)
+            error("실제 spill hold에 도달하지 않았습니다")
         }
         var generation = configure()
         if (kind() in setOf("reset-before", "reset-after")) {
@@ -228,6 +320,39 @@ class SyncStateProcessRecoveryInstrumentedTest {
                         assertEquals(original.getString(name), if (entry.isDirectory) "directory" else digest(entry))
                     }
                 }
+            }
+        } else if (kind() == "reset-spill-before") {
+            assertEquals(spillRows, ownership.getInt("spillRows"))
+            assertTrue(ownership.getBoolean("mainDigestChanged")); assertTrue(ownership.getBoolean("journalMagicVerified"))
+            assertTrue(ownership.getBoolean("journalRegular"))
+            val generation = DestinationGeneration(ownership.getString("generation"))
+            assertSpillState(first, generation)
+            val invalidated = store().invalidate(generation)
+            assertEquals(CommitStatus.COMMITTED, invalidated.status)
+            assertNotEquals(generation, invalidated.generation)
+            val next = ready()
+            assertEquals(invalidated.generation, next.generation)
+            assertEquals(spillConfig, next.configuration); assertEquals(binding, store().readBinding(next.generation))
+            assertFalse(next.configuration!!.automatic); assertNull(next.attempt)
+            assertTrue(next.days.isEmpty()); assertNull(next.coverage.checkedThrough); assertNull(next.coverage.uploadedThrough)
+            assertNull(next.coverage.lastUploadAt); assertTrue(next.coverage.recentCheckedDays.isEmpty())
+            assertTrue(next.coverage.recentUploadedDays.isEmpty())
+            val selected = store().loadForScope(next.generation, today, spillAccess)
+            assertEquals(StateStatus.READY, selected.status)
+            assertTrue(selected.state!!.days.isEmpty()); assertNull(selected.state!!.coverage.scopeCheckedThrough)
+            assertNull(selected.state!!.coverage.scopeUploadedThrough)
+            assertEquals(spillRows.toLong(), selected.state!!.coverage.scopePendingCount)
+            assertEquals(2, count("generation")); assertEquals(spillRows, count("day")); assertEquals(spillRows, count("dataset"))
+            SyncStateDatabase(file).openForRead()!!.use { db ->
+                for (table in listOf("day", "dataset")) {
+                    db.rawQuery("SELECT count(*) FROM $table WHERE generation=?", arrayOf(generation.value)).use {
+                        assertTrue(it.moveToFirst()); assertEquals(spillRows, it.getInt(0))
+                    }
+                    db.rawQuery("SELECT count(*) FROM $table WHERE generation=?", arrayOf(next.generation.value)).use {
+                        assertTrue(it.moveToFirst()); assertEquals(0, it.getInt(0))
+                    }
+                }
+                db.rawQuery("PRAGMA foreign_key_check", null).use { assertFalse(it.moveToFirst()) }
             }
         } else if (kind() == "reset-after") {
             assertEquals(StateStatus.READY, first.status); assertEmpty(true)
