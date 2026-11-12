@@ -23,7 +23,7 @@ tasks:
   - id: T3
     title: journal 이후 쓰기와 읽기 전용 Drive 재조정
     depends_on: [T1]
-    status: in_progress
+    status: done
     tier: standard
   - id: T4
     title: 현재 세대의 target 증거와 명시 복구 원자성
@@ -543,3 +543,7 @@ T6 prepared-session3개+기존12개를 보존한 testAPK 컴파일을 author1분
 ### T6 복구 1/2 — 취소 테스트의 예외 상속
 
 fresh quality 재검토가 `4500044529f073e8252893b60cb561717ed50779`의 신규 Native 테스트에서 Important1을 발견했다. JVM CancellationException은 IllegalStateException 하위 타입이므로 cancelled=true 경로가 broad catch에 잡혀 assertFalse(cancelled)로 실패한다. 배정 Session instrumented test의 owner launch에서 CancellationException을 먼저 rethrow하고 일반 합성 실패만 IllegalStateException 단언으로 처리한다. production gate/cancel 코드는 변경하지 않는다. 기존 취소 표시·busy receipt 해결·raw health0·재진입 단언을 유지하고 compile/actual Native/독립 재검토로 확인한다. compile 통과를 실제 테스트 성공으로 주장하지 않았으며 현재 완료 판정은 보류다.
+
+### T3 검증 체크포인트
+
+root focused verify `/workspace/tooling/pr17-t3-root.log` BUILD SUCCESSFUL8초(동일 source 캐시), author actual 실행36초: Batch14+Reconciliation7+Uploader10=31/0/0/0 XML 대조. 기존23 회귀와 신규8개를 보존했다. SHA-256 exact reuse/MD5-only PATCH, no mutation reconcile, root/dataset/file unknown-create no blind POST, strict identity/single-use/preparation 변경 거부, bounded2/serialized callback/joined cancellation을 검증했다. T3 done이며 T4 actual Native pending과 별개로 승인된 disjoint T5 authoring을 시작한다. 실제 계정 결과나 실사용 개선 수치가 아니다.
