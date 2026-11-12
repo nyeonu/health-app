@@ -43,7 +43,7 @@ tasks:
   - id: T7
     title: 명시 계속으로만 전경 수동 batch 실행
     depends_on: [T2, T5, T6]
-    status: in_progress
+    status: done
     tier: standard
   - id: T8
     title: 수동 구성과 복구 화면 합성
@@ -577,3 +577,7 @@ root 최초 source 검토에서 selectAccount가 configured categories 전부의
 ### T7 복구 2/2 — 외부 동의 ticket과 실행 취소의 수명 분리
 
 현재 setForeground(false)/consent(false)가 credential 참조만 지우고 admitted owner Job을 취소하지 않아 proof 이후 engine IO가 이어질 수 있다. 또한 expected external Google resolution pause에서 pending ticket까지 지워 복귀 수락이 불가능하다. owner Job은 admitted prepare 안에서만 포착해 pause/withdraw/reset 시 취소하고 busy 호출은 소유권을 대체하지 않는다. 명시된 expected-external handoff에서만 token/active execution 없이 pending ticket을 보존하며 실제 foreground 복귀 전 결과를 수락하지 않는다. Activity bridge(T9)는 결과를 resume까지 private 메모리에서 대기시키고 지연 ticket/reset/unexpected pause를 거부한다. 배정 두 파일 내에서 exact API를 보고하고 grouped lifecycle 테스트에 proof 전/후 중단·busy 보호·expected pause/foreground acceptance·unexpected pause 거부를 검증한다. 새 Android API/의존성/자동 continuation은 도입하지 않는다. 아직 Gradle 첫 실행 전이며 원래 범위의 취소·동의·부분 권한 성공 기준을 보존하는 기술 보정이다.
+
+### T7 검증 및 소비자 API
+
+author first focused54초/root 동일 source12초 통과. ManualDriveSessionTest grouped3개 failure/error/skip0이며 부분1/5→의도5개·same account/categories generation/unknown 보존·owner 취소·busy credential 보호·external expected pause와 unexpected pause·reset CAS·credential-free 상태를 단언한다. initial 코드 검토의2회 보정 후 첫 실제 검증이었고 숨은 실패/재시도는 없었다. constructor는 internal ManualDriveSession(sqliteStore, healthReader, execution, clock), state:StateFlow<ManualDriveState>. UI는 setPrivateFolderConsent, setForeground, refresh/refreshGrants, beginAccountSelection/selectAccount, beginAuthorization/acceptAuthorization, continueManual/resetConfiguration을 사용한다. expected external launcher 직전 expectExternalResult(pickerId 또는 authorization Ticket.id)를 호출하고 Activity 결과는 실제 foreground resume 뒤 적용한다. 이 API는 callback에서 자동 업로드를 허용하지 않는다. T7 done이며 실제 DB 결합·Activity 증거는 T9 Native gate에서 확인한다.
