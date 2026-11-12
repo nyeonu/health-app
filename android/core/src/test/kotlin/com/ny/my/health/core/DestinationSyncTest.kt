@@ -213,6 +213,33 @@ class DestinationSyncTest {
     }
 
     @Test
+    fun `Source limit and access failures block without confirming empty or losing prior uncertainty`() = runBlocking {
+        for ((failure, reason) in listOf(
+            SourceReadException(BlockReason.SOURCE_LIMIT_EXCEEDED) to BlockReason.SOURCE_LIMIT_EXCEEDED,
+            SourceReadException(BlockReason.SOURCE_ACCESS_REQUIRED) to BlockReason.SOURCE_ACCESS_REQUIRED,
+            IllegalStateException("합성 실패") to BlockReason.SOURCE_READ_FAILED)) {
+            val f = Fixture()
+            f.omitAck = true
+            assertEquals(BatchStatus.PENDING, f.run().status)
+            val previous = f.day()
+            assertTrue(previous.datasets.values.all { it.phase == FilePhase.INDETERMINATE })
+            f.store.admit()
+            f.readFailure = failure
+            val writes = f.written.size
+            val reconciles = f.reconciledDatasets.size
+            assertEquals(BatchStatus.BLOCKED, f.run().status)
+            assertEquals(reason, f.day().blocker)
+            assertEquals(DayPhase.BLOCKED, f.day().phase)
+            assertNull(f.day().checkedAt)
+            assertEquals(previous.revision, f.day().revision)
+            assertEquals(previous.datasets, f.day().datasets)
+            assertEquals(writes, f.written.size)
+            assertEquals(reconciles, f.reconciledDatasets.size)
+            assertNotNull(f.store.state.attempt!!.finishedAt)
+        }
+    }
+
+    @Test
     fun `New scope preserves unknown create from another scope for the same physical dataset`() = runBlocking {
         val f = Fixture(mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY))
         f.omitAck = true

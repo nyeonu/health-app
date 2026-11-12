@@ -117,9 +117,9 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                 current()
                 val snapshot = try { reader.readScoped(date, attempt.requestedScopes) }
                 catch (cancel: CancellationException) { throw cancel }
-                catch (_: Exception) {
+                catch (error: Exception) {
                     commit(mutation(day = previous.copy(phase = DayPhase.BLOCKED, checkedAt = null,
-                        blocker = BlockReason.SOURCE_READ_FAILED)))
+                        blocker = (error as? SourceReadException)?.reason ?: BlockReason.SOURCE_READ_FAILED)))
                     continue
                 }
                 val revision = SyncRevision.identify(snapshot, previous, clock.instant())
