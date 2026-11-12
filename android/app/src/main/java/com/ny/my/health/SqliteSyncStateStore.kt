@@ -54,6 +54,17 @@ internal class SqliteSyncStateStore internal constructor(
             catch (error: Exception) { SyncStateRead(classify(error), null) }
         }
 
+    override suspend fun loadCurrentAttempt(expected: DestinationGeneration): AttemptState? = withContext(Dispatchers.IO) {
+        synchronized(database.pathLock) {
+            val db = database.openForRead() ?: throw IllegalStateException("동기화 DB가 없습니다")
+            db.use {
+                val meta = metadata(db)
+                if (meta.generation != expected) return@synchronized null
+                readAttempt(db, meta, today())
+            }
+        }
+    }
+
     override suspend fun loadDay(expected: DestinationGeneration, date: LocalDate, scopeKey: ReadScopeKey): DayState? = withContext(Dispatchers.IO) {
         synchronized(database.pathLock) {
             val db = database.openForRead() ?: throw IllegalStateException("동기화 DB가 없습니다")
@@ -108,7 +119,7 @@ internal class SqliteSyncStateStore internal constructor(
         SyncCommit(CommitStatus.COMMITTED, generation)
     }
 
-    override suspend fun transact(expected: DestinationGeneration?, mutation: SyncMutation): SyncCommit = write(expected) { db,admitted ->
+    override suspend fun transact(expected: DestinationGeneration?, mutation: SyncMutation): SyncCommit = write(expected, requestedScopes = mutation.start?.requestedScopes) { db,admitted ->
         val admission = checkNotNull(admitted)
         val meta = admission.metadata
         if (meta.generation != expected) return@write SyncCommit(CommitStatus.STALE, meta.generation)
@@ -169,13 +180,14 @@ internal class SqliteSyncStateStore internal constructor(
     }
 
     private suspend fun write(expected: DestinationGeneration?,allowAbsent: Boolean = false,
+        requestedScopes: Map<DataType,ReadScope>? = null,
         block: (SQLiteDatabase,Admission?) -> SyncCommit): SyncCommit {
         val coroutine = currentCoroutineContext()
         return withContext(Dispatchers.IO) { synchronized(database.pathLock) {
             try {
                 // 읽기 경계가 marker/symlink를 검사하며 ABSENT에서는 파일을 만들지 않는다.
                 val checkedAt = today()
-                val ready = database.openForRead().use { db -> db?.let { validateActive(it,checkedAt) } }
+                val ready = database.openForRead().use { db -> db?.let { validateActive(it,checkedAt, requestedScopes = requestedScopes) } }
                 if (ready == null) {
                     if (!allowAbsent) return@synchronized SyncCommit(CommitStatus.UNAVAILABLE,null)
                     if (expected != null) return@synchronized SyncCommit(CommitStatus.STALE,null)
@@ -188,7 +200,7 @@ internal class SqliteSyncStateStore internal constructor(
                         else {
                             require(meta == ready.metadata)
                             // 같은 path lock의 read-only 무결성 판정은 이 호출 안에서만 재사용한다.
-                            block(db,Admission(meta,readAttempt(db,meta,checkedAt)))
+                            block(db,ready)
                         }
                     }
                 }
@@ -373,98 +385,117 @@ internal class SqliteSyncStateStore internal constructor(
         }
     }
 
-    private data class Admission(val metadata: Metadata,val attempt: AttemptState?)
+    private data class Admission(val metadata: Metadata, val attempt: AttemptState?,
+        val selectedKey: ReadScopeKey?, val full: Scan?, val selected: Scan?, val last: Instant?)
 
-    /** private binding은 adapter에서 정규성만 확인하고 core snapshot에는 전달하지 않는다. */
-    private fun validateActive(db: SQLiteDatabase,date: LocalDate,meta: Metadata = metadata(db)): Admission {
-        db.rawQuery("SELECT date,scope_key FROM day WHERE generation=?",arrayOf(meta.generation.value)).use { rows ->
-            while (rows.moveToNext()) readDay(db,meta,SyncStateCodec.decodeDate(rows.text(0)),
-                ReadScopeKey(SyncStateCodec.decodeDigest(rows.text(1))),date)
-        }
+    /** 같은 잠금 호출 안에서만 모든 active 행의 검증과 집계를 재사용한다. */
+    private fun validateActive(db: SQLiteDatabase, date: LocalDate, meta: Metadata = metadata(db),
+        access: ReadAccess? = null, requestedScopes: Map<DataType,ReadScope>? = null): Admission {
         val attempt = readAttempt(db,meta,date)
         db.rawQuery("SELECT binding_kind,binding_payload FROM config WHERE id=1",null).use { binding ->
             require(binding.moveToFirst())
             if (!binding.isNull(0)) decodeBinding(binding.text(0),binding.text(1))
         }
-        return Admission(meta,attempt)
-    }
-
-    private fun snapshot(db: SQLiteDatabase,date: LocalDate,access: ReadAccess?,
-        admitted: Admission = validateActive(db,date)): SyncState {
-        val meta = admitted.metadata
         val config = meta.configuration
-        val attempt = admitted.attempt
-        if (config == null) {
-            require(attempt == null)
-            return SyncState(1, meta.generation, null, null, null, emptyMap(), emptyMap(), emptyList(), emptyCoverage())
-        }
-        val scopes = if (access?.available == true) config.categories.mapNotNull { type ->
-            access.scopeByType[type]?.takeIf { type in access.granted && it != ReadScope.BLOCKED }?.let { type to it }
-        }.toMap() else emptyMap()
-        val key = if (scopes.isEmpty()) null else SyncPlanner.scopeKey(config, ReadAccess(true, scopes.keys, scopes))
-        if (key != null && attempt != null && attempt.finishedAt == null &&
-            (attempt.scopeKey != key || attempt.requestedScopes != scopes)) throw BusySyncProfileException()
-        val selected = key?.let { scan(db, meta, date, it) }
+        val scopes = requestedScopes ?: if (access != null) selectedScopes(config,access) else attempt?.requestedScopes.orEmpty()
+        val key = config?.let { SyncPlanner.scopeKey(it,ReadAccess(true,scopes.keys,scopes)) }
         val fullScopes = DataType.entries.associateWith { ReadScope.EXPLICIT_DAY }
-        val fullKey = SyncPlanner.scopeKey(config.copy(categories = fullScopes.keys), ReadAccess(true, fullScopes.keys, fullScopes))!!
-        val full = if (key == fullKey) selected!! else scan(db, meta, date, fullKey)
+        val fullKey = config?.let { SyncPlanner.scopeKey(it.copy(categories = fullScopes.keys),ReadAccess(true,fullScopes.keys,fullScopes)) }
+        val full = config?.let { ScanBuilder(it.enrolledDay,date,key == fullKey) }
+        val selected = if (key == fullKey) full else config?.let { ScanBuilder(it.enrolledDay,date) }
         var last: Instant? = null
-        db.rawQuery("SELECT confirmed_at,prior_confirmation_json FROM dataset WHERE generation=?", arrayOf(meta.generation.value)).use { rows ->
-            while (rows.moveToNext()) {
-                val currentTime = if (rows.isNull(0)) null else SyncStateCodec.decodeInstant(rows.text(0))
-                val priorTime = if (rows.isNull(1)) null else SyncStateCodec.decodeConfirmation(rows.text(1),1).confirmedAt
-                for (time in listOfNotNull(currentTime,priorTime)) if (last == null || time > checkNotNull(last)) last = time
+        db.rawQuery("SELECT * FROM day WHERE generation=? ORDER BY date,scope_key",arrayOf(meta.generation.value)).use { rows ->
+            db.rawQuery("SELECT * FROM dataset WHERE generation=? ORDER BY date,scope_key,dataset",arrayOf(meta.generation.value)).use { datasets ->
+                var hasDataset = datasets.moveToFirst()
+                while (rows.moveToNext()) {
+                    val files = linkedMapOf<Dataset,DatasetState>()
+                    while (hasDataset && datasets.s("date") == rows.s("date") && datasets.s("scope_key") == rows.s("scope_key")) {
+                        val file = decodeDataset(datasets)
+                        require(files.put(file.dataset,file) == null)
+                        for (time in listOfNotNull(file.confirmedAt,file.priorConfirmation?.confirmedAt))
+                            if (last == null || time > checkNotNull(last)) last = time
+                        hasDataset = datasets.moveToNext()
+                    }
+                    val day = decodeDay(rows,files,meta,date)
+                    if (day.scopeKey == fullKey) full!!.accept(day)
+                    if (key != fullKey && day.scopeKey == key) selected!!.accept(day)
+                }
+                require(!hasDataset)
             }
         }
-        val coverage = CoverageSummary(full.checked, full.uploaded, key, selected?.checked, selected?.uploaded,
-            config.categories - scopes.keys, selected?.pending, selected?.blocked, last,
-            selected?.recentChecked.orEmpty(), selected?.recentUploaded.orEmpty())
-        return SyncState(1, meta.generation, config, attempt, key, scopes, selected?.days.orEmpty(), selected?.oldest.orEmpty(), coverage).also { require(it.isValid()) }
+        return Admission(meta,attempt,key,full?.finish(),if (key == fullKey) full?.finish() else selected?.finish(),last)
+    }
+
+    private fun selectedScopes(config: SyncConfiguration?, access: ReadAccess?) =
+        if (access?.available == true) config?.categories.orEmpty().mapNotNull { type ->
+            access.scopeByType[type]?.takeIf { type in access.granted && it != ReadScope.BLOCKED }?.let { type to it }
+        }.toMap() else emptyMap()
+
+    private fun snapshot(db: SQLiteDatabase,date: LocalDate,access: ReadAccess?,
+        admitted: Admission? = null): SyncState {
+        val admission = admitted ?: validateActive(db,date,access = access)
+        val meta = admission.metadata
+        val config = meta.configuration
+        val attempt = admission.attempt
+        if (config == null) {
+            require(attempt == null)
+            return SyncState(1,meta.generation,null,null,null,emptyMap(),emptyMap(),emptyList(),emptyCoverage())
+        }
+        val scopes = selectedScopes(config,access)
+        val key = if (scopes.isEmpty()) null else SyncPlanner.scopeKey(config,ReadAccess(true,scopes.keys,scopes))
+        if (key != null && attempt != null && attempt.finishedAt == null &&
+            (attempt.scopeKey != key || attempt.requestedScopes != scopes)) throw BusySyncProfileException()
+        require(key == null || key == admission.selectedKey)
+        val selected = admission.selected.takeIf { key != null }
+        val full = checkNotNull(admission.full)
+        val coverage = CoverageSummary(full.checked,full.uploaded,key,selected?.checked,selected?.uploaded,
+            config.categories - scopes.keys,selected?.pending,selected?.blocked,admission.last,
+            selected?.recentChecked.orEmpty(),selected?.recentUploaded.orEmpty())
+        return SyncState(1,meta.generation,config,attempt,key,scopes,selected?.days.orEmpty(),selected?.oldest.orEmpty(),coverage).also { require(it.isValid()) }
     }
 
     private data class Scan(val checked: LocalDate?, val uploaded: LocalDate?, val pending: Long, val blocked: Long,
         val days: Map<LocalDate, DayState>, val oldest: List<LocalDate>, val recentChecked: Set<LocalDate>, val recentUploaded: Set<LocalDate>)
-    private fun scan(db: SQLiteDatabase, meta: Metadata, today: LocalDate, key: ReadScopeKey): Scan {
-        val enrolled = checkNotNull(meta.configuration).enrolledDay
-        val floor = today.minusDays(30)
-        val total = ChronoUnit.DAYS.between(enrolled, today).coerceAtLeast(0)
-        var completed = 0L
-        var blocked = ChronoUnit.DAYS.between(enrolled, minOf(today, maxOf(enrolled, floor))).coerceAtLeast(0)
-        var checkedNext = enrolled
-        var uploadedNext = enrolled
-        var gap = maxOf(enrolled, floor)
-        val oldest = mutableListOf<LocalDate>()
-        val days = linkedMapOf<LocalDate, DayState>()
-        val checkedRecent = mutableSetOf<LocalDate>(); val uploadedRecent = mutableSetOf<LocalDate>()
-        fun missingUntil(end: LocalDate) {
-            while (gap < end && gap < today && oldest.size < 7) { oldest += gap; gap = gap.plusDays(1) }
+    private inner class ScanBuilder(private val enrolled: LocalDate, private val today: LocalDate, private val retainDays: Boolean = true) {
+        private val floor = today.minusDays(30)
+        private val total = ChronoUnit.DAYS.between(enrolled,today).coerceAtLeast(0)
+        private var completed = 0L
+        private var blocked = ChronoUnit.DAYS.between(enrolled,minOf(today,maxOf(enrolled,floor))).coerceAtLeast(0)
+        private var checkedNext = enrolled
+        private var uploadedNext = enrolled
+        private var gap = maxOf(enrolled,floor)
+        private val oldest = mutableListOf<LocalDate>()
+        private val days = linkedMapOf<LocalDate,DayState>()
+        private val checkedRecent = mutableSetOf<LocalDate>()
+        private val uploadedRecent = mutableSetOf<LocalDate>()
+        private fun missingUntil(end: LocalDate) {
+            while (retainDays && gap < end && gap < today && oldest.size < 7) { oldest += gap; gap = gap.plusDays(1) }
             if (gap < end) gap = end
         }
-        db.rawQuery("SELECT date FROM day WHERE generation=? AND scope_key=? ORDER BY date", arrayOf(meta.generation.value, key.value)).use { rows ->
-            while (rows.moveToNext()) {
-                val day = checkNotNull(readDay(db, meta, SyncStateCodec.decodeDate(rows.text(0)), key, today))
-                val done = day.isUploaded() || (day.phase == DayPhase.EMPTY && day.isChecked())
-                if (done) completed++
-                if (day.date == checkedNext && day.isChecked()) checkedNext = checkedNext.plusDays(1)
-                if (day.date == uploadedNext && day.isUploaded()) uploadedNext = uploadedNext.plusDays(1)
-                val permanent = permanent(day)
-                if (day.date < floor && done) blocked--
-                if (day.date >= floor && !done && permanent) blocked++
-                if (day.date >= floor) {
-                    missingUntil(day.date)
-                    if (!done && !permanent && oldest.size < 7) { oldest += day.date; days[day.date] = day }
-                    gap = day.date.plusDays(1)
-                }
-                if (day.date >= today.minusDays(2)) {
-                    days[day.date] = day
-                    if (day.isChecked()) checkedRecent += day.date
-                    if (day.isUploaded()) uploadedRecent += day.date
-                }
+        fun accept(day: DayState) {
+            val done = day.isUploaded() || (day.phase == DayPhase.EMPTY && day.isChecked())
+            if (done) completed++
+            if (day.date == checkedNext && day.isChecked()) checkedNext = checkedNext.plusDays(1)
+            if (day.date == uploadedNext && day.isUploaded()) uploadedNext = uploadedNext.plusDays(1)
+            val permanent = permanent(day)
+            if (day.date < floor && done) blocked--
+            if (day.date >= floor && !done && permanent) blocked++
+            if (day.date >= floor) {
+                missingUntil(day.date)
+                if (retainDays && !done && !permanent && oldest.size < 7) { oldest += day.date; days[day.date] = day }
+                gap = day.date.plusDays(1)
+            }
+            if (retainDays && day.date >= today.minusDays(2)) {
+                days[day.date] = day
+                if (day.isChecked()) checkedRecent += day.date
+                if (day.isUploaded()) uploadedRecent += day.date
             }
         }
-        missingUntil(today)
-        return Scan(checkedNext.minusDays(1).takeIf { checkedNext > enrolled }, uploadedNext.minusDays(1).takeIf { uploadedNext > enrolled },
-            total - completed, blocked, days, oldest, checkedRecent, uploadedRecent)
+        fun finish(): Scan {
+            missingUntil(today)
+            return Scan(checkedNext.minusDays(1).takeIf { checkedNext > enrolled },uploadedNext.minusDays(1).takeIf { uploadedNext > enrolled },
+                total-completed,blocked,days,oldest,checkedRecent,uploadedRecent)
+        }
     }
     private fun permanent(day: DayState) = day.phase == DayPhase.REMOTE_STALE || day.blocker in setOf(
         BlockReason.DESTINATION_BLOCKED, BlockReason.RETRY_EXHAUSTED, BlockReason.STORE_UNAVAILABLE,
@@ -487,20 +518,29 @@ internal class SqliteSyncStateStore internal constructor(
         val files = linkedMapOf<Dataset, DatasetState>()
         db.rawQuery("SELECT * FROM dataset WHERE generation=? AND date=? AND scope_key=?", arrayOf(meta.generation.value,date.toString(),key.value)).use { datasets ->
             while (datasets.moveToNext()) {
-                val dataset = enumValueOf<Dataset>(datasets.s("dataset"))
-                val populated = datasets.integer(datasets.getColumnIndexOrThrow("populated")); require(populated in 0L..1L)
-                files[dataset] = DatasetState(dataset, RevisionKey(SyncStateCodec.decodeDigest(datasets.s("revision")), SyncStateCodec.decodeInstant(datasets.s("generated_at"))),
-                    enumValueOf(datasets.s("phase")), populated == 1L, datasets.nullable("target_handle")?.let(SyncStateCodec::decodeHandle), datasets.time("started_at"), datasets.time("confirmed_at"),
-                    datasets.nullable("prior_confirmation_json")?.let { SyncStateCodec.decodeConfirmation(it,1) })
+                val file = decodeDataset(datasets)
+                files[file.dataset] = file
             }
         }
+        decodeDay(row,files,meta,today)
+    }
+
+    private fun decodeDataset(row: Cursor): DatasetState {
+        val dataset = enumValueOf<Dataset>(row.s("dataset"))
+        val populated = row.integer(row.getColumnIndexOrThrow("populated")); require(populated in 0L..1L)
+        return DatasetState(dataset,RevisionKey(SyncStateCodec.decodeDigest(row.s("revision")),SyncStateCodec.decodeInstant(row.s("generated_at"))),
+            enumValueOf(row.s("phase")),populated == 1L,row.nullable("target_handle")?.let(SyncStateCodec::decodeHandle),row.time("started_at"),row.time("confirmed_at"),
+            row.nullable("prior_confirmation_json")?.let { SyncStateCodec.decodeConfirmation(it,1) })
+    }
+
+    private fun decodeDay(row: Cursor, files: Map<Dataset,DatasetState>, meta: Metadata, today: LocalDate): DayState {
         val revision = row.nullable("revision")?.let { RevisionKey(SyncStateCodec.decodeDigest(it), SyncStateCodec.decodeInstant(row.s("generated_at"))) }
         require((revision == null) == row.isNull(row.getColumnIndexOrThrow("generated_at")))
         val value = DayState(SyncStateCodec.decodeDate(row.s("date")), ReadScopeKey(SyncStateCodec.decodeDigest(row.s("scope_key"))),
             SyncStateCodec.decodeScopes(row.s("requested_scopes_json"),1), revision, enumValueOf(row.s("phase")),
             SyncStateCodec.decodeScopes(row.s("scopes_json"),1), row.time("checked_at"), files, row.nullable("blocker")?.let { enumValueOf<BlockReason>(it) })
         require(meta.configuration != null && meta.configuration.categories.containsAll(value.requestedScopes.keys) && value.isValid(meta.generation,meta.configuration.enrolledDay,today))
-        value
+        return value
     }
 
     private fun saveAttempt(db: SQLiteDatabase, generation: DestinationGeneration, value: AttemptState) {

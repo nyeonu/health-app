@@ -20,6 +20,50 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class SqliteSyncStateStoreInstrumentedTest {
     @Test
+    fun bulkSnapshotsRejectCorruptUnselectedProfilesAndPreserveScopedCoverageAndPriorTimestamps() = runBlocking {
+        val f = Fixture()
+        try {
+            val generation = f.configure()
+            val enrolled = f.date.minusDays(1)
+            val full = DataType.entries.associateWith { ReadScope.EXPLICIT_DAY }
+            val partial = mapOf(DataType.STEPS to ReadScope.SUMMARY)
+            val first = f.start(generation,full,listOf(enrolled))
+            val day = f.day(enrolled,full)
+            f.commit(generation,first.id,day = day)
+            val prior = f.confirmation(generation,day).copy(confirmedAt = Instant.parse("2026-11-05T01:00:00Z"))
+            f.commit(generation,first.id,confirmation = prior)
+            f.finish(generation,first)
+            val second = f.start(generation,partial,listOf(enrolled))
+            val partialDay = f.day(enrolled,partial)
+            f.commit(generation,second.id,day = partialDay)
+            val current = f.confirmation(generation,partialDay)
+            f.commit(generation,second.id,confirmation = current)
+            f.finish(generation,second)
+            val selected = f.selected(generation,partial)
+            assertEquals(enrolled,selected.coverage.scopeCheckedThrough)
+            assertEquals(enrolled,selected.coverage.scopeUploadedThrough)
+            assertEquals(0L,selected.coverage.scopePendingCount)
+            assertEquals(enrolled,selected.coverage.checkedThrough)
+            assertNull(selected.coverage.uploadedThrough)
+            assertEquals(prior.confirmedAt,selected.coverage.lastUploadAt)
+            assertEquals(prior,f.store().loadDay(generation,enrolled,day.scopeKey)!!.datasets.getValue(Dataset.DAILY).priorConfirmation)
+            assertEquals(second.copy(finishedAt = Instant.parse("2026-11-05T00:00:02Z")),f.store().loadCurrentAttempt(generation))
+            assertNull(f.store().loadCurrentAttempt(DestinationGeneration("00000000-0000-0000-0000-000000000099")))
+            f.db.openForWrite().use { db ->
+                db.execSQL("UPDATE day SET requested_scopes_json=? WHERE generation=? AND scope_key=?",arrayOf("{}",generation.value,day.scopeKey.value))
+            }
+            // header는 다른 profile의 건강함을 주장하지 않지만 broad read와 write는 이를 숨기지 않는다.
+            assertEquals(second.id,f.store().loadCurrentAttempt(generation)!!.id)
+            assertEquals(StateStatus.CORRUPT,f.store().loadForScope(generation,f.date,f.access(partial)).status)
+            assertEquals(StateStatus.CORRUPT,f.store().load().status)
+            assertEquals(CommitStatus.UNAVAILABLE,f.store().transact(generation,
+                f.mutation(second.id,finish = Instant.parse("2026-11-05T00:00:03Z"))).status)
+            assertEquals(CommitStatus.UNAVAILABLE,f.store().invalidate(generation).status)
+            f.integrity()
+        } finally { f.close() }
+    }
+
+    @Test
     fun reopeningAroundAtomicCommitsNeverConfirmsAnUnacknowledgedFileOrDate() = runBlocking {
         val f = Fixture()
         try {

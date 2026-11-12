@@ -29,18 +29,14 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                 else -> throw Halt(BatchStatus.BLOCKED)
             }
         }
-        suspend fun current(): SyncState {
-            val loaded = store.load()
-            if (loaded.status != StateStatus.READY) throw Halt(BatchStatus.BLOCKED)
-            val state = loaded.state ?: throw Halt(BatchStatus.BLOCKED)
-            val attempt = state.attempt
-            if (state.generation != generation || attempt?.id != attemptId || attempt.finishedAt != null ||
+        fun checkAttempt(attempt: AttemptState?) {
+            if (attempt?.id != attemptId || attempt.finishedAt != null ||
                 (activeAttempt != null && (attempt.scopeKey != activeAttempt?.scopeKey ||
                     attempt.requestedScopes != activeAttempt?.requestedScopes || attempt.dates != activeAttempt?.dates))) {
                 throw Halt(BatchStatus.STALE)
             }
-            return state
         }
+        suspend fun current() { checkAttempt(store.loadCurrentAttempt(generation)) }
         suspend fun acknowledge(confirmation: FileConfirmation, intended: Map<FileKey, PlannedFile>) {
             currentCoroutineContext().ensureActive()
             current()
@@ -82,7 +78,11 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                 phase = if (files.values.any { it.phase == FilePhase.INDETERMINATE }) DayPhase.INDETERMINATE else latest.phase)))
         }
         try {
-            val initial = current()
+            val loaded = store.load()
+            if (loaded.status != StateStatus.READY) throw Halt(BatchStatus.BLOCKED)
+            val initial = loaded.state ?: throw Halt(BatchStatus.BLOCKED)
+            if (initial.generation != generation) throw Halt(BatchStatus.STALE)
+            checkAttempt(initial.attempt)
             val attempt = requireNotNull(initial.attempt)
             activeAttempt = attempt
             if (attempt.trigger != trigger || attempt.startedAt == null) return BatchOutcome(BatchStatus.STALE, 0, null)

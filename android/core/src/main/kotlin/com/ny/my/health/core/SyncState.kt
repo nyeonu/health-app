@@ -200,8 +200,8 @@ fun SyncState.validateMutation(expected: DestinationGeneration?, mutation: SyncM
     }
     val active = attempt ?: return stale
     if (active.id != mutation.attemptId) return stale
-    if (active.finishedAt != null) return invalid
     if (mutation.pendingTriggers != null) return if (mutation.pendingTriggers.containsAll(active.pendingTriggers)) CommitStatus.COMMITTED else invalid
+    if (active.finishedAt != null) return invalid
     if (mutation.finishAt != null) return if (active.startedAt != null && mutation.finishAt >= active.startedAt) CommitStatus.COMMITTED else invalid
     if (currentDay != null && !currentDay.isValid(generation, config.enrolledDay, todayInSeoul)) return invalid
     fun matches(date: LocalDate, key: ReadScopeKey): Boolean = date in active.dates && key == active.scopeKey &&
@@ -237,4 +237,13 @@ fun SyncState.validateMutation(expected: DestinationGeneration?, mutation: SyncM
     if (next.datasets.any { (dataset, file) -> file.phase == FilePhase.CONFIRMED &&
             currentDay?.datasets?.get(dataset) != file }) return invalid
     return CommitStatus.COMMITTED
+}
+
+/** 중단 복구는 실행 중 파일만 보수적으로 바꾸며 기존 확인과 차단 사유를 보존한다. */
+fun DayState.afterInterruption(): DayState {
+    val files = datasets.mapValues { (_, file) ->
+        if (file.phase == FilePhase.RUNNING) file.copy(phase = FilePhase.INDETERMINATE) else file
+    }
+    val phase = if (this.phase == DayPhase.RUNNING) DayPhase.INDETERMINATE else this.phase
+    return copy(phase = phase, datasets = files)
 }

@@ -25,6 +25,10 @@ class DestinationSyncTest {
     private inner class Store(scopes: Map<DataType, ReadScope>) : SyncStateStore {
         val generation = DestinationGeneration("00000000-0000-0000-0000-000000000001")
         val rows = mutableMapOf<Pair<LocalDate, ReadScopeKey>, DayState>()
+        val currentObservedAfterFullRead = mutableListOf<Boolean>()
+        var fullReads = 0
+        var currentReads = 0
+        var beforeCurrent: () -> Unit = {}
         var sequence = 1
         var failConfirmation = false
         var failDay = false
@@ -49,7 +53,16 @@ class DestinationSyncTest {
                 coverage = state.coverage.copy(scopeKey = key))
         }
         private fun selected() = state.copy(days = rows.filterKeys { it.second == state.scopeKey }.mapKeys { it.key.first })
-        override suspend fun load() = SyncStateRead(StateStatus.READY, selected())
+        override suspend fun load(): SyncStateRead {
+            fullReads++
+            return SyncStateRead(StateStatus.READY, selected())
+        }
+        override suspend fun loadCurrentAttempt(expected: DestinationGeneration): AttemptState? {
+            currentReads++
+            currentObservedAfterFullRead += fullReads > 0
+            beforeCurrent()
+            return state.attempt.takeIf { state.generation == expected }
+        }
         override suspend fun loadForScope(expected: DestinationGeneration, todayInSeoul: LocalDate, access: ReadAccess): SyncStateRead {
             scopeQueryDays += todayInSeoul
             return load()
@@ -180,6 +193,50 @@ class DestinationSyncTest {
         suspend fun run(trigger: SyncTrigger = SyncTrigger.MANUAL) = engine
             .run(trigger, store.state.generation, store.state.attempt!!.id)
         fun day() = store.rows.getValue(date to store.state.scopeKey!!)
+    }
+
+    @Test
+    fun currentAttemptChecksRejectChangedIdentitiesWithoutRepeatingFullCoverageReadsForEveryFile() = runBlocking {
+        val one = Fixture(mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY))
+        val four = Fixture()
+        assertEquals(BatchStatus.COMPLETED,one.run().status)
+        assertEquals(BatchStatus.COMPLETED,four.run().status)
+        assertEquals(1,one.written.size)
+        assertEquals(4,four.written.size)
+        assertTrue(one.store.fullReads > 0)
+        assertTrue(one.store.currentObservedAfterFullRead.all { it })
+        assertTrue(four.store.currentObservedAfterFullRead.all { it })
+        assertEquals(one.store.fullReads,four.store.fullReads)
+        assertTrue(four.store.currentReads > one.store.currentReads)
+        for (kind in listOf("generation","id","scope","requested","dates","finished")) {
+            val f = Fixture()
+            f.store.state = f.store.state.copy(configuration = f.store.state.configuration!!.copy(enrolledDay = date.minusDays(1)))
+            f.store.beforeCurrent = {
+                val state = f.store.state
+                val attempt = state.attempt!!
+                f.store.state = if (kind == "generation") state.copy(generation = DestinationGeneration("00000000-0000-0000-0000-000000000099"))
+                    else state.copy(attempt = when (kind) {
+                        "id" -> attempt.copy(id = "00000000-0000-0000-0000-000000000099")
+                        "scope", "requested" -> {
+                            val scopes = mapOf(DataType.STEPS to ReadScope.SUMMARY)
+                            attempt.copy(scopeKey = requireNotNull(scopeFingerprint(scopes)),requestedScopes = scopes)
+                        }
+                        "dates" -> attempt.copy(dates = listOf(date.minusDays(1)))
+                        else -> attempt.copy(finishedAt = now)
+                    })
+            }
+            assertEquals(kind,BatchStatus.STALE,f.run().status)
+            assertEquals(kind,0,f.reads)
+            assertTrue(f.reconciledDatasets.isEmpty())
+            assertTrue(f.written.isEmpty())
+        }
+        val remoteGuard = Fixture()
+        remoteGuard.beforeRead = {
+            remoteGuard.store.state = remoteGuard.store.state.copy(attempt = remoteGuard.store.state.attempt!!.copy(id = "00000000-0000-0000-0000-000000000099"))
+        }
+        assertEquals(BatchStatus.STALE,remoteGuard.run().status)
+        assertTrue(remoteGuard.reconciledDatasets.isEmpty())
+        assertTrue(remoteGuard.written.isEmpty())
     }
 
     @Test

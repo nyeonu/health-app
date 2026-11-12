@@ -171,6 +171,21 @@ class SyncStateTest {
         check(CommitStatus.COMMITTED, mutation(confirm = confirmation), candidate = unscoped)
         check(CommitStatus.INVALID, mutation(confirm = confirmation), row = null, candidate = unscoped)
         check(CommitStatus.INVALID, mutation(confirm = confirmation), candidate = unscopedFinished)
+        check(CommitStatus.COMMITTED, mutation(pending = SyncTrigger.entries.toSet()), candidate = unscopedFinished)
+        check(CommitStatus.INVALID, mutation(pending = emptySet()), candidate = unscopedFinished)
+        check(CommitStatus.INVALID, mutation(day = journal), candidate = unscopedFinished)
+        check(CommitStatus.INVALID, mutation(finish = f.time), candidate = unscopedFinished)
+        check(CommitStatus.STALE, mutation(pending = SyncTrigger.entries.toSet()).copy(
+            attemptId = "00000000-0000-0000-0000-000000000003"), candidate = unscopedFinished)
+        check(CommitStatus.STALE, mutation(pending = SyncTrigger.entries.toSet()), candidate = unscopedFinished,
+            expectedGeneration = DestinationGeneration("00000000-0000-0000-0000-000000000003"))
+        val recovered = journal.afterInterruption()
+        assertEquals(DayPhase.INDETERMINATE, recovered.phase)
+        assertEquals(FilePhase.INDETERMINATE, recovered.datasets.getValue(Dataset.DAILY).phase)
+        assertEquals(journal.checkedAt, recovered.checkedAt)
+        assertNull(recovered.datasets.getValue(Dataset.DAILY).confirmedAt)
+        check(CommitStatus.COMMITTED, mutation(day = recovered))
+
         check(CommitStatus.STALE, mutation(confirm = confirmation.copy(key = confirmation.key.copy(revision = "d".repeat(64)))), candidate = unscoped)
         check(CommitStatus.STALE, mutation(confirm = confirmation.copy(key = confirmation.key.copy(scopeKey = otherKey))), candidate = unscoped)
         check(CommitStatus.STALE, mutation(confirm = confirmation), row = journal.copy(date = date.minusDays(1)), candidate = unscoped)

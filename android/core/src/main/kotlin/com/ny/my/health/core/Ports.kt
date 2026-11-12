@@ -44,6 +44,13 @@ interface SyncStateStore {
     suspend fun transact(expected: DestinationGeneration?, mutation: SyncMutation): SyncCommit
     suspend fun reset(expected: DestinationGeneration?): SyncCommit
     suspend fun loadForScope(expected: DestinationGeneration, todayInSeoul: LocalDate, access: ReadAccess): SyncStateRead
+    /** 반복 확인은 현재 세대의 시도만 반환하며 전체 coverage 무결성을 주장하지 않는다. */
+    suspend fun loadCurrentAttempt(expected: DestinationGeneration): AttemptState? {
+        val read = load()
+        check(read.status == StateStatus.READY) { "동기화 상태를 읽을 수 없습니다" }
+        val state = checkNotNull(read.state)
+        return state.attempt.takeIf { state.generation == expected }
+    }
     suspend fun loadDay(expected: DestinationGeneration, date: LocalDate, scopeKey: ReadScopeKey): DayState?
 }
 
