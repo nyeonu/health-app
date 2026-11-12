@@ -5,14 +5,14 @@ status: in_progress
 author: Codex
 created: 2026-11-05
 parent: ../plan.md
-parent_rev: 222bdc4baa7d68e31ba52f2321520b9b0e5e3d62
+parent_rev: e4d7ac3058f6918a9fd97dd2edab8572c9df39a0
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feat/v1-completion
 tasks:
   - {id: T1, title: 등록 이후 bounded 날짜 계획, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 재읽기 revision과 scope별 확인, depends_on: [T1], status: done, tier: standard}
-  - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: done, tier: standard}
+  - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: in_progress, tier: standard}
   - {id: T4, title: 실제 SQLite의 원자적 상태 저장, depends_on: [T3], status: done, tier: standard}
   - {id: T5, title: process 공용 admission과 중단 복구, depends_on: [T4], status: done, tier: standard}
   - {id: T6, title: OS 강제종료의 실제 commit 검증, depends_on: [T4, T7, T9], status: done, tier: standard}
@@ -448,6 +448,23 @@ internal enum class SyncStatePhase {
   ```
 - **주의사항**: T2 후 시작. 현재 파일의 확정 metadata를 확인하지 않은 과거 SUCCESS만으로 skip하지 않는다. 실제 Drive private/root/checksum 검증은 후속이며 합성 목적지 결과를 실제 계정 증거로 쓰지 않는다. cancellation을 일반 실패로 삼키지 않는다.
 
+#### T3 현재 추가교정5 범위 (Important Q3)
+
+초기 T3의 Ports/SyncPlanner 변경은 보존하고 현재 복구의 변경 파일은 아래4개로만 제한한다. 이는 새기능/별도journal 도입이 아니라 기존unknown-create 계약의 정보손실 교정이다.
+
+| 파일 | 수정 내용 |
+|---|---|
+| `android/core/src/main/kotlin/com/ny/my/health/core/SyncState.kt` | memory-only PlannedFile에 createMayHaveSucceeded 기본false projection 추가; persisted DTO/codec/schema 불변 |
+| `android/core/src/main/kotlin/com/ny/my/health/core/DestinationSync.kt` | null-handle 미확인 write의 durable INDETERMINATE 보존과 provider 전달 |
+| `android/core/src/test/kotlin/com/ny/my/health/core/DestinationSyncTest.kt` | 동일/변경revision·재중단·absent/발견·freshcreate 구별 회귀 |
+| `android/app/src/androidTest/java/com/ny/my/health/SyncExecutionSessionInstrumentedTest.kt` | 실제SQLite 재열기의 동일 계약 통합검증 |
+
+- **인터페이스**: 상위 `PlannedFile`의 createMayHaveSucceeded는 영속필드가아닌projection이다. nullhandle인old RUNNING/INDETERMINATE의원격노출불명은새read/revision의파일journal에서도INDETERMINATE로보존한다. empty전환의REMOTE_STALE 또는명시BLOCKED를거쳐다시populated가되었을때도nullhandle의해결불명은보수적으로유지한다. 원격확인/정확기존target의안전한처리전에는freshcreate허가로바꾸지않는다. truly first/new pending의첫create와기존knownhandle경로는구별하며priorconfirmation을유지한다.
+- **결정 로직**: 기존 DestinationSync.kt의 파일journal/projection 계산 위치에 IO없는 판정만둔다. no target + unresolved prior phase → durable INDETERMINATE 및 createMayHaveSucceeded=true. fresh file/미노출pending → false; knownhandle은기존exactID검증계약. REMOTE_STALE→populated의nullhandle은보수적true. persisted schema/새enum/대규모state필드추가없음.
+- **호출 순서**: 이전행/원본재조회→uncertainty를보존한journal commit→동일의미PlannedFile→fresh reconciliation→검증된대상채택/안전한existing수정또는고정reconciliation blocker. true인데안전한existing대상을증명하지못한destination은POST/create를호출하지않는다.
+- **작성할 테스트**: 기존 `After partial failure cancellation or unknown create reconciliation retries only pending files`를보존하고, 의미있는새case로동일/변경revision unknownnullhandle→rereadjournal후재중단→store/codec재열기→absent의create0, freshneverattempted첫create허용, freshfoundtargetadoption/안전한knownID, populated→empty→populated의불명정보와priorconfirmation보존을검증한다(①③④⑤). 새Native는실제SQLite+합성reader/destination이며실제Drive/OSkill로표현하지않는다. 기존17OS host는별도gate다.
+- **완료 기준/검증**: focused core tests→전체JVM/APK/lint/testAPK→양APINative/기존17host·성능→Q3독립재검토. 먼저미수정7dc에서최소실패회귀를실행하여실제실패를보존하고그후제품교정한다. Native 통합은최종CI이며새source관련test skip/단언완화금지.
+
 ### T4: 실제 SQLite의 원자적 상태 저장
 
 - **변경 파일**
@@ -869,3 +886,5 @@ T11 b7 actual 미완료: Native43151273714 양API각103/1/0/0, 새unsafe grouped
 T11 recovery9 (owner-auto enforcing Android fixture전제교정;앞선8회유지) — b7 실제103/1/0/0 및API35 SELinux link AVC를근거로앱이자기파일hardlink를생성할수있다는전제를철회한다. 새호스트권한/보안설정/의존성은도입하지않고helper+현재NativeTest2파일만변경한다. 동일regular(StructStat)의internal가시성만열고본문/모든production호출을유지한다. journal/db각실제createLink시도는보존하며성공하면same dev/inode/nlink2·Store UNAVAILABLE/noRW/bytes보존을기존대로검증한다. 정확AccessDenied만별도플랫폼분할로확인하여alias부재·실제소스nlink1·DB/journal/sentinelbytes보존과동일production validator의실제stat기반nlink1수락/2거부를단언한다. 다른예외는실패,Assume/skip/무단continue금지이며이분할은실제hardlinked파일admission PASS가아니다. 뒤unsafe모든분할을실행한다. 독립quality진단은순수stat경계와OS생성거부의분리및명시적실제hardlink미검증을요구했다. 기존스펙원본보존/불안전경로거부/4group·기존32/Session9/host17/성능72gate는그대로다. 새source전체검증/별도검토후CI확인하며실제hardlinkOSadmission한계를완료보고에도남긴다.
 
 R9 추가원본대조: API36의동일link AVC는다음test logcat에버퍼링되어있었고root가전체artifact검색으로직접확인했다. 따라서양API enforcing SELinux link거부가확인됐으며개별test logfile에없었던관찰과구분한다. rawUID/path/UUID는공개하지않는다. 실행자localfull1분57초/JVM139/0/0/0·APK/lint/testAPK PASS, R9조건분할은compile만으로실제통과판정하지않는다.
+
+T3 recovery5 (owner-auto Important Q3한정교정;앞선4회보존) — root source반례와별도quality7dc확인에서nullhandle unknowncreate의INDETERMINATE가rereadjournal의PENDING/currentstartedAt으로붕괴한다. 그뒤재중단이면firstcreate와구별불가다. actualproviderduplicate는관찰하지않았다. 상위e4d7ac3의메모리PlannedFile flag와기존durablephase보존계약을재검토/pin했으며승인스펙/영속schema/권한/외부서비스불변이다. 현재T3교정4파일과회귀범위는작업블록에명시했다. 7dc actualAndroid hotjournalgate는동결source로계속실행하고별도worktree에서Q3의최소pre-fix실패→제품교정→재검증을진행한다. 완료/병합은모든최신source독립재검토와최종CI후만가능하며새세션/회차리셋없다.
