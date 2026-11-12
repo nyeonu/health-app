@@ -151,7 +151,7 @@ data class DayRevision(val key: RevisionKey, val scopeKey: ReadScopeKey,
     val scopes: Map<DataType, ReadScope>, val files: Map<Dataset, CsvFile>,
     val remoteStale: Set<Dataset>)
 data class PlannedFile(val key: FileKey, val file: CsvFile, val byteSha256: String,
-    val previousTargetHandle: String?)
+    val previousTargetHandle: String?, val createMayHaveSucceeded: Boolean = false)
 data class ReconciledFiles(val confirmed: List<FileConfirmation>,
     val pending: List<PlannedFile>, val blocked: Set<FileKey>)
 enum class CommitStatus { COMMITTED, STALE, INVALID, UNAVAILABLE }
@@ -183,6 +183,10 @@ interface SyncStateStore {
     suspend fun loadDay(expected: DestinationGeneration, date: LocalDate,
         scopeKey: ReadScopeKey): DayState?
 }
+// PlannedFile.createMayHaveSucceeded: memory-only projection of durable unresolved null-handle write.
+// Reread/new revision must retain that unresolved state, including through REMOTE_STALE.
+// Destination may adopt a freshly proven target or update a safely resolved existing target;
+// when true and no safe existing target is proven, never POST/create: reconciliation required.
 // StorageDestination — C/Ports.kt; CsvFile is memory-only; reconciliation never blind-creates
 interface StorageDestination {
     suspend fun reconcile(files: List<PlannedFile>): ReconciledFiles
