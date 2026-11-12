@@ -4,6 +4,7 @@ import android.content.Context
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteDatabaseCorruptException
+import android.database.sqlite.SQLiteReadOnlyDatabaseException
 import android.database.sqlite.SQLiteException
 import java.io.File
 import java.nio.file.Files
@@ -16,9 +17,10 @@ internal enum class SyncStatePhase {
     INITIAL_SCHEMA_READY, INITIAL_BEFORE_PUBLISH, INITIAL_PUBLISHED,
     RESET_OWNER_BEFORE, RESET_OWNER_WRITING, RESET_OWNER_WRITTEN,
     RESET_STAGE_SCHEMA_READY, RESET_PREPARED, RESET_MARKER_PUBLISHED,
+    HOT_RAW_SAVED, HOT_CANARY_VALIDATED, HOT_BEFORE_ORIGINAL, HOT_ORIGINAL_ROLLED_BACK,
 }
 
-/** 읽기는 생성ㆍ수리하지 않으며, 손상 처리기도 원본을 삭제하지 않는다. */
+/** 일반 읽기는 생성하지 않으며, 검증된 hot journal만 한정 rollback한다. 자동 reset과 손상 원본 삭제는 하지 않는다. */
 internal class SyncStateDatabase internal constructor(
     internal val databaseFile: File,
     private val phaseObserver: (SyncStatePhase) -> Unit = {},
@@ -34,12 +36,28 @@ internal class SyncStateDatabase internal constructor(
         if (!databaseFile.exists()) return null
         return open(false, true)
     }
+    internal fun openAdmittedRead(validateContent: (SQLiteDatabase) -> Unit,
+        checkCancelled: () -> Unit): SQLiteDatabase? {
+        check(Thread.holdsLock(pathLock))
+        checkCancelled()
+        return try { openForRead() } catch (error: SQLiteReadOnlyDatabaseException) {
+            SyncStateHotJournalRecovery(this).recover(validateContent,checkCancelled)
+            checkCancelled()
+            openForRead()
+        }
+    }
+    internal fun openExistingForRollback(): SQLiteDatabase {
+        checkPath(false)
+        SyncStateHotJournalRecovery.requireRollbackPair(databaseFile)
+        return open(false,false)
+    }
     internal fun openForWrite(): SQLiteDatabase {
         checkPath(false)
         if (databaseFile.exists()) open(false, true).close()
         return open(!databaseFile.exists(), false)
     }
     private fun checkPath(allowMarker: Boolean) {
+        SyncStateHotJournalRecovery.guardSidecarPaths(databaseFile)
         if ((!allowMarker && Files.exists(resetDirectory.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) ||
             Files.isSymbolicLink(databaseFile.toPath()) || (databaseFile.exists() && !databaseFile.isFile)) {
             throw SQLiteException("동기화 DB를 사용할 수 없습니다")

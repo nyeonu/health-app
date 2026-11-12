@@ -446,6 +446,10 @@ class SyncStateProcessRecoveryInstrumentedTest {
         // 전체 목록을 먼저 입증한다. 알 수 없는 entry가 있으면 어떤 fixture도 삭제하지 않는다.
         for (entry in artifactRoots()) {
             if (ordinary.matches(entry.name)) { safe(entry); deletion += entry; continue }
+            if (entry.name.startsWith("${file.name}.hot-journal-")) {
+                deletion += SyncStateHotJournalRecovery.ownedRawFiles(file,entry)
+                continue
+            }
             check(directories.matches(entry.name)) { "알 수 없는 fixture entry" }; safe(entry, true)
             val children = entry.listFiles()!!.toList()
             val completed = entry.name.contains(".reset.completed-")

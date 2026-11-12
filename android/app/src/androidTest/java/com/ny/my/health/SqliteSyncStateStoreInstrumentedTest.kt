@@ -756,6 +756,311 @@ class SqliteSyncStateStoreInstrumentedTest {
         return original
     }
 
+    @Test
+    fun validatedHotJournalsRestoreCommittedStateThroughEveryStoreEntryWithoutFabricatingConfirmations() = runBlocking {
+        for (entry in listOf("load","alias-load","scoped","day","header","binding","invalidate")) {
+            val h = HotFixture()
+            try {
+                h.seed()
+                h.dirty()
+                when (entry) {
+                    "load" -> h.assertRestored(h.f.store().load())
+                    "alias-load" -> h.assertRestored(SqliteSyncStateStore(SyncStateDatabase(
+                        File(h.f.db.databaseFile.parentFile,"./${h.f.db.databaseFile.name}")),{ h.f.date }).load())
+                    "scoped" -> {
+                        val read = h.f.store().loadForScope(h.generation,h.f.date,h.f.access(h.scopes))
+                        h.assertRestored(read)
+                        assertEquals(h.f.date.minusDays(1),read.state!!.coverage.scopeUploadedThrough)
+                    }
+                    "day" -> assertEquals(h.confirmed,h.f.store().loadDay(h.generation,h.f.date.minusDays(1),h.key)!!
+                        .datasets.getValue(Dataset.DAILY).confirmedAt)
+                    "header" -> assertNull(h.f.store().loadCurrentAttempt(h.generation))
+                    "binding" -> assertEquals(PrivateDestinationBinding("SYNTHETIC"),h.f.store().readBinding(h.generation))
+                    "invalidate" -> assertEquals(CommitStatus.COMMITTED,h.f.store().invalidate(h.generation).status)
+                }
+                h.assertRaw()
+                assertEquals(1,h.artifacts(".hot-journal-").size)
+                val saved = h.raw().let { File(it,"raw/state.db").readBytes() }
+                if (entry != "invalidate") {
+                    h.assertRestored(h.f.store().load())
+                    assertEquals(CommitStatus.COMMITTED,h.f.store().invalidate(h.generation).status)
+                }
+                assertArrayEquals(saved,File(h.raw(),"raw/state.db").readBytes())
+                assertTrue(h.artifacts(".hot-work-").isEmpty())
+            } finally { h.close() }
+        }
+        val normal = Fixture()
+        try {
+            normal.configure()
+            val bytes = normal.db.databaseFile.readBytes()
+            normal.ready()
+            assertArrayEquals(bytes,normal.db.databaseFile.readBytes())
+            assertTrue(normal.db.databaseFile.parentFile!!.listFiles()!!.none {
+                it.name.startsWith(normal.db.databaseFile.name + ".hot-") })
+        } finally { normal.close() }
+    }
+
+    @Test
+    fun unsupportedOrMalformedRecoveredPairsPreserveOriginalBytesWithoutAWritableOriginalOpen() = runBlocking {
+        for (kind in listOf("version","schema","binding","unselected","attempt")) {
+            val h = HotFixture()
+            try {
+                h.seed()
+                h.dirty { db -> when (kind) {
+                    "version" -> db.version = 99
+                    "schema" -> db.execSQL("CREATE TABLE unexpected (value TEXT)")
+                    "binding" -> db.execSQL("UPDATE config SET binding_payload='{}'")
+                    "unselected" -> db.execSQL("UPDATE day SET requested_scopes_json='{}' WHERE date=?",
+                        arrayOf(h.enrolled.toString()))
+                    "attempt" -> db.execSQL("INSERT INTO attempt VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",arrayOf(
+                        UUID.randomUUID().toString(),h.generation.value,"b".repeat(64),SyncStateCodec.encodeScopes(h.scopes),
+                        SyncTrigger.MANUAL.name,h.started.toString(),h.started.toString(),null,
+                        "[\"${h.enrolled}\"]","a".repeat(64),0,"[]"))
+                } }
+                var rolled = 0
+                val store = h.f.store({ if (it == SyncStatePhase.HOT_ORIGINAL_ROLLED_BACK) rolled++ })
+                val result = store.load()
+                assertEquals(if (kind in setOf("version","schema")) StateStatus.UNSUPPORTED else StateStatus.CORRUPT,result.status)
+                assertEquals(0,rolled)
+                h.assertOriginal()
+                h.assertRaw()
+                // narrow header도 최초 recovery에서는 비선택 profile 손상을 숨기지 않는다.
+                assertTrue(runCatching { runBlocking { h.f.store().loadCurrentAttempt(h.generation) } }.isFailure)
+                h.assertOriginal()
+                assertEquals(1,h.artifacts(".hot-journal-").size)
+            } finally { h.close() }
+        }
+    }
+
+    @Test
+    fun unsafeRollbackSidecarsAndChangedSourcePairsNeverFollowExternalPathsOrDeleteUnknownFiles() = runBlocking {
+        for (kind in listOf("footer","wal","shm","journal-link","journal-hardlink","db-link","db-hardlink",
+            "short-journal","short-db","raw-unknown","raw-manifest","raw-owner","raw-order","raw-size","raw-hash","raw-link","work-unknown","changed")) {
+            val h = HotFixture()
+            val sentinel = File(h.f.db.databaseFile.parentFile,"synthetic-sentinel-${UUID.randomUUID()}")
+            try {
+                h.seed(); h.dirty()
+                val db = h.f.db.databaseFile
+                val journal = File(db.path + "-journal")
+                sentinel.writeText("합성 외부 sentinel")
+                val sentinelBytes = sentinel.readBytes()
+                val unknown = mutableListOf<File>()
+                var expectedDb = h.dirtyDb
+                var expectedJournal = h.dirtyJournal
+                when (kind) {
+                    "footer" -> {
+                        val path = sentinel.path.toByteArray(Charsets.UTF_8)
+                        val tail = java.nio.ByteBuffer.allocate(8).putInt(path.size)
+                            .putInt(path.sumOf { it.toInt() and 255 }).array()
+                        journal.appendBytes(path + tail + h.magic); expectedJournal = journal.readBytes()
+                    }
+                    "wal","shm" -> File(db.path + "-" + kind).also { it.writeBytes(byteArrayOf(1)); unknown += it }
+                    "journal-link","db-link" -> {
+                        val target = if (kind == "journal-link") journal else db
+                        assertTrue(target.delete()); java.nio.file.Files.createSymbolicLink(target.toPath(),sentinel.toPath())
+                    }
+                    "journal-hardlink","db-hardlink" -> {
+                        val target = if (kind == "journal-hardlink") journal else db
+                        java.nio.file.Files.createLink(File(db.parentFile,db.name + ".hardlink").toPath(),target.toPath())
+                    }
+                    "short-journal" -> { journal.writeBytes(byteArrayOf(1)); expectedJournal = journal.readBytes() }
+                    "short-db" -> { db.writeBytes(h.dirtyDb.copyOf(40)); expectedDb = db.readBytes() }
+                }
+                var rolled = 0
+                val observer: (SyncStatePhase) -> Unit = { phase ->
+                    if (phase == SyncStatePhase.HOT_ORIGINAL_ROLLED_BACK) rolled++
+                    if (phase == SyncStatePhase.HOT_RAW_SAVED) when (kind) {
+                        "raw-unknown" -> File(h.raw(),"unknown").also { it.writeText("합성 unknown"); unknown += it }
+                        "raw-manifest" -> File(h.raw(),"manifest").also { it.appendText("x".repeat(513)); unknown += it }
+                        "raw-owner","raw-order","raw-size","raw-hash" -> File(h.raw(),"manifest").also { manifest ->
+                            val lines = manifest.readLines().toMutableList()
+                            when (kind) {
+                                "raw-owner" -> lines[1] = "owner=invalid"
+                                "raw-order" -> { val value = lines[2]; lines[2] = lines[3]; lines[3] = value }
+                                "raw-size" -> lines[4] = "db_size=0" + lines[4].substringAfter('=')
+                                "raw-hash" -> lines[2] = "db_sha256=" + "0".repeat(64)
+                            }
+                            manifest.writeText(lines.joinToString("\n") + "\n"); unknown += manifest
+                        }
+                        "raw-link" -> {
+                            val target = File(h.raw(),"raw/state.db-journal")
+                            assertTrue(target.delete()); java.nio.file.Files.createSymbolicLink(target.toPath(),sentinel.toPath())
+                            unknown += target
+                        }
+                    }
+                    if (phase == SyncStatePhase.HOT_CANARY_VALIDATED) when (kind) {
+                        "work-unknown" -> File(h.artifacts(".hot-work-").single(),"unknown").also {
+                            it.writeText("합성 unknown"); unknown += it }
+                        "changed" -> {
+                            val changed = db.readBytes(); changed[60] = (changed[60].toInt() xor 1).toByte()
+                            db.writeBytes(changed); expectedDb = changed
+                        }
+                    }
+                }
+                assertNotEquals(StateStatus.READY,h.f.store(observer).load().status)
+                assertEquals(0,rolled)
+                assertArrayEquals(sentinelBytes,sentinel.readBytes())
+                if (kind !in setOf("db-link")) assertArrayEquals(expectedDb,db.readBytes())
+                if (kind !in setOf("journal-link")) assertArrayEquals(expectedJournal,journal.readBytes())
+                unknown.forEach { assertTrue(java.nio.file.Files.exists(it.toPath(),java.nio.file.LinkOption.NOFOLLOW_LINKS)) }
+                if (kind == "work-unknown") {
+                    val work = h.artifacts(".hot-work-").single()
+                    assertTrue(File(work,"owner").exists()); assertTrue(File(work,"state.db").exists())
+                }
+            } finally {
+                // 합성 fixture가 직접 만든 링크만 해제하며 대상 sentinel은 별도로 확인한다.
+                for (entry in listOf(h.f.db.databaseFile,File(h.f.db.databaseFile.path + "-journal")))
+                    if (java.nio.file.Files.isSymbolicLink(entry.toPath())) java.nio.file.Files.delete(entry.toPath())
+                File(h.f.db.databaseFile.parentFile,h.f.db.databaseFile.name + ".hardlink").delete()
+                h.close(); sentinel.delete()
+            }
+        }
+    }
+
+    @Test
+    fun interruptedRollbackPreparationRetainsRawEvidenceAndSafelyRetriesWithoutInventingSuccess() = runBlocking {
+        val phases = listOf(SyncStatePhase.HOT_RAW_SAVED,SyncStatePhase.HOT_CANARY_VALIDATED,
+            SyncStatePhase.HOT_BEFORE_ORIGINAL,SyncStatePhase.HOT_ORIGINAL_ROLLED_BACK)
+        for (phase in phases) for (cancel in listOf(false,true)) {
+            val h = HotFixture()
+            try {
+                h.seed(); h.dirty()
+                var stops = 0
+                val interrupted = h.f.store({ observed -> if (observed == phase && stops++ == 0) {
+                    if (cancel) throw CancellationException("합성 취소") else error("합성 중단")
+                } })
+                if (cancel) {
+                    try { interrupted.load(); fail("취소가 전파되어야 합니다") } catch (_: CancellationException) { }
+                } else assertNotEquals(StateStatus.READY,interrupted.load().status)
+                h.assertRaw()
+                if (phase != SyncStatePhase.HOT_ORIGINAL_ROLLED_BACK) h.assertOriginal()
+                // 같은 Store와 새 Store 모두 실제 readonly admission을 다시 수행한다.
+                h.assertRestored(interrupted.load())
+                h.assertRestored(h.f.store().load())
+                assertEquals(1,h.artifacts(".hot-journal-").size)
+                assertTrue(h.artifacts(".hot-work-").isEmpty())
+            } finally { h.close() }
+        }
+        val h = HotFixture()
+        try {
+            h.seed(); h.dirty()
+            synchronized(h.f.db.pathLock) {
+                try {
+                    h.f.db.openAdmittedRead({ error("부분 복사는 native 검증에 도달하면 안 됩니다") }, {
+                        val partial = h.artifacts(".hot-journal.prepare-").flatMap { directory ->
+                            File(directory,"raw").listFiles()?.toList().orEmpty() }
+                        if (partial.any { it.length() > 0 }) throw CancellationException("합성 부분 복사 취소")
+                    })
+                    fail("부분 복사 취소가 필요합니다")
+                } catch (_: CancellationException) { }
+            }
+            h.assertOriginal()
+            assertTrue(h.artifacts(".hot-journal.prepare-").isNotEmpty())
+            assertTrue(h.artifacts(".hot-journal-").isEmpty())
+            h.assertRestored(h.f.store().load())
+            h.assertRaw()
+        } finally { h.close() }
+    }
+
+    /** 실제 kill의 대체 증거가 아닌, 검증된 dirty pair fault 분할용 작은 합성 fixture. */
+    private class HotFixture {
+        val f = Fixture()
+        val started: Instant = Instant.parse("2026-11-05T00:00:00Z")
+        val confirmed: Instant = started.plusSeconds(1)
+        val enrolled: LocalDate = f.date.minusDays(96)
+        val scopes = DataType.entries.associateWith { ReadScope.EXPLICIT_DAY }
+        private var seededGeneration: DestinationGeneration? = null
+        val generation: DestinationGeneration get() = requireNotNull(seededGeneration)
+        private var seededKey: ReadScopeKey? = null
+        val key: ReadScopeKey get() = requireNotNull(seededKey)
+        lateinit var dirtyDb: ByteArray
+        lateinit var dirtyJournal: ByteArray
+        val magic = byteArrayOf(0xd9.toByte(),0xd5.toByte(),5,0xf9.toByte(),0x20,0xa1.toByte(),0x63,0xd7.toByte())
+        private val handle = "s".repeat(4096)
+        suspend fun seed() {
+            val date = f.date
+            f.date = enrolled.plusDays(1)
+            seededGeneration = f.configure()
+            f.date = date
+            val config = f.ready().configuration!!
+            seededKey = SyncPlanner.scopeKey(config,f.access(scopes))!!
+            val encoded = SyncStateCodec.encodeScopes(scopes)
+            f.db.openForWrite().use { db -> f.db.transaction(db) {
+                repeat(96) { offset ->
+                    val day = enrolled.plusDays(offset.toLong())
+                    val revision = RevisionKey("a".repeat(64),started)
+                    val leaf = DatasetState(Dataset.DAILY,revision,FilePhase.CONFIRMED,true,handle,started,confirmed,null)
+                    assertTrue(DayState(day,key,scopes,revision,DayPhase.CONFIRMED,scopes,started,mapOf(Dataset.DAILY to leaf),null)
+                        .isValid(generation,enrolled,date))
+                    db.execSQL("INSERT INTO day VALUES (?,?,?,?,?,?,?,?,?,?)",arrayOf(generation.value,day.toString(),key.value,
+                        encoded,revision.digest,started.toString(),DayPhase.CONFIRMED.name,encoded,started.toString(),null))
+                    db.execSQL("INSERT INTO dataset VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",arrayOf(generation.value,day.toString(),
+                        key.value,Dataset.DAILY.name,revision.digest,started.toString(),FilePhase.CONFIRMED.name,1,
+                        handle,started.toString(),confirmed.toString(),null))
+                }
+            } }
+            assertRestored(f.store().load())
+        }
+        fun dirty(malformed: (SQLiteDatabase) -> Unit = {}) {
+            val file = f.db.databaseFile
+            val journal = File(file.path + "-journal")
+            class Copied : RuntimeException()
+            try {
+                f.db.openForWrite().use { db ->
+                    malformed(db)
+                    val before = file.readBytes()
+                    // test-only 작은 cache는 실제 host/production 설정과 독립이다.
+                    db.execSQL("PRAGMA cache_size=8")
+                    db.execSQL("PRAGMA cache_spill=ON")
+                    f.db.transaction(db,{
+                        dirtyDb = file.readBytes(); dirtyJournal = journal.readBytes()
+                        assertFalse(before.contentEquals(dirtyDb))
+                        assertArrayEquals(magic,dirtyJournal.copyOfRange(0,8))
+                        assertTrue(dirtyJournal.size > 512)
+                        throw Copied()
+                    }) { db.execSQL("UPDATE dataset SET target_handle=?",arrayOf("d".repeat(4096))) }
+                }
+                fail("원래 writer는 rollback해야 합니다")
+            } catch (_: Copied) { }
+            file.writeBytes(dirtyDb); journal.writeBytes(dirtyJournal)
+            SyncStateHotJournalRecovery.requireRollbackPair(file)
+            try {
+                f.db.openForRead()?.close()
+                fail("합성 dirty pair는 실제 typed readonly 오류가 필요합니다")
+            } catch (_: android.database.sqlite.SQLiteReadOnlyDatabaseException) { }
+            assertOriginal()
+        }
+        fun assertRestored(read: SyncStateRead) {
+            assertEquals(StateStatus.READY,read.status)
+            assertEquals(generation,read.state!!.generation)
+            assertEquals(confirmed,read.state!!.coverage.lastUploadAt)
+            assertEquals(f.date.minusDays(1),read.state!!.coverage.uploadedThrough)
+            assertNull(read.state!!.attempt)
+        }
+        fun artifacts(suffix: String) = f.db.databaseFile.parentFile!!.listFiles()!!.filter {
+            it.name.startsWith(f.db.databaseFile.name + suffix) }
+        fun raw() = artifacts(".hot-journal-").single()
+        fun assertOriginal() {
+            assertArrayEquals(dirtyDb,f.db.databaseFile.readBytes())
+            assertArrayEquals(dirtyJournal,File(f.db.databaseFile.path + "-journal").readBytes())
+        }
+        fun assertRaw() {
+            SyncStateHotJournalRecovery.ownedRawFiles(f.db.databaseFile,raw())
+            assertArrayEquals(dirtyDb,File(raw(),"raw/state.db").readBytes())
+            assertArrayEquals(dirtyJournal,File(raw(),"raw/state.db-journal").readBytes())
+        }
+        fun close() {
+            // 이 fixture가 만든 정확한 basename 아래의 합성 파일만 테스트 종료 때 정리한다.
+            for (directory in artifacts(".hot-")) {
+                directory.walkBottomUp().forEach { entry ->
+                    if (java.nio.file.Files.isSymbolicLink(entry.toPath())) java.nio.file.Files.delete(entry.toPath())
+                    else entry.delete()
+                }
+            }
+            f.close()
+        }
+    }
+
     private class Fixture {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = SyncStateDatabase(File(context.noBackupFilesDir,"sync-state-probe-${UUID.randomUUID()}.db"))

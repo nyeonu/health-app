@@ -36,27 +36,30 @@ internal class SqliteSyncStateStore internal constructor(
 ) : SyncStateStore {
     constructor(context: Context) : this(SyncStateDatabase(context))
 
-    override suspend fun load(): SyncStateRead = withContext(Dispatchers.IO) { read(null, today(), null) }
+    override suspend fun load(): SyncStateRead = withContext(Dispatchers.IO) { read(null, today(), null, currentCoroutineContext()) }
     override suspend fun loadForScope(expected: DestinationGeneration, todayInSeoul: LocalDate,
-        access: ReadAccess): SyncStateRead = withContext(Dispatchers.IO) { read(expected, todayInSeoul, access) }
+        access: ReadAccess): SyncStateRead = withContext(Dispatchers.IO) { read(expected, todayInSeoul, access, currentCoroutineContext()) }
 
-    private fun read(expected: DestinationGeneration?, date: LocalDate, access: ReadAccess?): SyncStateRead =
+    private fun read(expected: DestinationGeneration?, date: LocalDate, access: ReadAccess?, coroutine: CoroutineContext): SyncStateRead =
         synchronized(database.pathLock) {
             try {
                 // 모든 지원 writer와 같은 경로 잠금을 유지하므로 여러 SELECT도 같은 읽기 snapshot이다.
-                val db = database.openForRead() ?: return@synchronized SyncStateRead(StateStatus.ABSENT, null)
+                val db = admittedRead(date,coroutine) ?: return@synchronized SyncStateRead(StateStatus.ABSENT, null)
                 db.use {
                     val state = snapshot(db,date,access)
                     if (expected != null && state.generation != expected) throw StaleSyncStateException()
                     SyncStateRead(StateStatus.READY, state)
                 }
-            } catch (error: StaleSyncStateException) { throw error }
+            } catch (error: CancellationException) { throw error }
+            catch (error: StaleSyncStateException) { throw error }
             catch (error: Exception) { SyncStateRead(classify(error), null) }
         }
 
     override suspend fun loadCurrentAttempt(expected: DestinationGeneration): AttemptState? = withContext(Dispatchers.IO) {
+        val coroutine = currentCoroutineContext()
+        val checkedAt = today()
         synchronized(database.pathLock) {
-            val db = database.openForRead() ?: throw IllegalStateException("동기화 DB가 없습니다")
+            val db = admittedRead(checkedAt,coroutine) ?: throw IllegalStateException("동기화 DB가 없습니다")
             db.use {
                 val meta = metadata(db)
                 if (meta.generation != expected) return@synchronized null
@@ -66,8 +69,10 @@ internal class SqliteSyncStateStore internal constructor(
     }
 
     override suspend fun loadDay(expected: DestinationGeneration, date: LocalDate, scopeKey: ReadScopeKey): DayState? = withContext(Dispatchers.IO) {
+        val coroutine = currentCoroutineContext()
+        val checkedAt = today()
         synchronized(database.pathLock) {
-            val db = database.openForRead() ?: throw IllegalStateException("동기화 DB가 없습니다")
+            val db = admittedRead(checkedAt,coroutine) ?: throw IllegalStateException("동기화 DB가 없습니다")
             db.use {
                 val meta = metadata(db)
                 if (meta.generation != expected) throw StaleSyncStateException()
@@ -96,8 +101,11 @@ internal class SqliteSyncStateStore internal constructor(
         }
     }
 
-    suspend fun readBinding(expected: DestinationGeneration): PrivateDestinationBinding? = withContext(Dispatchers.IO) { synchronized(database.pathLock) {
-        val db = database.openForRead() ?: throw IllegalStateException("동기화 DB가 없습니다")
+    suspend fun readBinding(expected: DestinationGeneration): PrivateDestinationBinding? = withContext(Dispatchers.IO) {
+        val coroutine = currentCoroutineContext()
+        val checkedAt = today()
+        synchronized(database.pathLock) {
+        val db = admittedRead(checkedAt,coroutine) ?: throw IllegalStateException("동기화 DB가 없습니다")
         db.use {
             if (metadata(db).generation != expected) throw StaleSyncStateException()
             db.rawQuery("SELECT binding_kind,binding_payload FROM config WHERE id=1", null).use { row ->
@@ -179,6 +187,14 @@ internal class SqliteSyncStateStore internal constructor(
         }
     }
 
+    private fun admittedRead(date: LocalDate, coroutine: CoroutineContext): SQLiteDatabase? =
+        database.openAdmittedRead({ db ->
+            coroutine.ensureActive()
+            capacity(db)
+            validateActive(db,date)
+            coroutine.ensureActive()
+        }, { coroutine.ensureActive() })
+
     private suspend fun write(expected: DestinationGeneration?,allowAbsent: Boolean = false,
         requestedScopes: Map<DataType,ReadScope>? = null,
         block: (SQLiteDatabase,Admission?) -> SyncCommit): SyncCommit {
@@ -187,7 +203,7 @@ internal class SqliteSyncStateStore internal constructor(
             try {
                 // 읽기 경계가 marker/symlink를 검사하며 ABSENT에서는 파일을 만들지 않는다.
                 val checkedAt = today()
-                val ready = database.openForRead().use { db -> db?.let { validateActive(it,checkedAt, requestedScopes = requestedScopes) } }
+                val ready = admittedRead(checkedAt,coroutine).use { db -> db?.let { validateActive(it,checkedAt, requestedScopes = requestedScopes) } }
                 if (ready == null) {
                     if (!allowAbsent) return@synchronized SyncCommit(CommitStatus.UNAVAILABLE,null)
                     if (expected != null) return@synchronized SyncCommit(CommitStatus.STALE,null)
@@ -253,7 +269,7 @@ internal class SqliteSyncStateStore internal constructor(
                 if (Files.isSymbolicLink(marker.toPath()) || Files.isSymbolicLink(database.databaseFile.toPath()) ||
                     (database.databaseFile.exists() && !database.databaseFile.isFile)) return@synchronized SyncCommit(CommitStatus.UNAVAILABLE, null)
                 if (!present(marker)) {
-                    val status = read(null,today(),null).status
+                    val status = read(null,today(),null,coroutine).status
                     if (status == StateStatus.READY || status == StateStatus.ABSENT) return@synchronized SyncCommit(CommitStatus.INVALID,null)
                     if (status != StateStatus.CORRUPT && status != StateStatus.UNSUPPORTED) return@synchronized SyncCommit(CommitStatus.UNAVAILABLE,null)
                     prepareReset(marker,coroutine)
