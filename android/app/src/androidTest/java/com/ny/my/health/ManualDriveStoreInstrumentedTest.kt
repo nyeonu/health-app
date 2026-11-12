@@ -51,9 +51,22 @@ class ManualDriveStoreInstrumentedTest {
                 when (kind) {
                     "malformed-profile" -> broken.sql("UPDATE day SET requested_scopes_json='{}' WHERE scope_key=?",
                         arrayOf(broken.key(broken.summary).value))
-                    "orphan" -> SQLiteDatabase.openDatabase(broken.db.databaseFile.path,null,SQLiteDatabase.OPEN_READWRITE).use { db ->
-                        db.execSQL("PRAGMA foreign_keys=OFF")
-                        db.execSQL("DELETE FROM day WHERE scope_key=?",arrayOf(broken.key(broken.summary).value))
+                    "orphan" -> {
+                        val schemaBefore = broken.db.openForRead().use { broken.schemaNames(checkNotNull(it)) }
+                        SQLiteDatabase.openDatabase(broken.db.databaseFile.path,null,
+                            SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use { db ->
+                            db.execSQL("PRAGMA foreign_keys=OFF")
+                            db.execSQL("DELETE FROM day WHERE scope_key=?",arrayOf(broken.key(broken.summary).value))
+                            assertEquals(schemaBefore,broken.schemaNames(db))
+                            // 날짜 행만 지워졌고 해당 파일 행이 실제 orphan으로 남았는지 먼저 입증한다.
+                            db.rawQuery("SELECT count(*) FROM dataset AS file LEFT JOIN day AS parent " +
+                                "ON parent.generation=file.generation AND parent.date=file.date AND parent.scope_key=file.scope_key " +
+                                "WHERE parent.generation IS NULL AND file.generation=? AND file.scope_key=?",
+                                arrayOf(generation.value,broken.key(broken.summary).value)).use { rows ->
+                                assertTrue(rows.moveToFirst())
+                                assertEquals(1L,rows.getLong(0))
+                            }
+                        }
                     }
                     "unsupported" -> broken.db.openForWrite().use { it.version = 2 }
                     "unavailable" -> assertTrue(broken.db.resetDirectory.mkdir())
@@ -177,6 +190,11 @@ class ManualDriveStoreInstrumentedTest {
             val result = store().loadForScope(generation,date,access(scopes))
             assertEquals(StateStatus.READY,result.status)
             return result.state!!
+        }
+        fun schemaNames(sql: SQLiteDatabase): Set<String> = sql.rawQuery("SELECT name FROM sqlite_master",null).use { rows ->
+            val names = mutableSetOf<String>()
+            while (rows.moveToNext()) names += rows.getString(0)
+            names
         }
         fun sql(statement: String,args: Array<String>) = db.openForWrite().use { it.execSQL(statement,args) }
         suspend fun attempt(generation: DestinationGeneration,finished: Boolean): AttemptState {
