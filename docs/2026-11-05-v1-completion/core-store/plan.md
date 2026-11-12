@@ -13,12 +13,12 @@ tasks:
   - {id: T1, title: 등록 이후 bounded 날짜 계획, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 재읽기 revision과 scope별 확인, depends_on: [T1], status: done, tier: standard}
   - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: done, tier: standard}
-  - {id: T4, title: 실제 SQLite의 원자적 상태 저장, depends_on: [T3], status: in_progress, tier: standard}
-  - {id: T5, title: process 공용 admission과 중단 복구, depends_on: [T4], status: pending, tier: standard}
+  - {id: T4, title: 실제 SQLite의 원자적 상태 저장, depends_on: [T3], status: done, tier: standard}
+  - {id: T5, title: process 공용 admission과 중단 복구, depends_on: [T4], status: in_progress, tier: standard}
   - {id: T6, title: OS 강제종료의 실제 commit 검증, depends_on: [T5, T7, T8, T9], status: pending, tier: standard}
   - {id: T7, title: 누적 메타데이터 비용 측정, depends_on: [T3], status: done, tier: standard}
-  - {id: T8, title: 측정된 metadata 반복 조회 축소, depends_on: [T4, T7], status: pending, tier: standard}
-  - {id: T9, title: 계정없는 emulator bootstrap 안정화, depends_on: [T7], status: in_progress, tier: light}
+  - {id: T8, title: 측정된 metadata 반복 조회 축소, depends_on: [T4, T7], status: in_progress, tier: standard}
+  - {id: T9, title: 계정없는 emulator bootstrap 안정화, depends_on: [T7], status: done, tier: light}
 ---
 
 # 날짜별 복구와 내구성 상태
@@ -67,7 +67,7 @@ tasks:
 ```
 
 - `SyncState`：tombstone coverage의 scopePendingCount/scopeBlockedCount는 0, excludedTypes/recent sets는 empty다. 구성은 있으나 load()에서 scope를 선택하지 않았으면 scope counters=null이며 0 gaps로 표시하지 않는다. configuration=null READY도 generation을 가지므로 새 configure는 이 tombstone generation CAS를 요구한다.
-- `SyncMutation`：start는 새로운 id와 같은 attemptId가 필요하고 나머지는 현재 id가 필요하다. finish 뒤 callback은 INVALID다. confirmation은 현재 scope row의 revision·dataset·RUNNING/INDETERMINATE journal과 일치해야 한다. 같은 확인 재커밋만 멱등이며 서로 다른 target/시각으로 덮지 않는다. pendingTriggers 병합은 현재 generation/attempt만 바꾼다.
+- `SyncMutation`：start는 새로운 id와 같은 attemptId가 필요하고 나머지는 현재 id가 필요하다. finish 뒤 callback은 INVALID이며, 현재 pendingTriggers의 union만 예외로 허용한다. confirmation은 현재 scope row의 revision·dataset·RUNNING/INDETERMINATE journal과 일치해야 한다. 같은 확인 재커밋만 멱등이며 서로 다른 target/시각으로 덮지 않는다. pendingTriggers 병합은 현재 generation/attempt만 바꾼다.
 - `SyncState`：retryBudgetKey는 generation + scopeKey + 오름차순 dates + 현재 해당 scope revision digest(미조회 literal UNREAD)를 canonical 길이 구분하여 SHA-256한다. 실제 자동 retry는 이번 PR에서 실행하지 않으며 0..3 저장/재열기·동일 key 보존을 검증한다.
 
 ### SyncPlanner: scope를 먼저 고르는 조회 계약
@@ -272,6 +272,28 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
 
 결정 로직은 상위 2절 SyncPlanner/SyncRevision/SyncState 함수에 IO 없이 둔다. orchestration은 DestinationSync/session, SQL은 app store만 맡는다. 암묵적 동작은 상위의 **HistoryDatabase pathLock** 항목을 적용한다: store lock은 전체 실행 gate가 아니다(확인: HistoryDatabase.kt/SyncViewModel.kt). Android coroutine cancellation은 commit을 원격 rollback하지 않는다. 새로운 WorkManager/SDK 암묵 동작을 도입하지 않는다.
 
+### T5 실행 전 확정 공용 gate 계약
+
+- `SyncExecutionSession`：get(context,factory)는 applicationContext 편의 registry이며 생성자도 store.database.databaseFile.canonicalPath별 shared entry를 반드시 사용한다. entry는 Mutex gate, live owner/phase, recovery-needed, 최대3개 trigger별 pending receipt를 공유한다. 다른 DB path는 독립이며 Activity/context 객체별 gate로 분리하지 않는다. 사용자 설정 generation은 이 memory key와 다르고 값변경이 liveowner탈취 권한이 아니다.
+- `SyncExecutionSession`：run/detectPending은 gate를 먼저 획득한 owner만 복구한다. busy detectPending은 load()의 실제 unscoped coverage(선택scope값unknown/null)를 반환하고 HC/reader.access/health/remote/recovery를 실행하지 않는다. store error는 fixed 오류로 전파하고 빈coverage/완료로 만들지 않는다. gate owner는 unfinished attempt의 exact scope/date rows에서 RUNNING file만 INDETERMINATE로 바꾸며 확인/prior/checked/기존blocker·stale를 보존한다. 모든 필요한 journal 후 해당 attempt를 finish해서 새 start가 가능해야 한다. 본session start.startedAt은 항상 nonnull이다.
+- `SyncExecutionSession`：처음복구 성공시 flag를 완료하지만 cleanup실패나 gate반환뒤 unresolved가 남으면 recovery-needed를 유지하여 동일process 다음 owner가 재시도한다. 복구실패는 source/remote 실행전 차단한다. liveowner가 있으면 경과시간/다른instance/최초detect 여부와 무관하게 복구하거나 gate를 탈취하지 않는다.
+- `SyncExecutionSession`：busy run의 MERGED는 내구성 receipt다. start전이면 same-generation trigger별 공유 CompletableDeferred receipt(키최대3개)에 모아 owner가 start와 union을 실제 커밋한 뒤 MERGED/count0/coverage=null로 완료한다. 새attempt 생성실패·취소·stale면 대기자도 non-success로 완료하고 영원히대기시키지 않는다. owner/세대가 다른 closing 창에는 PENDING/STALE 등 non-success를 반환하며 저장되지 않은 요청에 MERGED를 붙이지 않는다. 새batch 무제한연속실행은 하지 않는다.
+- `SyncState`：pendingTriggers의 현재집합을 포함하는 union만 현재 attemptId/generation 일치 시 finished attempt에도 허용한다. 이 payload검사는 finished거부보다 먼저하며 start/day/confirmation/finish의 기존finished거부는 유지한다. late request의 intent만 기록할 뿐 완료 health/file/retry metadata를 덮지 않는다. Session은 실제 liveowner의 same-gen attempt에만 이를 사용하고 병합commit실패는 MERGED가 아니다.
+- `SyncExecutionSession`：취소 중 writer의 구조화된 반환과 NonCancellable journal/attempt cleanup이 끝날 때까지 gate를 보유한다. engine normalreturn이 이미 attempt를 finish했으면 중복finish하지 않는다. callback/DB failure 후 cleanup도 실패하면 결과를 성공으로 바꾸지 않고 다음복구필요를 남긴다. owner 종료 시 사전대기 receipt를 모두 definite non-success 또는 실제저장된MERGED로 정리한 뒤 gate를 반환한다. observer는 필요한 test phase enum만 internal/defaultno-op으로 주입할 수 있고 경로/계정/payload를 노출하지 않는다.
+- `SyncExecutionSession`：gate owner detectPending은 config.automatic on이면 CATCH_UP/off이면 MANUAL access metadata만 조회한다. ABSENT/error는 fixed 미설정/저장소오류로 구분해전파하고 synthetic SyncState/coverage를 만들지 않는다. READY tombstone은 실제 emptycoverage를 반환할 수 있다. busy 다른profile UNAVAILABLE를 permanentstore failure로 기록하지 않는다. UI/worker 호출 연결과 WorkManager 정책은 후속plan이다.
+
+위 T5 보정은 구현전 source/계획 대조이며 recovery1/2에 집계했다. T4의 실제SQLite/독립지적/후속process gate를 우회하지 않는다. 동시성 시험은 beforeStart/access 대기와 afterEngine/beforeGateRelease를 명시latch로 분리하고 임의sleep/timeout lease를 쓰지 않는다.
+
+
+
+### ProcessRecoveryCases: 실제 프로세스 중단 경계
+
+- `ProcessRecoveryCases`：기존7개 pending-before,pending-after,confirm-before,confirm-after,running,reset-before,reset-after를 유지하고 initial-schema-ready,initial-before-publish,initial-published,reset-owner-before,reset-owner-writing,reset-owner-written,reset-stage-schema-ready,reset-prepared,reset-marker-published를 추가하여 정확히16개 verifier를 실행한다. 기존 SyncStatePhase enum observer의 initial3/reset6에서 latch로 hold하며 arbitrary delay로 경계를 추정하지 않는다.
+- `ProcessRecoveryCases`：initial-schema-ready/before-publish는 activeABSENT/null이며 일반read가 candidate를승격/삭제하지 않는다. 새 explicit configure는 새candidate로COMMITTED/READY·automaticoff·attempt/day/dataset/확인시각없음. initial-published는 반환전죽었어도 activeREADY·정확한합성구성/binding·automaticoff·빈metadata이며 죽인configure 반환성공은집계하지 않는다. configure(null) 재시도는STALE이고 reset(null)은INVALID다.
+- `ProcessRecoveryCases`：reset6개는 deterministic UNSUPPORTED active(user_version불일치)와 privatebaseline bytes를 seed한다. owner-before/writing/written/stage-schema-ready/prepared의5개는 inactive준비중단으로 일반load가정확히UNSUPPORTED/null·원본bytes동일·active .reset부재를유지한다. owner-writing은파일open뒤본문쓰기전이며 schema-ready는schema transaction후config전이다. 새explicit reset(null)은새prepare를사용하여COMMITTED/READYtombstone, automaticoff·config/binding/attempt/day/dataset/확인시각없음, 원본.old byte동일보존이다. 이전inactiveprepare/candidate자동정리를기대하지 않는다.
+- `ProcessRecoveryCases`：reset-marker-published는 .reset게시와parent sync후원본이동전이다. 일반load는UNAVAILABLE/null·원본bytes동일이며 스스로복구하지 않는다. explicit reset(null)은기존같은owner/stage를재사용해COMMITTED/READYtombstone, 원본.old-같은owner byte동일보존·active.reset부재·completed-같은owner의owner/installed증명유지를검증한다. marker를먼저삭제하여성공을만들지 않는다.
+- `ProcessRecoveryCases`：reopen은변경없는read/파일기대값을먼저검증한뒤명시retry한다. phase도달marker→livePID확인→실제am force-stop→기존PID종료→다른PIDreopen, 죽인holdPASS0, 정확히16verifier+각cleanup실제성공이필수다. 공개결과는고정fixture enum/count/boolean만, rawDB/계정/URI/CSV/UUID/PIDdump업로드없음. cleanup은소유권과canonicalpath/entry종류검증후자기active/init/prepare/old/completed/sidecar만; unknownentry/symlink는광범위삭제없이실패. 이검증은고정phase process죽음이며전원손실/모든instruction경계보장이아니다.
+
 ## 3. 작업
 
 ### T1: 등록 이후 bounded 날짜 계획
@@ -451,7 +473,7 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
   | `android/ci/verify-sync-state-process-recovery.sh` | 신규 | host force-stop 경계와 새 PID 검증 |
   | `.github/workflows/android-emulator-tests.yml` | 수정 | normal discovery 제외·별도 harness·합성 결과 |
 
-- **인터페이스**: 2절 `SyncState` 참조. 2절 `SqliteSyncStateStore` schema/reset 계약. host flag `syncStateProcessHost=true`, markers `SYNC_STATE_READY pid=...`, `SYNC_STATE_REOPENED pid=...`, fixture allowlist `pending-before,pending-after,confirm-before,confirm-after,running,reset-before,reset-after`. 별도 sync-state-process-fixture.db와 ownership marker만 사용한다.
+- **인터페이스**: 2절 `SyncState` 참조. 2절 `SqliteSyncStateStore` schema/reset 계약. host flag `syncStateProcessHost=true`, markers `SYNC_STATE_READY pid=...`, `SYNC_STATE_REOPENED pid=...`, 2절 `ProcessRecoveryCases`의 16개 fixture allowlist. 별도 sync-state-process-fixture.db와 ownership marker만 사용한다.
 - **결정 로직**: 없음.
 - **호출 순서**:
   ```
@@ -462,8 +484,8 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
   ```
 - **작성할 테스트**:
   - "Reopening around atomic commits never confirms an unacknowledged file or date" — 신규; 아래 fixture 조건으로 검증.
-  - 케이스·재사용 근거: 신규 — 1절 Reopening around atomic commits...의 host process 부분. pending-before는 이전 상태, pending-after는 journal만, confirm-before는 미확정, confirm-after는 해당 파일만 확정, running은 INDETERMINATE·reconcile 전 성공불가, reset-before는 archived/current를 포함한 이전 상태/reset-after는 archived/current metadata 없는 자동off 새 tombstone generation. 실제 process 사망을 증명하며 단순 store 객체 재생성과 구분한다(①③④). 기존 history process harness/일반 UI 회귀는 수정 없이 재사용(⑤).
-- **완료 기준**: normal suite에 hold class가 들어가지 않고 skip 없이 완료; API35/36의 별도 harness7개 verifier 성공·죽인 hold 성공집계0. T5~T6 통합 체크포인트로 아래 PR 검증 완료.
+  - 케이스·재사용 근거: 신규 — 1절 Reopening around atomic commits...의 host process 부분. pending-before는 이전 상태, pending-after는 journal만, confirm-before는 미확정, confirm-after는 해당 파일만 확정, running은 INDETERMINATE·reconcile 전 성공불가, reset-before는 archived/current를 포함한 이전 상태/reset-after는 archived/current metadata 없는 자동off 새 tombstone generation. 실제 process 사망을 증명하며 단순 store 객체 재생성과 구분한다(①③④). 기존 history process harness/일반 UI 회귀는 수정 없이 재사용(⑤). 2절 `ProcessRecoveryCases`의 추가 initial3/reset6도 같은 실제 OS force-stop/read-first/retry 검증을 수행한다.
+- **완료 기준**: normal suite에 hold class가 들어가지 않고 skip 없이 완료; API35/36의 별도 harness16개 verifier 성공·죽인 hold 성공집계0. T5~T6 통합 체크포인트로 아래 PR 검증 완료.
 - **검증 방법**:
   ```bash
   bash -n android/ci/verify-sync-state-process-recovery.sh
@@ -681,17 +703,6 @@ PR16 review probe checkpoint: source 7625f9728331f29be9356fcc784057b5bde646a9는
 
 교정9 병렬 순서 명확화: probe source를 immutable commit으로 고정하고 CI가 그head에서 시작된 뒤에는 로컬 PhaseB 구현을 계속할 수 있다. PhaseB fix commit 공개/push 및 통과 판정 전에는 이전 immutable probe의 실제Native 실패 증거를 root가 확인한다. 테스트전후 source 분리/실패이력·실제process gate를 약화하지 않으며 CI대기 중 로컬구현만 겹친다. T5실행 gate(T4실제통과)는 그대로다.
 
-### T5 실행 전 확정 공용 gate 계약
-
-- `SyncExecutionSession`：get(context,factory)는 applicationContext 편의 registry이며 생성자도 store.database.databaseFile.canonicalPath별 shared entry를 반드시 사용한다. entry는 Mutex gate, live owner/phase, recovery-needed, 최대3개 trigger별 pending receipt를 공유한다. 다른 DB path는 독립이며 Activity/context 객체별 gate로 분리하지 않는다. 사용자 설정 generation은 이 memory key와 다르고 값변경이 liveowner탈취 권한이 아니다.
-- `SyncExecutionSession`：run/detectPending은 gate를 먼저 획득한 owner만 복구한다. busy detectPending은 load()의 실제 unscoped coverage(선택scope값unknown/null)를 반환하고 HC/reader.access/health/remote/recovery를 실행하지 않는다. store error는 fixed 오류로 전파하고 빈coverage/완료로 만들지 않는다. gate owner는 unfinished attempt의 exact scope/date rows에서 RUNNING file만 INDETERMINATE로 바꾸며 확인/prior/checked/기존blocker·stale를 보존한다. 모든 필요한 journal 후 해당 attempt를 finish해서 새 start가 가능해야 한다. 본session start.startedAt은 항상 nonnull이다.
-- `SyncExecutionSession`：처음복구 성공시 flag를 완료하지만 cleanup실패나 gate반환뒤 unresolved가 남으면 recovery-needed를 유지하여 동일process 다음 owner가 재시도한다. 복구실패는 source/remote 실행전 차단한다. liveowner가 있으면 경과시간/다른instance/최초detect 여부와 무관하게 복구하거나 gate를 탈취하지 않는다.
-- `SyncExecutionSession`：busy run의 MERGED는 내구성 receipt다. start전이면 same-generation trigger별 공유 CompletableDeferred receipt(키최대3개)에 모아 owner가 start와 union을 실제 커밋한 뒤 MERGED/count0/coverage=null로 완료한다. 새attempt 생성실패·취소·stale면 대기자도 non-success로 완료하고 영원히대기시키지 않는다. owner/세대가 다른 closing 창에는 PENDING/STALE 등 non-success를 반환하며 저장되지 않은 요청에 MERGED를 붙이지 않는다. 새batch 무제한연속실행은 하지 않는다.
-- `SyncStateTransitions`：pendingTriggers의 현재집합을 포함하는 union만 현재 attemptId/generation 일치 시 finished attempt에도 허용한다. 이 payload검사는 finished거부보다 먼저하며 start/day/confirmation/finish의 기존finished거부는 유지한다. late request의 intent만 기록할 뿐 완료 health/file/retry metadata를 덮지 않는다. Session은 실제 liveowner의 same-gen attempt에만 이를 사용하고 병합commit실패는 MERGED가 아니다.
-- `SyncExecutionSession`：취소 중 writer의 구조화된 반환과 NonCancellable journal/attempt cleanup이 끝날 때까지 gate를 보유한다. engine normalreturn이 이미 attempt를 finish했으면 중복finish하지 않는다. callback/DB failure 후 cleanup도 실패하면 결과를 성공으로 바꾸지 않고 다음복구필요를 남긴다. owner 종료 시 사전대기 receipt를 모두 definite non-success 또는 실제저장된MERGED로 정리한 뒤 gate를 반환한다. observer는 필요한 test phase enum만 internal/defaultno-op으로 주입할 수 있고 경로/계정/payload를 노출하지 않는다.
-- `SyncExecutionSession`：gate owner detectPending은 config.automatic on이면 CATCH_UP/off이면 MANUAL access metadata만 조회한다. ABSENT/error는 fixed 미설정/저장소오류로 구분해전파하고 synthetic SyncState/coverage를 만들지 않는다. READY tombstone은 실제 emptycoverage를 반환할 수 있다. busy 다른profile UNAVAILABLE를 permanentstore failure로 기록하지 않는다. UI/worker 호출 연결과 WorkManager 정책은 후속plan이다.
-
-위 T5 보정은 구현전 source/계획 대조이며 recovery1/2에 집계했다. T4의 실제SQLite/독립지적/후속process gate를 우회하지 않는다. 동시성 시험은 beforeStart/access 대기와 afterEngine/beforeGateRelease를 명시latch로 분리하고 임의sleep/timeout lease를 쓰지 않는다.
 
 상위82aa56c 변경 재검토: 새session nativeclass로 테스트배치만 분리하고 승인스펙/31 metadata DTO·외부기능은 그대로다. parent_rev를 새 commit에 고정했다. T5와 T8은 source파일이 분리되므로 T4완료 뒤 병렬 가능하며 같은Gradle cache는 직렬이다. T8과T9는 실제측정/PNG에 근거한 기존V1 성능/검증 보정이며 새product범위를 추가하지 않는다.
 
@@ -704,3 +715,9 @@ T4 교정9 실제실패증거: d158/CI41970834390 양API SQLite31개중16개가�
 T9 실제실행기 계약 보정: emulator-runner@v2는 script의각줄을 별도 /usr/bin/sh -c로실행했다(79ffd API35 actuallog). 따라서 shell if/then/fi는한줄안에서완결한다. root의whole-script bash -n/조건semantic검사는필요하지만충분하지않았으며 새검증은runner와같은 각nonempty line의sh -n도확인한다. 79ffd해당job은setup shell에서Native전중단으로actual0/미실행이며그실행을SQLstoreFAIL/PASS로집계하지않는다.
 
 T9 correction3 source7a6c954: root가 실제runner와같이 각nonempty line의 sh -n 및package exact/other/absent mock에서 stop1/0/0을검증했다. 최신79ffd CI41975679263은 양API 모두multiline if 첫줄EOF로 Native전중단, 실제test0·산출물0이며T4고정소스검증으로집계하지않는다. 다음head에서는같은guard를한줄로완결하여재실행한다. 앱Androidsource는4d691f4에서변경없고14초root/JVM138/0/0/0·APK/lint/testAPK 증거를유지한다.
+
+T5 recovery2/2 — 조립 브리프 직접 대조에서 recovery1의 상세 공용 gate 계약이 2절 밖 복구 기록에 있어 Shared design에 누락됨을 확인했다. 동일 문구를 2절로 이동하고 finished callback 일반 규칙에 기존 pendingTriggers union 예외를 명시했다. 새 API/정책 변경 없이 canonical-path/shared receipts/NonCancellable/recovery-needed/오류 계약이 실제 브리프에 포함되도록 보정한다. T4 실제 Native 선행 gate는 그대로다.
+
+T6 recovery1/2 — 독립 읽기전용 소스점검으로 T4 교정9가 추가한 initial/reset publication 경계가 원래7개 host계획에 빠져 있음을 확인했다. 승인된 원자성/중단복구 기준에 따라 기존7개를 유지하고 기존enum seam9개를 추가한16개로 보정했다. initial게시전ABSENT·게시후READY, resetmarker전원본UNSUPPORTED·후UNAVAILABLE와명시retry 차이를2절에고정했다. 제품API/권한/시스템설정/timeout확대없음. 각phase process죽음만 증명하며전원손실일반화금지.
+
+2026-11-12 재개 확인: immutable head cb89da7783eb8420fca0440cf7b29e61955bca95의 CI41977482571이 양API35/36 SUCCESS다. root가 ZIP digest와 XML을 직접 확인: 각89/실패0/오류0/skip0, SQLite31개 모두PASS, performance1개PASS/72관측, 기존history host8recovery+4settings+8cleanup=20/죽인holdPASS0. ZIP API35 SHA2566a554f674da83fd532138cba0210d189bbadd303e324d2b9a38333c430fee948/API36 0cdb685adbb4c4a9f07aae82f81b995d9b07ce5339b56b8e7aaa31dd61ba0f8e. T4/T9 done; 새session/T6 process와T8性能후측정은별도미완료. T5/T8 파일불겹침/별도worktree로진행, sharedGradle직렬.
