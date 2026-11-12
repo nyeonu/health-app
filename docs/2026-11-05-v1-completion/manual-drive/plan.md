@@ -18,7 +18,7 @@ tasks:
   - id: T2
     title: 계정과 동일 token의 Drive 사용자 증명
     depends_on: []
-    status: in_progress
+    status: done
     tier: standard
   - id: T3
     title: journal 이후 쓰기와 읽기 전용 Drive 재조정
@@ -519,3 +519,11 @@ API35/36 기존 CI를 사용한다. 기존 history host20/SyncState host17 verif
 ### T1/T4 체크포인트
 
 T1 root focused verify `/workspace/tooling/pr17-t1-root-final.log` BUILD SUCCESSFUL 23초: core DestinationSync9 + app HealthConnectReader16, failure/error/skip0. 마지막 fixture는 100페이지×1000레코드 실제 전달/조회 횟수를 포함하며 기존 CSV/overlap/uncertainty 회귀를 보존한다. T1 done. T4 root testAPK verify `/workspace/tooling/pr17-t4-root.log` BUILD SUCCESSFUL 12초; 실제 SQLite 두 테스트는 아직 CI pending이므로 T4 in_progress를 유지한다. disjoint T6 authoring은 앞서 승인한 Native 최종 gate 대기 예외로 진행할 수 있으나 actual 완료 주장은 보류한다.
+
+### T2 검증·환경 준비
+
+최초 명령은 실행자가 network 추가 권한을 누락하여 Gradle FileLockContentionHandler의 wildcard IP 초기화에서 실패했다(컴파일·테스트 시작 전). root가 기존 승인 network socket 권한을 적용한 동일 명령을 1회 실행했고 BUILD SUCCESSFUL54초, BoundDriveAuthorization2+GoogleDriveTransport9=11/0/0/0을 실제 XML로 확인했다. 코드/환경설정 변경은 없고 T2 기능 보정 회차는 여전히1이다. root log `/workspace/tooling/pr17-t2-root.log`. duplicate JSON key 거부는 승인 기준에 없어 기존 parser 의미를 유지하며 새 보장으로 주장하지 않는다.
+
+### PLAN 복구 2/2 — root 문서 명령 경로
+
+root가 android/에서 상대 docs 경로로 문서 기록을 시도해 FileNotFoundError로 멈췄다. cherry-pick은 성공했고 문서·제품 파일 손실이나 Gradle 실행은 없었다. 이후 문서 편집은 절대 경로를 쓰고 빌드는 별도 명령으로 분리한다. 기존 자동승인 범위의 운영 보정이며 기능·검증 기준은 유지한다.
