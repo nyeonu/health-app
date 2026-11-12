@@ -36,3 +36,15 @@ Proposed
 - [에픽 계획](../2026-11-05-v1-completion/plan.md)
 - [Google authorization](https://developer.android.com/identity/authorization)
 - [AccountPicker](https://developers.google.com/android/reference/com/google/android/gms/common/AccountPicker)
+
+## 2026-11-12 수동 경로 구체화 (Proposed 유지)
+
+PR16 merge `4b98aee1119ded1f1c6553e92198ac004d30fa87` 이후 manual-drive 초안은 기존 승인 V1/소유자 자동승인 위임 아래 root의 구체 검토 대기다. picker는 항상 표시하고 com.google 타입만 허용하며 current ticket/RESULT_OK/AccountManager의 authAccount·accountType 값을 UTF-8 1..1024bytes와 control/encode 검증 후 사용한다. SDK Account 생성은 production bridge로 제한한다.
+
+AuthorizationResult에는 사용자 계정 정보 보장이 없으므로 setAccount만으로 응답을 신뢰하지 않는다. 추가 scope 없이 동일 access token으로 Drive about.get `fields=user(emailAddress,me)`를 조회하여 me=true와 선택 name의 정확 문자열 일치를 확인한다. 누락/불일치/오류/지연 generation 또는 ticket는 raw Health Connect read 전에 차단한다. 별칭 정규화는 하지 않는다. drive.file이 공식 about.get 허용 scope라는 API 근거와 실제 계정에서 필드가 항상 존재한다는 보장은 구별한다.
+
+credential은 controller의 private 메모리에만 두고 StateFlow/SavedState/DB/toString/log에 전달하지 않는다. 공용 gate owner가 per-run prepare로 fresh proof를 확인한 뒤 local engine을 만들며 registry에 token-bound engine을 보관하지 않는다. busy 호출은 trigger만 병합하고 두 번째 credential을 소비/교체하지 않는다. 외부 consent 복귀는 자동 upload를 실행하지 않고 별도 continue를 요구한다.
+
+선택 이유는 기존 drive.file과 승인 account binding을 유지하면서 raw read 이전 현재 Drive principal을 확인하기 위해서다. 추가 identity scope/새 로그인/backend/offline token 또는 cached SDK account를 신원으로 사용하는 대안은 승인 범위·최소 권한/증거 조건에 맞지 않아 채택하지 않는다. 실제 계정의 about population, 계정 제거/별칭/consent와 Galaxy lifecycle 수용은 pending이다. 구현·독립 적합성 검증 전이므로 Accepted가 아니다.
+
+공식 근거: [about.get scopes/fields](https://developers.google.com/workspace/drive/api/reference/rest/v3/about/get), [About.user](https://developers.google.com/workspace/drive/api/reference/rest/v3/about), [User.emailAddress/me](https://developers.google.com/workspace/drive/api/reference/rest/v3/User), [authorization 사용자 정보 제한](https://developer.android.com/identity/authorization).

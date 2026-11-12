@@ -78,3 +78,12 @@ be20 rootfull2분7초/JVM142/0/0/0·APK/lint/testAPK PASS. 별도spec/security�
 범위전환Q4는A EXPLICIT_DAY unknown/새B SUMMARY에서flagfalse라는실제red6/1/0/0을확인했다. T3복구6은date별모든scope의nulltarget unresolved Dataset집합을조회/검증하고기존journal/PlannedFile에합친다. SQL은기존PK의generation/date범위2orderedcursor·canonicaldecode·orphan거부이며형식/index/cache추가없다. 복구7은Nativefixture의모듈공개API한줄만교정했다. 실행자focused8/0/0/0+fullJVM145/0/0/0·APK/lint/testAPK PASS후5파일후보aba7fc6을받았고최종root/CI/독립재검토는아직대기다.
 
 be20/Native43156361988 양API원본대조: 각각104/0/0/0, store36/Session10/성능1·기존host20·새17복구/17정리·killedholdPASS0. 실제spill main변경/regularmagic/4096×4096→새PID firstread READY 및이전state복원/후속write는양API통과했다. API35의이전7dc PixelCopywait실패와달리같은UI source의재검증도통과했다. ZIP SHA256 API35 c0c5d20ebc09c36d631062ad53dfc96d63f4693e4b93cdb01647374a69bcf4d3/API36 79f4adc087e837ad4a535ecc5461facf5bf3f727c7b529501886ec62cb94391c를root검증했고hot-journal-after.json에안전한관측을보존했다. 이는Q1/same-scopeQ3의actual증거이며Q4최신764cc/106개및portquery의통과를승계하지않는다.
+
+
+2026-11-12 계획 전환: root가 확인한 PR #16 개발 병합 head는 `4b98aee1119ded1f1c6553e92198ac004d30fa87`이다. core-store 완료 뒤 manual-drive 브랜치에서 실제 현재 source와 승인 spec(97c01b1)을 직접 대조하여 parent ManualDriveContracts/file map/traceability와 9T child draft를 작성했다. 1T 제품/테스트 파일은 2~5개이며 auth+transport, uploader+reconcile, known-ID+명시 blocker reopen을 각 기능 경로로 묶었다. parent 먼저 commit 후 child parent_rev repin·root 승인 검토를 거쳐 별도 executor에 넘긴다. 아직 implementation/task done/새 테스트 PASS를 주장하지 않는다.
+
+계획 확인 범위: AGENTS·task-breakdown/work-plan-template/structure-rules·testing-policy/common·security mandatory checklist, current HealthConnectReader/Ports/DestinationSync/PrivateDriveUploader/SqliteSyncStateStore/Session/Activity/VM/transport 및 기존 테스트/CI를 읽었다. 문서 근거의 setAccount/about/checksum 확인값과 실제 OAuth/Galaxy pending을 분리했다. source·test·Gradle·실계정·원격 writes·PR 동작은 수행하지 않았다. 계획 중 발견한 intended PlannedFile equality guard와 BLOCKED+null blocker validation을 공통 계약에 명시하여 runtime reservation과 PENDING day reopen을 고정했다. ADR007은 Proposed 유지다. 이전 PR16 증거/실패 이력과 P0/실기기 미확인은 보존한다.
+
+### manual-drive 실행 승인 (2026-11-12)
+
+PR16 병합 master `4b98aee1119ded1f1c6553e92198ac004d30fa87`에서 9T 계획을 root 승인했다. 별도 fresh-context 계획 검토에서 차단 지적은 없었다. parent 계약 선행 커밋과 child revision 고정을 마쳤으며 구현·실행 증거는 이후 누적한다. 승인만으로 기능·실기기 수용 완료를 뜻하지 않는다.
