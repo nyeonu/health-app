@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-05
 parent: ../plan.md
-parent_rev: e4d7ac3058f6918a9fd97dd2edab8572c9df39a0
+parent_rev: 9e673d801375b3d0f66a4e2a3df18fa47dff6603
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feat/v1-completion
@@ -465,6 +465,24 @@ internal enum class SyncStatePhase {
 - **작성할 테스트**: 기존 `After partial failure cancellation or unknown create reconciliation retries only pending files`를보존하고, 의미있는새case로동일/변경revision unknownnullhandle→rereadjournal후재중단→store/codec재열기→absent의create0, freshneverattempted첫create허용, freshfoundtargetadoption/안전한knownID, populated→empty→populated의불명정보와priorconfirmation보존을검증한다(①③④⑤). 새Native는실제SQLite+합성reader/destination이며실제Drive/OSkill로표현하지않는다. 기존17OS host는별도gate다.
 - **완료 기준/검증**: focused core tests→전체JVM/APK/lint/testAPK→양APINative/기존17host·성능→Q3독립재검토. 먼저미수정7dc에서최소실패회귀를실행하여실제실패를보존하고그후제품교정한다. Native 통합은최종CI이며새source관련test skip/단언완화금지.
 
+#### T3 현재 추가교정6 범위 (범위 전환 Q4)
+
+직전 같은scope교정5는보존하고현재한정교정의변경파일은아래5개다. 공용계약은상위2절 `SyncStateStore`의loadUnresolvedCreates를사용한다.
+
+| 파일 | 수정 내용 |
+|---|---|
+| `android/core/src/main/kotlin/com/ny/my/health/core/Ports.kt` | 모든scope의physical dataset uncertainty 조회포트 |
+| `android/core/src/main/kotlin/com/ny/my/health/core/DestinationSync.kt` | date별범위독립uncertainty를journal/PlannedFile에합침 |
+| `android/app/src/main/java/com/ny/my/health/SqliteSyncStateStore.kt` | 기존index범위의date별전체scope검증/고정enum집합조회 |
+| `android/core/src/test/kotlin/com/ny/my/health/core/DestinationSyncTest.kt` | scope전환·stale/오류·경계외date/generation독립 회귀 |
+| `android/app/src/androidTest/java/com/ny/my/health/SyncExecutionSessionInstrumentedTest.kt` | 실제SQLite의교차scope uncertainty·재열기통합 |
+
+- **인터페이스**: loadUnresolvedCreates(expected,date)는현재generation의해당날짜에있는모든scope의dataset을검증하여nullhandle RUNNING/INDETERMINATE/REMOTE_STALE/BLOCKED의Dataset집합을반환한다. stalegeneration만null, ABSENT/손상/unsupported/IO는예외이며empty로숨기지않는다. privatebinding/CSV/전체DayState를core에추가노출하지않는다. 기존영속schema/새index/새enum/field는없다.
+- **결정 로직**: 기존 DestinationSync.kt의판정에localold의불명정보와date별global집합을합친다. currentprofile행이없어도다른profile의해당physicaldataset이불명확하면새journal을INDETERMINATE로보존하고createMayHaveSucceeded=true. 다른date/다른generation은합치지않는다. source재읽기/확인채택·knownhandle·prior보존은유지한다.
+- **호출 순서**: 각고정date의현재generation/attempt확인→전체scope uncertainty조회→원본재읽기와revision확인→불명상태를보존한journal commit→reconcile/기존callback. stale/null/오류조회이면원격write금지. SQL은day/dataset의해당generation/date전체를orderedstreaming2cursor또는동등한target-date범위검증으로소비하고같은날짜orphan/잘못된row도거부한다. 전체이력scan/날짜당profile별N+1/프로필필터뒤손상숨김없음.
+- **작성할 테스트**: 신규명확한scope A EXPLICIT→B SUMMARY/허용category변경에서unknownnullhandle이보존되어absent create0/foundadoption;새profilejournal뒤다시취소/reopen해도true. 다른date/새generation의무관한row는이어붙이지않음,stale/corrupt/unknown조회실패에서false/empty허용금지. 기존R5same-scope/empty/known/fresh회귀와139+추가회귀를보존한다(①③④⑤). 실제SQLite공용scope테스트를추가하고old9/17host/72metrics는유지한다.
+- **검증**: 제품미수정be20에서crossscope최소회귀의실제FAIL을먼저확인한뒤교정,focused→fullJVM/APK/lint/testAPK→최신양APINative/host17·성능과독립재검토. skip/단언완화/추측empty금지. 포트는두실제구현(SQLite/fake)에명시구현하며지원안되는default의empty반환을추가하지않는다.
+
 ### T4: 실제 SQLite의 원자적 상태 저장
 
 - **변경 파일**
@@ -894,3 +912,5 @@ T3 recovery5 수정전회귀1: 제품미수정7dc계열에서최소test-only3개
 T3 recovery5 정제red확인: omitAck로첫write후confirmation없음→PENDING outcome/blocker없음/INDETERMINATE/nullhandle을입증했다. 이후rereadjournal→reconcile직전취소에서동일expectedINDETERMINATE/actualPENDING(line224),3tests/1fail/0error/0skip/20초를root원본대조했다. 최초red와별도보존했고이제같은R5의한정제품보정·추가조건/실제SQLite통합을위임했다. 단순flag추가만으로영속손실을숨기지않고기존phase를보존한다.
 
 T3 recovery5 로컬후보23d81f7: focused5/0/0/0(기존2+신규3)·전체JVM142(core68/app74)/0/0/0·APK/lint/testAPK2분25초PASS를실행자보고로받았다. 현재4파일만수정했고Native신규1메서드4입력은compile만이다. root통합후직접전체명령과양API104/0/0/0·host17/17및최종독립검토가필요하다. 기존idealized fake의기대는유지하고새conservative mode에서unknownabsent→create0를검증했으며실제Driveprovider의flag소비는manual-drive후속의필수계약이다. 원래2개redXML/로그는보존한다.
+
+T3 recovery6 (owner-auto Q4교차scope한정교정;앞선5회보존) — be20별도spec FAIL P1/security REQUESTCHANGES Medium: generation/date의다른scope에nullhandle unknowncreate가남았어도새scope의loadDay는빈행이므로false로투영한다. root도현재deterministicphysicalpath와분리된scopekey제어흐름을확인했다. actualDrive중복관찰아님. 상위9e673d8에date별전체scope uncertainty조회계약을명시하고현재작업5파일로한정했다. 기존R5fullroot2분7초/JVM142/0/0/0·APK/lint/testAPK PASS는그범위의증거로보존, 전체승인이아니다. be20동결CI는계속확인하며새원인/기술범위에대해서만별도worktree의pre-fix실패→교정→검증을위임한다. SQL기존인덱스/형식/31metadata유지,회차초기화없음.
