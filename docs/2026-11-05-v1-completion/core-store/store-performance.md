@@ -41,3 +41,16 @@ T8 변경 직전 source `cb89da7783eb8420fca0440cf7b29e61955bca95`의 [양API �
 |36/PARTIAL_SUMMARY|30|36.90|68.75|87.18|
 |36/PARTIAL_SUMMARY|365|384.69|741.42|743.52|
 |36/PARTIAL_SUMMARY|3650|3909.59|7424.24|7331.93|
+
+## Streaming/narrow 구현 후 실제 관측
+
+[8c3b416 Native run](https://github.com/nyeonu/health-app/actions/runs/43138251342)은 양API 각각99/실패0/오류0/skip0(Session9/store32 포함)이며 같은fixture72관측씩을 [after JSON](store-performance-after.json)에 보존했다. 비교기준은 위 correctness 수정후 cb89 baseline이다. 아래는3650행 반복3median(ms)이며 hostedmachine 변동으로개별개선율을실기기/업로드전체 개선율로일반화하지않는다. 특히API36 partial LOAD의6.5%차이는노이즈와구분한효과를증명하지않는다. 각모든N/프로필/operation/원본72표본은JSON에남긴다.
+
+| API/profile | load before→after ms | scoped load before→after ms | confirmation before→after ms |
+|---|---:|---:|---:|
+|35/FULL_EXPLICIT|13983.49 → 3359.09|24040.31 → 3423.13|13501.77 → 3139.57|
+|35/PARTIAL_SUMMARY|7208.77 → 2614.35|15138.22 → 2662.77|12202.18 → 2633.97|
+|36/FULL_EXPLICIT|8016.62 → 4368.47|8056.36 → 4229.12|8036.18 → 4279.82|
+|36/PARTIAL_SUMMARY|3909.59 → 3656.21|7424.24 → 3820.21|7331.93 → 3881.13|
+
+이 관측은 session 전체의 source/remote IO 대기나 실기기 성능을 증명하지 않는다. DB open의 schema/FK/quick_check와 전체active 무결성 검증은 남는다. 최종 후보e62는 제품source/측정fixture가 같지만 독립 품질 지적Q1의hotjournal복구가미해결이며 after PASS를 PR전체승인·모든강제종료PASS로쓰지않는다.

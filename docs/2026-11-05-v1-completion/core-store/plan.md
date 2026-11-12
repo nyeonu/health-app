@@ -19,6 +19,7 @@ tasks:
   - {id: T7, title: 누적 메타데이터 비용 측정, depends_on: [T3], status: done, tier: standard}
   - {id: T8, title: 측정된 metadata 반복 조회 축소, depends_on: [T4, T7], status: in_progress, tier: standard}
   - {id: T9, title: 계정없는 emulator bootstrap 안정화, depends_on: [T7], status: done, tier: light}
+  - {id: T10, title: 실제 hot journal Android 재현, depends_on: [T4, T7, T9], status: in_progress, tier: standard}
 ---
 
 # 날짜별 복구와 내구성 상태
@@ -293,6 +294,14 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
 - `ProcessRecoveryCases`：reset6개는 deterministic UNSUPPORTED active(user_version불일치)와 privatebaseline bytes를 seed한다. owner-before/writing/written/stage-schema-ready/prepared의5개는 inactive준비중단으로 일반load가정확히UNSUPPORTED/null·원본bytes동일·active .reset부재를유지한다. owner-writing은파일open뒤본문쓰기전이며 schema-ready는schema transaction후config전이다. 새explicit reset(null)은새prepare를사용하여COMMITTED/READYtombstone, automaticoff·config/binding/attempt/day/dataset/확인시각없음, 원본.old byte동일보존이다. 이전inactiveprepare/candidate자동정리를기대하지 않는다.
 - `ProcessRecoveryCases`：reset-marker-published는 .reset게시와parent sync후원본이동전이다. 일반load는UNAVAILABLE/null·원본bytes동일이며 스스로복구하지 않는다. explicit reset(null)은기존같은owner/stage를재사용해COMMITTED/READYtombstone, 원본.old-같은owner byte동일보존·active.reset부재·completed-같은owner의owner/installed증명유지를검증한다. marker를먼저삭제하여성공을만들지 않는다.
 - `ProcessRecoveryCases`：reopen은변경없는read/파일기대값을먼저검증한뒤명시retry한다. phase도달marker→livePID확인→실제am force-stop→기존PID종료→다른PIDreopen, 죽인holdPASS0, 정확히16verifier+각cleanup실제성공이필수다. 공개결과는고정fixture enum/count/boolean만, rawDB/계정/URI/CSV/UUID/PIDdump업로드없음. cleanup은소유권과canonicalpath/entry종류검증후자기active/init/prepare/old/completed/sidecar만; unknownentry/symlink는광범위삭제없이실패. 이검증은고정phase process죽음이며전원손실/모든instruction경계보장이아니다.
+
+
+### HotJournalSpillProbe: 정상 rollback 경로의 실제 Android 재현
+
+- `HotJournalSpillProbe`：기존16사례를보존하고 reset-spill-before 한사례를추가하여17verifier/17cleanup·죽인holdPASS0으로확장한다. 현재작업은미수정source에서실제실패를입증하는test-only probe이며정상reopen READY를기대한다. readonly오류를기대PASS로변경/skip하지않는다.
+- `HotJournalSpillProbe`：고정합성today와약20,000개연속eligible과거date(enrolled=today-20000, 모든date>=1970/오늘미만), canonical요청scope와유효EMPTY또는CONFIRMED day/최소한참조FK구조·필요dataset를rawSQL단일seed transaction으로넣는다. store전체load READY와rowcounts/구성/binding/최초coverage를seed전용privateowner에증명한뒤정상reset(expectedGeneration)을호출한다. metadatacap과scope/field validation을우회하는잘못된행을넣지않는다. 기존performancefixture는변경하지않고같은SQLseed패턴을참조할수있다.
+- `HotJournalSpillProbe`：실제beforeCommit hook에서mainDB digest가reset직전baseline과달라졌고 -journal이regular/NOFOLLOW이며SQLite rollback journal첫8byte magic d9d505f920a163d7·충분한크기가존재함을확인한뒤hold한다. 단순nonempty/임의sleep으로spill을가정하지않는다. seed가spill을만들지못하면진단후실패로보고한다. no-newtimeout/PRAGMAcache/spill/durability변경, 충분한boundedrows로실제cache넘김을만든다.
+- `HotJournalSpillProbe`：host 실제kill/newPID후 최초store.load READY/이전generation·구성/binding/rowcounts/checked·uploadcoverage를확인하여원래committed상태로SQLite rollback이가능해야한다. 이어 store.invalidate(expectedGeneration):SyncCommit으로정상mutation COMMITTED/새generation을확인한다. destination/enrollment/categories/binding동일·automaticoff이며old day는archived로남아있고새coverage는비어있음을검증한다. 원격/health IO0, 자동reset/삭제로성공을만들지않는다. probe수정전현재source에서는이expectation실패가예상되며Android실패증거확인전productionfix를공개하지않는다.
 
 ## 3. 작업
 
@@ -573,6 +582,25 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
 - **검증 방법**: YAML 구조파싱과 script bash -n; 이후PR 양API full workflow 실제결과.
 - **주의사항**: global ANR suppress flag, SetupWizard 전체 disable, device_provisioned/user_setup_complete 설정, PlayServices/HealthConnect disable, forceclick/sleep/timeout증가를 도입하지 않는다. 고정된 emulator boot setup package만 대상으로 하고 production코드/매니페스트를 수정하지 않는다. T7workflow artifact 경로는 보존하며 T6와 파일이 겹쳐 T6의 선행 gate다.
 
+
+### T10: 실제 hot journal Android 재현
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `android/app/src/androidTest/java/com/ny/my/health/SyncStateProcessRecoveryInstrumentedTest.kt` | 수정 | 실제spill 20,000행 reset-before hold/reopen 회귀 |
+  | `android/ci/verify-sync-state-process-recovery.sh` | 수정 | 기존16보존+새1사례/17count/고정진단allowlist |
+
+- **인터페이스**: 2절 `HotJournalSpillProbe`와 2절 `SqliteSyncStateStore`, 2절 `SyncState` 참조. 기존fixture/store/host 메서드만활용하고제품API/DB/engine/기타test는수정하지않는다.
+- **결정 로직**: source수정없음. 유효큰DB의정상SQLite rollback 후이전committed상태복원이기대값이다.
+- **호출 순서**: seed유효전체load→정상reset→beforeCommit실제spill증명→holdmarker→hostkill/새PID→첫load/이전state검증→정상mutation→소유cleanup.
+- **작성할 테스트**:
+  - "Reopening around atomic commits never confirms an unacknowledged file or date" — 기존 `reopeningAroundAtomicCommitsNeverConfirmsAnUnacknowledgedFileOrDate`의 reset-spill-before fixture; 과거ImportantQ1 및cache boundary(③④⑤). 원래16case/단언전부보존.
+- **완료 기준**: shell/YAML/각runnerline문법·APK/testAPK compile, 실제API35/36 source미수정probe에서spill증명후read-only실패또는정확한반증확인. 실패를별도probe로기록하고제품통과를의미하지않음. finalmerge는수정후같은17사례/기능/후측정이모두PASS필수다.
+- **검증 방법**: `bash -n android/ci/verify-sync-state-process-recovery.sh`; android cwd `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`; 실제PR양API workflow.
+- **주의사항**: root의독점Gradlegrant필수, 최초compile실패시중단보고. 개별seed loop별store.transact를20,000번호출하지않는다. 임의cache/durability조정·timeout확대·원본read-only오류를기대값으로수용·raw출력공개금지. source현head에고정한후CI실행중다른inactive설계작업만가능하며productionfix공개는Android실패증거확인뒤다.
+
 ## 4. 검증
 
 문서 조립 검증은 실제 `assemble_brief.py`에 `--parent docs/2026-11-05-v1-completion/plan.md`를 주어 pinned parent revision에서 수행했다. T1~T6 모두 exit0/해소실패0이며 T1의 31개 metadata 선언은 parent에서 각각 정확히 한 번 수집됨을 확인했다(자식 DTO 선언0). 실제 변경 파일 집계는 T1~T6=4/5/4/4/3/3, 테스트 집계=4/2/1/1/1/1이다. 9개 담당 기준/테스트 열도 상위와 정확히 일치한다. Shared design의 80줄 권장 상한 경고는 남으며 T1의 최종 크기는 88줄이다. 계약을 생략해 크기를 줄이지 않으며 작업블록은 모두80줄 미만이다. 검증용 브리프는 /tmp에만 있고 구현 실행/위임은 하지 않았다. PR15 병합·실제 API 재확인 gate는 유지한다.
@@ -734,3 +762,9 @@ T6 recovery3 (소유자자동승인·앞선계획교정2회유지) — 최초com
 T6 recovery4 (root검증driver cwd교정,owner-auto추가/앞선회차보존) — root의safe진단6입력/YAML/discovery/runner-line sh문법은PASS했으나같은명령의Gradle cwd를repo root로두어 wrapper ./gradlew파일부재로task시작전실패했다. source/기대/환경설정은불변, 로그 v1-core-store-final-root-wrong-cwd.log 보존. android cwd로동일full명령1회실행하여검증한다. 제품실패나NativePASS로집계하지않는다.
 
 T6 source동결checkpoint: 실행자APK/testAPKcompile30초PASS, root직접safe진단6입력과YAML/discovery/runner각line sh문법PASS·전체명령43초PASS(대부분입력동일UP-TO-DATE), 기존JVM139/0/0/0 XML확인. v1-core-store-final-root.log. T6 class일반discovery제외와새16verifier/16cleanup host를workflow에연결했다. 실제Native99/양API72성능후측정/16process는CI대기이며T5/T6/T8 in_progress유지.
+
+Important Q1 추가회귀: finalquality exacte62 별도세션이데스크톱SQLite20,000행actualkill로hotjournal+readonly rollback실패를재현했다. Android반증/재현이아직없어T10 test-only를추가, 원래16의작은resetfixture가놓친cache-spill boundary를검증한다. source수정/정상read를무조건RW로전환/journal삭제/자동emptyreset은금지하며안전한복구설계는별도검토중이다. 기존스펙의atomicprocessrecovery 보완이고새제품범위가아니다.
+
+T10 recovery1/2 — 조립통계test0으로인라인작성할테스트항목을기존동일행동명의들여쓴bullet로표기보정했다. 테스트기대/API/source무변경, 조립test1/참조0실패확인후위임한다.
+
+T10 recovery2/2 — 실행자가현재configure의등록일=yesterday강제와20,000일이전등록fixture의동일config재configure기대충돌을발견했다. 정상mutation재개증명은기존invalidate(expectedGeneration) CAS로바꿔같은구성/등록일/binding·자동off·새빈coverage/oldarchive보존을확인한다. sourceAPI/정상reopen기대/기존16case변경없음, 잘못된configure기대를고집하지않는다.

@@ -1,0 +1,1426 @@
+{
+  "kind": "synthetic_android_sqlite_optimized_measurement",
+  "head": "8c3b416e7e615013e8d292457da17694dbca2a56",
+  "run": "https://github.com/nyeonu/health-app/actions/runs/43138251342",
+  "baselineHead": "cb89da7783eb8420fca0440cf7b29e61955bca95",
+  "results": [
+    {
+      "api": 35,
+      "observations": [
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 40707994,
+          "processCpuMs": 54
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 26885929,
+          "processCpuMs": 22
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 27813165,
+          "processCpuMs": 26
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 42275189,
+          "processCpuMs": 56
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 28679887,
+          "processCpuMs": 27
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 31446384,
+          "processCpuMs": 39
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 37742000,
+          "processCpuMs": 46
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 28277332,
+          "processCpuMs": 27
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 0,
+          "elapsedNs": 64670628,
+          "processCpuMs": 84
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 1,
+          "elapsedNs": 47530164,
+          "processCpuMs": 41
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 2,
+          "elapsedNs": 57267960,
+          "processCpuMs": 74
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 3,
+          "elapsedNs": 43537401,
+          "processCpuMs": 46
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 21594439,
+          "processCpuMs": 21
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 31286804,
+          "processCpuMs": 36
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 32595043,
+          "processCpuMs": 49
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 27237763,
+          "processCpuMs": 26
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 42149293,
+          "processCpuMs": 52
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 28220600,
+          "processCpuMs": 33
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 27912114,
+          "processCpuMs": 25
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 69549929,
+          "processCpuMs": 90
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 0,
+          "elapsedNs": 39276158,
+          "processCpuMs": 37
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 1,
+          "elapsedNs": 41897714,
+          "processCpuMs": 37
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 2,
+          "elapsedNs": 72860485,
+          "processCpuMs": 70
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 3,
+          "elapsedNs": 42215669,
+          "processCpuMs": 38
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 372616399,
+          "processCpuMs": 436
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 358375489,
+          "processCpuMs": 408
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 349908634,
+          "processCpuMs": 400
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 348847879,
+          "processCpuMs": 413
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 366557356,
+          "processCpuMs": 433
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 337461234,
+          "processCpuMs": 397
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 345580566,
+          "processCpuMs": 407
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 335110659,
+          "processCpuMs": 397
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 0,
+          "elapsedNs": 383706153,
+          "processCpuMs": 438
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 1,
+          "elapsedNs": 368414217,
+          "processCpuMs": 432
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 2,
+          "elapsedNs": 354532700,
+          "processCpuMs": 421
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 3,
+          "elapsedNs": 449952009,
+          "processCpuMs": 458
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 307614748,
+          "processCpuMs": 332
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 315404413,
+          "processCpuMs": 367
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 288801346,
+          "processCpuMs": 338
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 270292076,
+          "processCpuMs": 315
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 329306055,
+          "processCpuMs": 364
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 304021790,
+          "processCpuMs": 357
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 283636707,
+          "processCpuMs": 339
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 317642820,
+          "processCpuMs": 371
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 0,
+          "elapsedNs": 324145806,
+          "processCpuMs": 388
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 1,
+          "elapsedNs": 353276272,
+          "processCpuMs": 399
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 2,
+          "elapsedNs": 365831879,
+          "processCpuMs": 408
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 3,
+          "elapsedNs": 314286829,
+          "processCpuMs": 360
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 3323660917,
+          "processCpuMs": 3919
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 3387779391,
+          "processCpuMs": 3979
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 3351058049,
+          "processCpuMs": 3912
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 3359089499,
+          "processCpuMs": 3907
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 3450681237,
+          "processCpuMs": 4018
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 3357151407,
+          "processCpuMs": 4023
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 3482327944,
+          "processCpuMs": 4028
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 3423128704,
+          "processCpuMs": 4027
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 0,
+          "elapsedNs": 3171127166,
+          "processCpuMs": 3807
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 1,
+          "elapsedNs": 3092823389,
+          "processCpuMs": 3774
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 2,
+          "elapsedNs": 3159538210,
+          "processCpuMs": 3822
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 3,
+          "elapsedNs": 3139574964,
+          "processCpuMs": 3781
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 2630913332,
+          "processCpuMs": 3230
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 2614351618,
+          "processCpuMs": 3200
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 2541352270,
+          "processCpuMs": 3138
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 2627260048,
+          "processCpuMs": 3199
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 2648531322,
+          "processCpuMs": 3307
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 2662771946,
+          "processCpuMs": 3268
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 2559622073,
+          "processCpuMs": 3226
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 2772614708,
+          "processCpuMs": 3290
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 0,
+          "elapsedNs": 2657355614,
+          "processCpuMs": 3284
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 1,
+          "elapsedNs": 2633968548,
+          "processCpuMs": 3219
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 2,
+          "elapsedNs": 2643919290,
+          "processCpuMs": 3287
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 3,
+          "elapsedNs": 2625267172,
+          "processCpuMs": 3224
+        }
+      ],
+      "comparison": [
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operations": {
+            "LOAD": {
+              "beforeMs": 169.3,
+              "afterMs": 27.81,
+              "changePct": -83.6
+            },
+            "SCOPED_LOAD": {
+              "beforeMs": 146.35,
+              "afterMs": 31.45,
+              "changePct": -78.5
+            },
+            "CONFIRMATION": {
+              "beforeMs": 177.95,
+              "afterMs": 47.53,
+              "changePct": -73.3
+            }
+          }
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operations": {
+            "LOAD": {
+              "beforeMs": 1523.49,
+              "afterMs": 349.91,
+              "changePct": -77.0
+            },
+            "SCOPED_LOAD": {
+              "beforeMs": 1408.77,
+              "afterMs": 337.46,
+              "changePct": -76.0
+            },
+            "CONFIRMATION": {
+              "beforeMs": 1412.56,
+              "afterMs": 368.41,
+              "changePct": -73.9
+            }
+          }
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operations": {
+            "LOAD": {
+              "beforeMs": 13983.49,
+              "afterMs": 3359.09,
+              "changePct": -76.0
+            },
+            "SCOPED_LOAD": {
+              "beforeMs": 24040.31,
+              "afterMs": 3423.13,
+              "changePct": -85.8
+            },
+            "CONFIRMATION": {
+              "beforeMs": 13501.77,
+              "afterMs": 3139.57,
+              "changePct": -76.7
+            }
+          }
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operations": {
+            "LOAD": {
+              "beforeMs": 71.79,
+              "afterMs": 31.29,
+              "changePct": -56.4
+            },
+            "SCOPED_LOAD": {
+              "beforeMs": 129.85,
+              "afterMs": 28.22,
+              "changePct": -78.3
+            },
+            "CONFIRMATION": {
+              "beforeMs": 153.95,
+              "afterMs": 42.22,
+              "changePct": -72.6
+            }
+          }
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operations": {
+            "LOAD": {
+              "beforeMs": 696.34,
+              "afterMs": 288.8,
+              "changePct": -58.5
+            },
+            "SCOPED_LOAD": {
+              "beforeMs": 1267.85,
+              "afterMs": 304.02,
+              "changePct": -76.0
+            },
+            "CONFIRMATION": {
+              "beforeMs": 1301.01,
+              "afterMs": 353.28,
+              "changePct": -72.8
+            }
+          }
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operations": {
+            "LOAD": {
+              "beforeMs": 7208.77,
+              "afterMs": 2614.35,
+              "changePct": -63.7
+            },
+            "SCOPED_LOAD": {
+              "beforeMs": 15138.22,
+              "afterMs": 2662.77,
+              "changePct": -82.4
+            },
+            "CONFIRMATION": {
+              "beforeMs": 12202.18,
+              "afterMs": 2633.97,
+              "changePct": -78.4
+            }
+          }
+        }
+      ]
+    },
+    {
+      "api": 36,
+      "observations": [
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 44854887,
+          "processCpuMs": 71
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 41042864,
+          "processCpuMs": 60
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 53154387,
+          "processCpuMs": 79
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 41712194,
+          "processCpuMs": 62
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 46369600,
+          "processCpuMs": 70
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 44607745,
+          "processCpuMs": 67
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 44217434,
+          "processCpuMs": 62
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 44086389,
+          "processCpuMs": 66
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 0,
+          "elapsedNs": 61317471,
+          "processCpuMs": 84
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 1,
+          "elapsedNs": 69646076,
+          "processCpuMs": 99
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 2,
+          "elapsedNs": 68021149,
+          "processCpuMs": 102
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 3,
+          "elapsedNs": 62452400,
+          "processCpuMs": 87
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 39149740,
+          "processCpuMs": 53
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 38152162,
+          "processCpuMs": 51
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 61848692,
+          "processCpuMs": 63
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 41856330,
+          "processCpuMs": 59
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 41918147,
+          "processCpuMs": 63
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 40792851,
+          "processCpuMs": 64
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 40431496,
+          "processCpuMs": 62
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 40393460,
+          "processCpuMs": 64
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 0,
+          "elapsedNs": 60986670,
+          "processCpuMs": 90
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 1,
+          "elapsedNs": 56216176,
+          "processCpuMs": 79
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 2,
+          "elapsedNs": 56124938,
+          "processCpuMs": 75
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 3,
+          "elapsedNs": 53016899,
+          "processCpuMs": 72
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 447517441,
+          "processCpuMs": 674
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 475753910,
+          "processCpuMs": 692
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 442288880,
+          "processCpuMs": 673
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 494483265,
+          "processCpuMs": 708
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 435856589,
+          "processCpuMs": 660
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 443411971,
+          "processCpuMs": 687
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 468514477,
+          "processCpuMs": 688
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 435042236,
+          "processCpuMs": 660
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 0,
+          "elapsedNs": 478087051,
+          "processCpuMs": 694
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 1,
+          "elapsedNs": 521839306,
+          "processCpuMs": 725
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 2,
+          "elapsedNs": 457339138,
+          "processCpuMs": 696
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 3,
+          "elapsedNs": 482914668,
+          "processCpuMs": 687
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 385537799,
+          "processCpuMs": 582
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 396669429,
+          "processCpuMs": 574
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 368650113,
+          "processCpuMs": 575
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 402786573,
+          "processCpuMs": 583
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 384358577,
+          "processCpuMs": 588
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 383831636,
+          "processCpuMs": 584
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 420305750,
+          "processCpuMs": 616
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 388770666,
+          "processCpuMs": 600
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 0,
+          "elapsedNs": 478993706,
+          "processCpuMs": 638
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 1,
+          "elapsedNs": 407432595,
+          "processCpuMs": 626
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 2,
+          "elapsedNs": 445302460,
+          "processCpuMs": 640
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 3,
+          "elapsedNs": 433833423,
+          "processCpuMs": 624
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 4350060189,
+          "processCpuMs": 6497
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 4368470951,
+          "processCpuMs": 6447
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 4397904455,
+          "processCpuMs": 6434
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 4258762871,
+          "processCpuMs": 6384
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 4258533222,
+          "processCpuMs": 6391
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 4218435745,
+          "processCpuMs": 6361
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 4245535645,
+          "processCpuMs": 6403
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 4229123684,
+          "processCpuMs": 6380
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 0,
+          "elapsedNs": 4288866647,
+          "processCpuMs": 6415
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 1,
+          "elapsedNs": 4262198894,
+          "processCpuMs": 6415
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 2,
+          "elapsedNs": 4368059208,
+          "processCpuMs": 6434
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 3,
+          "elapsedNs": 4279819544,
+          "processCpuMs": 6419
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 3693348918,
+          "processCpuMs": 5565
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 3653599965,
+          "processCpuMs": 5534
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 3735568468,
+          "processCpuMs": 5584
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 3656214656,
+          "processCpuMs": 5545
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 0,
+          "elapsedNs": 3865476984,
+          "processCpuMs": 5751
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 1,
+          "elapsedNs": 3820208021,
+          "processCpuMs": 5692
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 2,
+          "elapsedNs": 3849422123,
+          "processCpuMs": 5716
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "SCOPED_LOAD",
+          "sampleIndex": 3,
+          "elapsedNs": 3792942142,
+          "processCpuMs": 5737
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 0,
+          "elapsedNs": 4008423785,
+          "processCpuMs": 5888
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 1,
+          "elapsedNs": 3845731795,
+          "processCpuMs": 5774
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 2,
+          "elapsedNs": 3911885564,
+          "processCpuMs": 5790
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operation": "CONFIRMATION",
+          "sampleIndex": 3,
+          "elapsedNs": 3881129406,
+          "processCpuMs": 5793
+        }
+      ],
+      "comparison": [
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 30,
+          "operations": {
+            "LOAD": {
+              "beforeMs": 87.08,
+              "afterMs": 41.71,
+              "changePct": -52.1
+            },
+            "SCOPED_LOAD": {
+              "beforeMs": 79.03,
+              "afterMs": 44.22,
+              "changePct": -44.1
+            },
+            "CONFIRMATION": {
+              "beforeMs": 91.91,
+              "afterMs": 68.02,
+              "changePct": -26.0
+            }
+          }
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 365,
+          "operations": {
+            "LOAD": {
+              "beforeMs": 865.09,
+              "afterMs": 475.75,
+              "changePct": -45.0
+            },
+            "SCOPED_LOAD": {
+              "beforeMs": 842.05,
+              "afterMs": 443.41,
+              "changePct": -47.3
+            },
+            "CONFIRMATION": {
+              "beforeMs": 831.49,
+              "afterMs": 482.91,
+              "changePct": -41.9
+            }
+          }
+        },
+        {
+          "profile": "FULL_EXPLICIT",
+          "N": 3650,
+          "operations": {
+            "LOAD": {
+              "beforeMs": 8016.62,
+              "afterMs": 4368.47,
+              "changePct": -45.5
+            },
+            "SCOPED_LOAD": {
+              "beforeMs": 8056.36,
+              "afterMs": 4229.12,
+              "changePct": -47.5
+            },
+            "CONFIRMATION": {
+              "beforeMs": 8036.18,
+              "afterMs": 4279.82,
+              "changePct": -46.7
+            }
+          }
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 30,
+          "operations": {
+            "LOAD": {
+              "beforeMs": 36.9,
+              "afterMs": 41.86,
+              "changePct": 13.4
+            },
+            "SCOPED_LOAD": {
+              "beforeMs": 68.75,
+              "afterMs": 40.43,
+              "changePct": -41.2
+            },
+            "CONFIRMATION": {
+              "beforeMs": 87.18,
+              "afterMs": 56.12,
+              "changePct": -35.6
+            }
+          }
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 365,
+          "operations": {
+            "LOAD": {
+              "beforeMs": 384.69,
+              "afterMs": 396.67,
+              "changePct": 3.1
+            },
+            "SCOPED_LOAD": {
+              "beforeMs": 741.42,
+              "afterMs": 388.77,
+              "changePct": -47.6
+            },
+            "CONFIRMATION": {
+              "beforeMs": 743.52,
+              "afterMs": 433.83,
+              "changePct": -41.7
+            }
+          }
+        },
+        {
+          "profile": "PARTIAL_SUMMARY",
+          "N": 3650,
+          "operations": {
+            "LOAD": {
+              "beforeMs": 3909.59,
+              "afterMs": 3656.21,
+              "changePct": -6.5
+            },
+            "SCOPED_LOAD": {
+              "beforeMs": 7424.24,
+              "afterMs": 3820.21,
+              "changePct": -48.5
+            },
+            "CONFIRMATION": {
+              "beforeMs": 7331.93,
+              "afterMs": 3881.13,
+              "changePct": -47.1
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

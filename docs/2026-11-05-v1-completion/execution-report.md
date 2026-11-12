@@ -51,3 +51,5 @@ T8 recovery1 로컬full1분56초PASS, XML core65/app74/실패·오류·skip0 및
 T5/T8 통합 source동결후 root full명령이1분51초PASS했다. 실제XML core65/app74=139/실패·오류·skip0, APK/lint/testAPK 통과. T5 productionnullable/Nativeinlinefixture compiler교정은추가회차3/4로누적기록했다. sourcecheckpoint는actualSQLite32·Session9·성능72/API PASS가아니며T5/T8는in_progress다. T6 initial/reset을포함한16host작성에진입하며완료판정은최종head전체실행과별도review후에만한다.
 
 T6 구현3파일과안전진단보정source동결후rootfull43초PASS: JVM139/0/0/0(입력동일대부분캐시), APK/lint/testAPK. root진단mock6입력·YAML/discovery·runner각줄shell문법PASS. 신규harness는16실제force-stop verifier와16cleanup을실행하며hold성공집계0을강제하고raw출력을업로드하지않는다. 실제실행전이므로완료가아니다. 8c3b416 별도fresh4세션검토는확정source차단지적없음이나최종head/harness/후측정은pending으로각PR댓글에기록했다.
+
+실제T5/T8 Native확인: 8c3b416/CI43138251342 양API각99/0/0/0(Session9/store32/performance1), 기존historyhost20/holdPASS0. root가원본ZIP digest/XML/72관측JSON을대조했고 after원본과전체비교를core-store/store-performance-after.json에저장했다. API35/36 3650full confirmation 반복3median은13.50→3.14초/8.04→4.28초이며host변동·합성조건/실기기업로드아님을유지한다. Important Q1 readonly-hotjournal은별도미해결로병합보류하며T10 test-only 실제cache-spill 재현추가중.
