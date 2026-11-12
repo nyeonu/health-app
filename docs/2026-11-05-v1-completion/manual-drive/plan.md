@@ -286,6 +286,8 @@ ManualDriveSession은 작은 app controller이며 credential은 UiState 밖에 �
   |---|---|---|
   | `android/app/src/main/java/com/ny/my/health/DriveApiDestination.kt` | 신규 | StorageDestination→known IDs·read-only reconcile·typed write |
   | `android/app/src/test/java/com/ny/my/health/DriveApiDestinationTest.kt` | 신규 | local TLS로 fresh lookup/ACK/unknown 복구 계약 |
+  | `android/app/src/main/java/com/ny/my/health/GoogleDriveTransport.kt` | 수정 | GET 503 server-directed 숨은 재시도 차단 |
+  | `android/app/src/test/java/com/ny/my/health/GoogleDriveTransportTest.kt` | 수정 | GET Retry-After:0 응답도 한 번만 전송 회귀 |
 
 - **인터페이스**: 상위 2절 `ManualDriveContracts` 참조.
 - **결정 로직**:
@@ -555,3 +557,7 @@ head34147fd의 run43169661306/API35 job131019650187은 connectedDebugAndroidTest
 ### T5 복구 1/2 — app internal API 가시성
 
 root pre-build 검토에서 신규 public DriveApiDestination의 store secondary constructor가 기존 internal SqliteSyncStateStore를 노출하는 Kotlin 가시성 충돌을 확인했다. class를 internal로 한정한다. app-only adapter 계약과 테스트 friend 접근은 유지하며 store 가시성·의존성·외부 API를 넓히지 않는다. 배정 DriveApiDestination.kt 한 줄 보정 뒤 최초 focused compile/test로 확인한다.
+
+### T5 복구 2/2 — 실제 TLS에서 드러난 GET 503 숨은 재시도
+
+최초 focused 실제 실행은 2개 중1개 실패했다. `DriveApiDestinationTest.kt:168`에서 기대1전송/실제2전송이며 fixture는 GET503에도 Retry-After:0을 보낸다. 이는 no-retry parent236/child86 계약과 달리 OkHttp retryOnConnectionFailure(false)만으로 server-directed GET followup이 막히지 않는 결함이다. hostile header를 제거해 테스트를 통과시키지 않는다. T5 배정에 기존 GoogleDriveTransport.kt와 GoogleDriveTransportTest.kt를 추가(총4파일)한다. 설치된5.3.0 followup 소스를 확인하여503 재시도 trigger만 좁게 차단하고 원래 status/body·GET no-body·HTTPS·timeout·no redirect·POST/PATCH one-shot 정책을 보존한다. local TLS exact1전송/503 반환·명시적 다음 호출만 새 요청을 단언하고 기존13개 관련 focused 회귀를 함께 실행한다. 새 라이브러리/버전/프로토콜 downgrade는 없다. 로그 `/workspace/tooling/pr17-t5-initial.log`; 실패 XML은 원본 보존 후 재실행한다.
