@@ -43,12 +43,12 @@ tasks:
   - id: T7
     title: 명시 계속으로만 전경 수동 batch 실행
     depends_on: [T2, T5, T6]
-    status: done
+    status: in_progress
     tier: standard
   - id: T8
     title: 수동 구성과 복구 화면 합성
     depends_on: [T7]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T9
     title: 실제 Activity의 bound 경로와 통합 회귀
@@ -585,3 +585,5 @@ author first focused54초/root 동일 source12초 통과. ManualDriveSessionTest
 ### T7 복구 3 (기존 소유자 V1 자동승인 위임) — busy·stale 요청의 상태 비간섭
 
 fresh quality r4가 source16d3ce9에서 Important2건을 발견했다. busy beginAuthorization/beginAccountSelection/selectAccount의 check 실패가 공통 safelyValue cleanup으로 owner ticket/auth를 지우고, 늦은 acceptAuthorization/selectAccount 결과도 최신 READY credential 또는 pending picker를 지운다. 초기2회 보정과 같은 회차로 숨기지 않고3회로 누적한다. 소유자가 기존 V1 workflow 전체 수정·검토를 자동 승인한 범위에서 새 근거가 있는 제한 교정을 계속하며 반복 승인 질문을 하지 않는다. 배정 controller/test 두 파일만 busy/stale 요청을 correlated current-request cleanup 이전에 무상태 거부하도록 분리한다. owner prepare/about barrier 중 모든 중복 begin/select 요청·A→B READY 후 lateA·새 picker에 lateold result를 보내도 현재 credential/ticket/phase가 보존되고 B 실행만 허용됨을 회귀 단언한다. 현재 요청의 실제 취소/오류 및 pause/reset/withdraw 정책은 유지하고 owner factory/busy continue/실제health0 보장을 약화하지 않는다. 최초 새 회귀 red 증거를 가능하면 저장하고 수정 후 focused/root/독립 재검토한다. T8 disjoint authoring은 source API 변경 없이 계속할 수 있지만 최종 Native/통합 검증 전 완료 판정은 없다.
+
+T7 복구3 의도된 수정 전 회귀 실행: 기존 grouped3 중2실패/0error/0skip. busy begin/select는 RUNNING→BLOCKED, lateA는 최신 B READY→AUTHORIZATION_REQUIRED를 재현했다. 원본 log/XML은 tooling의 pr17-t7-recovery3-red에 보존했다. T7 in_progress로 되돌리고 T8의 이미 작성된 분리 산출물은 보존하되 T7 수정 검증·재검토 전 T9 통합을 시작하지 않는다.
