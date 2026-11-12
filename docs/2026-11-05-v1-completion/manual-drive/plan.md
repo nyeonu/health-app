@@ -43,7 +43,7 @@ tasks:
   - id: T7
     title: 명시 계속으로만 전경 수동 batch 실행
     depends_on: [T2, T5, T6]
-    status: in_progress
+    status: done
     tier: standard
   - id: T8
     title: 수동 구성과 복구 화면 합성
@@ -591,3 +591,11 @@ T7 복구3 의도된 수정 전 회귀 실행: 기존 grouped3 중2실패/0error
 ### T4/T6 actual Native gate 확인
 
 7ca68e78c9cae1b5d4e5d8c3cf20bcaf8e5d8b86/run43171091357의 원본 artifact ZIP digest와 XML/host 결과를 root가 양API에서 확인했다. API35/36 각각Native111/0/0/0(ManualDriveStore2, Session15 포함), foundation host8+4+8=20, SyncState host17 verifier+17cleanup 및 killed hold PASS0이다. source7ca와 현재의 T4/T6 제품/테스트4파일 diff가0임을 확인했다. orphan fixture isolation과 CE-first test 교정도 포함한 실제 실행이므로 T4/T6 done으로 갱신한다. 근거는 checkpoint-native.json이며 T7/T8/최종head나실계정수용을 대신하지 않는다.
+
+### T7 복구3 및 T8 체크포인트
+
+T7 수정 후 author 실제3/0/0/0·root 동일source13초 통과이며 red3/2/0/0 원본과 대조했다. busy/stale early rejection과 metadata await 후 sequence/epoch/generation 검증을 독립 quality r5가 source3b5b84c에서 재검토하여 r4 Important2건 정적 해결·추가 차단0으로 확인했다. root 같은source 전체검증2분19초, core80+app86=166/0/0/0, APK/lint/testAPK 성공. T7 done으로 복귀한다. T8 네 파일의 최초testAPK author성공과 root 전체성공이 있으나 실제 UI Native는 최종동일head CI pending이다.
+
+### T8 복구1/2 — 이전/현재 표시 문구
+
+root는 bound mode의 이전 이력 카드가 현재 상태로 보이는 혼동과 사용자 문구의 구현 용어 foundation을 찾아 배정했다. 이전 기록의 상태로 conditional label을 바꾸고 아래 이전 동기화 이력으로 표시한다. optional legacy path 현재 상태는 보존하고 기존 bound test가 이전 label/현재 label 부재를 단언한다. 별도2파일 수정이며 root통합컴파일/최종Native에서 확인한다.
