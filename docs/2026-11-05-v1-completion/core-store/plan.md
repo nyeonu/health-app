@@ -888,3 +888,9 @@ T11 recovery9 (owner-auto enforcing Android fixture전제교정;앞선8회유지
 R9 추가원본대조: API36의동일link AVC는다음test logcat에버퍼링되어있었고root가전체artifact검색으로직접확인했다. 따라서양API enforcing SELinux link거부가확인됐으며개별test logfile에없었던관찰과구분한다. rawUID/path/UUID는공개하지않는다. 실행자localfull1분57초/JVM139/0/0/0·APK/lint/testAPK PASS, R9조건분할은compile만으로실제통과판정하지않는다.
 
 T3 recovery5 (owner-auto Important Q3한정교정;앞선4회보존) — root source반례와별도quality7dc확인에서nullhandle unknowncreate의INDETERMINATE가rereadjournal의PENDING/currentstartedAt으로붕괴한다. 그뒤재중단이면firstcreate와구별불가다. actualproviderduplicate는관찰하지않았다. 상위e4d7ac3의메모리PlannedFile flag와기존durablephase보존계약을재검토/pin했으며승인스펙/영속schema/권한/외부서비스불변이다. 현재T3교정4파일과회귀범위는작업블록에명시했다. 7dc actualAndroid hotjournalgate는동결source로계속실행하고별도worktree에서Q3의최소pre-fix실패→제품교정→재검증을진행한다. 완료/병합은모든최신source독립재검토와최종CI후만가능하며새세션/회차리셋없다.
+
+T3 recovery5 수정전회귀1: 제품미수정7dc계열에서최소test-only3개중새1개실패·기존2통과·오류/skip0,33초. reread journal capture는expectedINDETERMINATE/actualPENDING(line223)로root원본XML대조했다. 최초fixture가명시reconciliationblocker를던져planner경유와분리되므로제품교정전omitAck/미확인confirmation의blocker없는INDETERMINATE로입력을좁혀두번째red를확인한다. 첫실패이력보존·같은R5의회귀정밀화이며제품숨은재시도/회차초기화없다.
+
+T3 recovery5 정제red확인: omitAck로첫write후confirmation없음→PENDING outcome/blocker없음/INDETERMINATE/nullhandle을입증했다. 이후rereadjournal→reconcile직전취소에서동일expectedINDETERMINATE/actualPENDING(line224),3tests/1fail/0error/0skip/20초를root원본대조했다. 최초red와별도보존했고이제같은R5의한정제품보정·추가조건/실제SQLite통합을위임했다. 단순flag추가만으로영속손실을숨기지않고기존phase를보존한다.
+
+T3 recovery5 로컬후보23d81f7: focused5/0/0/0(기존2+신규3)·전체JVM142(core68/app74)/0/0/0·APK/lint/testAPK2분25초PASS를실행자보고로받았다. 현재4파일만수정했고Native신규1메서드4입력은compile만이다. root통합후직접전체명령과양API104/0/0/0·host17/17및최종독립검토가필요하다. 기존idealized fake의기대는유지하고새conservative mode에서unknownabsent→create0를검증했으며실제Driveprovider의flag소비는manual-drive후속의필수계약이다. 원래2개redXML/로그는보존한다.
