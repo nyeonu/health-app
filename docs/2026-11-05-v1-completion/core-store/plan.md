@@ -661,7 +661,7 @@ internal enum class SyncStatePhase {
 - **작성할 테스트**:
   - "Validated hot journals restore committed state through every store entry without fabricating confirmations" — 신규, 정상/entry/원본backup/dedupe(①③④⑤).
   - "Unsupported or malformed recovered pairs preserve original bytes without a writable original open" — 신규, schema/binding/비선택leaf/attempt(③④⑤).
-  - "Unsafe rollback sidecars and changed source pairs never follow external paths or delete unknown files" — 신규, footer/파일종류/identity/unknownentry(③④).
+  - "Unsafe rollback sidecars and changed source pairs never follow external paths or delete unknown files" — 신규, footer/파일종류/identity/unknownentry(③④). hardlink는 실제생성이가능하면sameinode/nlink2와Store거부를검증한다. enforcing앱정책의정확AccessDenied에서는무생성/원본bytes와동일production stat validator의nlink1수락/2거부를분리검증하며실제hardlinked admission은미검증으로남긴다.
   - "Interrupted rollback preparation retains raw evidence and safely retries without inventing success" — 신규, 단계CE/failure/다음Store(③④⑤).
 - **완료 기준**: 기존모든회귀보존/새Native 실제양API PASS·17OS실제spill verifier/cleanup PASS·같은72/API성능재측정·원본미지원/손상보존/모든entry검증·최종독립Q1재검토통과. 고정probe CI시작뒤별도worktree에서local authoring가능하나productionfix공개/완료판정전에는미수정Android 실제실패증거를root가확인해야한다. sourcefix완료를컴파일로대신하지않는다.
 - **검증 방법**: android cwd `./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:assembleDebugAndroidTest`; 최종PR API35/36 workflow 및safe artifact 원본대조.
@@ -863,3 +863,7 @@ T11 recovery8 (owner-auto 기존상태분류회귀한정교정;앞선7회유지)
 
 T10 actual 완료: immutablef12/CI43145722146 양API XML각99/0/0/0·기존16recovery/16cleanup PASS, 새4096×4096bytecase의main-digestchanged/regularjournalmagic입증후새PID첫일반read READY assert(line181)가양API실패했다. root ZIP digest·원본safe결과대조 및hot-journal-probe.json 보존. 실제status문자열은safe진단에기록하지않아임의추정하지않는다. 이는이전20kseed-ready timeout/UTP문제와다른actual회귀실패다. T11 fix공개전실패gate를충족했다.
 T11 final-local bd6e26faaba4127f6cccd7c4a81182146995e56e: rootfull1분59초PASS/JVM139/0/0/0·APK/lint/testAPK, 원래32/Session9 유지·새4group(총store36)compile. 별도4세션source재검토에서Q2/cleanupLow/unknownpath분류를source상해소했다고확인받았다. actualfixedNative103/17host·cleanup/성능72/API는미실행이며T11는in_progress·ADR009 Proposed다.
+
+T11 b7 actual 미완료: Native43151273714 양API각103/1/0/0, 새unsafe grouped fixture의Files.createLink(line900) AccessDenied로하드링크주입전실패했다. API35 AVC는enforcing SELinux의link거부를증명한다. 실제하드링크admission/뒤분기/17host는아직증명되지않았다. 원본XML/ZIPdigest는execution-report에보존, JVM/APK/lintPASS와성능72/API는분리한다. 복구9의기술보정은작성자·독립품질/보안진단뒤기록하며기존8회는초기화하지않는다.
+
+T11 recovery9 (owner-auto enforcing Android fixture전제교정;앞선8회유지) — b7 실제103/1/0/0 및API35 SELinux link AVC를근거로앱이자기파일hardlink를생성할수있다는전제를철회한다. 새호스트권한/보안설정/의존성은도입하지않고helper+현재NativeTest2파일만변경한다. 동일regular(StructStat)의internal가시성만열고본문/모든production호출을유지한다. journal/db각실제createLink시도는보존하며성공하면same dev/inode/nlink2·Store UNAVAILABLE/noRW/bytes보존을기존대로검증한다. 정확AccessDenied만별도플랫폼분할로확인하여alias부재·실제소스nlink1·DB/journal/sentinelbytes보존과동일production validator의실제stat기반nlink1수락/2거부를단언한다. 다른예외는실패,Assume/skip/무단continue금지이며이분할은실제hardlinked파일admission PASS가아니다. 뒤unsafe모든분할을실행한다. 독립quality진단은순수stat경계와OS생성거부의분리및명시적실제hardlink미검증을요구했다. 기존스펙원본보존/불안전경로거부/4group·기존32/Session9/host17/성능72gate는그대로다. 새source전체검증/별도검토후CI확인하며실제hardlinkOSadmission한계를완료보고에도남긴다.
