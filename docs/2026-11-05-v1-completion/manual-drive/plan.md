@@ -88,6 +88,52 @@ tasks:
 - 신규 테스트 기반/Gradle 의존성은 필요 없다. 기존 OkHttp local TLS/JUnit, 실제 SQLite/Session instrumentation/host harness와 Compose 기반을 재사용한다. 기존 UI/test 명령은 `.github/workflows/android-emulator-tests.yml`에서 직접 확인했다.
 - DAG: T1→T3→T5→T7→T8→T9, T2→T7, T4→T5/T6→T7. 병렬 authoring 후보 T1/T2/T4는 파일이 겹치지 않는다. 다른 조합은 depends_on 이후만 진행한다. 모든 로컬 Gradle은 root가 독점 직렬 실행한다. Native compile은 actual PASS가 아니며 각 focused Native는 최종 동일 head CI의 실제 결과로 확정할 수 있다; disjoint authoring을 그 대기 때문에 막지 않는다.
 
+```text
+// ManualDriveContracts — 상위 승인 계약 전문, 조립기 전달용 표기
+현재 source 기준은 PR #16 merge `4b98aee1119ded1f1c6553e92198ac004d30fa87`이다. core-store 완료는 에픽 전체 완료가 아니다. 아래 설계는 기존 승인 범위의 실행 구체화이며 하위 plan은 root 검토 전 draft다.
+
+
+    Ports.kt: P0 API 보존, additive typed callback (default는 순차 upsert).
+interface DriveUploader {
+    suspend fun upsertTracked(files: List<CsvFile>, onConfirmed: suspend (CsvFile, String) -> Unit)
+    // 기존 upsert/upsertBatch 유지
+}
+    PrivateDriveUploader의 실제 member API로 구현; extension-only dispatch 금지.
+    V1 전용 읽기 reconciliation과 journal 이후 쓰기 API; legacy upsert와 경계 공유.
+suspend fun PrivateDriveUploader.reconcileTracked(files: List<PlannedFile>, knownTargets: Map<Dataset, Set<String>>): ReconciledFiles
+suspend fun PrivateDriveUploader.writeTrackedPending(files: List<PlannedFile>, onConfirmed: suspend (CsvFile, String) -> Unit)
+    app-only, current generation/date의 모든 profile targetHandle + priorConfirmation target.
+suspend fun SqliteSyncStateStore.loadKnownDriveTargets(expected: DestinationGeneration, date: LocalDate): Map<Dataset, Set<String>>
+    app-only admin: fresh proof + 명시 continue 후 gate owner만 호출; 기존 schema 유지.
+suspend fun SqliteSyncStateStore.reopenManualBlockers(expected: DestinationGeneration): SyncCommit
+    engine 인자 nullable; 기존 run 유지. production은 null, prepare 누락 시 fail closed.
+suspend fun SyncExecutionSession.runPrepared(trigger: SyncTrigger, generation: DestinationGeneration, prepare: suspend () -> DestinationSync): BatchOutcome
+    BoundDriveAuthorization.kt: Account 객체 대신 plain validated name/type 사용.
+    credential은 private 비-data class 메모리, toString/StateFlow/SavedState/DB로 전달 금지.
+    ManualDriveSession.kt: binding/ticket/generation/foreground를 before/after proof에 재확인.
+
+
+`upsertTracked`는 DriveUploader member를 뜻하며 기존 `upsertBatch` ID projection을 보존한다. V1 `writeTrackedPending`은 reconcile에서 검증된 safe target에만 PATCH하며 신규 create도 pending RUNNING journal 뒤에만 수행한다. raw token이 closure에서 필요한 동안만 존재하고 session registry에는 token-bound engine을 저장하지 않는다. 기존 engine constructor를 nullable로 바꾸되 legacy tests의 non-null 주입은 유지한다. busy 호출은 prepare/credential 소비 없이 trigger만 병합한다. prepare는 gate owner 등록·중단 복구 뒤, access/planner/raw read 전에 딱 한 번 실행한다. production prepare는 같은 store/reader로 local DestinationSync를 만들고 fresh proof 뒤 blocker reopen을 수행한다. prepare 실패는 raw read/remote write를 시작하지 않으며 cleanup/gate 반환은 기존 경계를 보존한다.
+
+HealthConnectReader는 기존 HealthReader와 ScopedHealthReader를 함께 구현한다. read(date)는 현재 의미를 보존하고 private filterable read가 실제 요청∩현재 grant category만 조회한다. readScoped는 전체 read 후 필터링하지 않는다. MANUAL은 현재 grant의 EXPLICIT_DAY만 노출하고 SCHEDULED/CATCH_UP은 이번 PR에서 BLOCKED다. scope 요청 후 grant 철회는 BLOCKED/미확인이며 EMPTY가 아니다. page-size1000/page100/HR sample100000 및 interval overlap/aggregate/CSV 계약은 유지한다. 한정된 SourceReadException(reason=SOURCE_LIMIT_EXCEEDED 또는 SOURCE_ACCESS_REQUIRED)을 Ports에 추가하고 DestinationSync는 이 타입만 고정 reason으로 매핑하며 generic 오류는 SOURCE_READ_FAILED를 유지한다.
+
+AccountPicker는 항상 표시하고 허용 타입은 com.google만 둔다. RESULT_OK/current ticket/non-null extras/KEY_ACCOUNT_NAME(authAccount)/KEY_ACCOUNT_TYPE(accountType), UTF-8 encode 가능·1..1024bytes·ISO control 없음·type 정확일치를 검사한다. 모든 SDK authorize는 setAccount + drive.file만 쓴다. AuthorizationResult는 identity proof가 아니다. 동일 발급 token으로 body 없는 exact GET `/drive/v3/about?fields=user(emailAddress,me)`만 추가 허용하며 user.emailAddress가 선택 name과 정확히 같고 me=true일 때만 승인한다(별칭/대소문자/점/plus 정규화 없음). missing/mismatch/error는 source raw read 전에 차단한다. SDK Account 생성은 Activity bridge에만 둔다. 외부 consent 복귀는 업로드를 자동 실행하지 않고 별도 continue를 요구한다. 기기/실계정 성공은 pending이다.
+
+Drive reconcile는 read-only다. appFolder()는 create 가능하므로 호출하지 않는다. root→dataset→file을 fresh 완전조회하여 canonical marker/name/parent/private/owned/My Drive 및 known ID를 검증한다. 모든 current-generation profile의 현재/prior ID를 날짜별 bounded validated scan으로 조회한다. fresh 완전 unique canonical path lookup의 ID가 모든 known IDs와 같으면 identity/membership 증거로 충분하며 별도 ID GET을 강제하지 않는다. conflicting IDs·missing/moved/deleted known targets·중복·불완전/unsafe 조회는 blocked다. 다른 generation/account의 archived ID를 현재 identity로 추정하지 않는다. checksum exact match만 이전 확인/adoption을 재사용한다. checksum absent/malformed/mismatch는 reuse를 거절하지만 safe existing target의 같은-ID PATCH를 허용한다. fresh 2xx ACK는 전체 metadata+동일ID 검증으로 확인하며 checksum이 있으면 exact byte digest도 맞아야 한다; absent checksum은 기존 승인 write ACK 계약을 유지한다. metadata 재사용 조건과 fresh write ACK를 혼동하지 않는다.
+
+reconcile pending은 입력 PlannedFile과 값이 정확히 같아야 한다(현재 engine의 intended equality guard). 발견한 safe ID를 pending.copy로 주입하지 않는다. uploader 인스턴스의 private 실행 메모리에 exact FileKey/byte digest/known-ID 검증 결과를 묶은 **단 하나의 single-use prepared batch**를 둔다. 같은 generation/date/scope/revision/bytes의 pending만 RUNNING 뒤 소비하고 성공/실패/새 reconcile에서 clear한다. 다른 batch/run cache는 금지한다. write 직전 입력 일치만 검사하여 같은 batch에서 방금 검증한 root/parents/file identity를 재사용할 수 있다. healthy metadata 파일은 write0, changed3은 중복 전체 lookup 없이 PATCH3이며 최대2와 직렬 callback을 유지한다. memory reservation이 없거나 바뀌면 fail closed하며 registry/DB에 저장하지 않는다. confirmation 시간은 injectable Clock(기본 systemUTC, 기존 constructor 호환)으로 제공한다.
+
+fresh root/dataset/file create는 writePending 안 RUNNING 이후에만 허용한다. createMayHaveSucceeded=true에서 safe existing proof가 없으면 root/dataset/file 부재도 RECONCILIATION_REQUIRED이며 POST하지 않는다. root/dataset POST 실패/응답불명도 같은 file journal의 uncertainty로 보존한다. LOOKUP/PATCH의 IOException/429/500/502/503/504만 transient, 401/403은 account blocked, ambiguous POST·응답형식/identity 불명은 reconciliation required, 나머지는 permanent destination blocked다. transport 자체 retry/redirect/timeout/cap 정책은 유지한다. 최대2쓰기/직렬 callback/root-once-perbatch/structured cancellation과 P0 동작을 유지한다.
+
+`reopenManualBlockers`는 finished/no-current attempt에서만 generation CAS와 기존 validated transaction으로 eligible day blocker(DESTINATION_BLOCKED, DESTINATION_RECONCILIATION_REQUIRED, ACCOUNT_AUTHORIZATION_BLOCKED, RETRY_EXHAUSTED)를 제거하여 계획 재진입을 허용한다. DayPhase.BLOCKED만 PENDING으로 전환하고 REMOTE_STALE/다른 phase는 유지한다(현재 DayState.isValid는 BLOCKED+null blocker를 거부한다). date/profile/revision/file phase/target/prior/REMOTE_STALE/unknown create는 그대로 보존하고 attempt를 변조하지 않는다. generic retry가 REMOTE_STALE를 지우지 않는다. invalidate/new generation으로 uncertainty를 버리는 복구를 금지한다. 명시 account 변경/config reset만 기존 configure/reset 경계와 새 동의를 쓴다. schema/column/format 추가는 없다.
+
+ManualDriveSession은 작은 app controller이며 credential은 UiState 밖에 둔다. ManualDriveUi는 optional state/actions로 HealthHomeScreen에 합성하여 기존 pure component defaults를 보존한다. 실제 MainActivity는 항상 새 경로를 전달하고 기존 unbound authorize/upload를 노출하지 않는다. foundation 이력은 이전 이력/read-only로 표시하고 V1 coverage로 승격하지 않는다. 기존 이력 삭제와 V1 config/coverage reset은 별도 확인·범위·durable 완료를 사용한다. PR14 title/date safe insets를 유지한다. 자동 기능/worker/SAF는 후속이며 임의 profiling을 도입하지 않는다.
+
+확인 근거: 현재 Ports에는 upsertTracked가 아직 없고 HealthConnectReader는 HealthReader만 구현한다. SyncExecutionSession engine은 constructor field이며 gate 획득 전에는 merge만 한다. SqliteSyncStateStore에 configure/readBinding/invalidate/reset 및 all-profile uncertainty scan이 있지만 known-ID map/admin reopen은 없다. GoogleDriveTransport는 files path만 허용한다(현 source 직접 확인). SDK21.4/setAccount 및 AccountPicker constants/about scope/identity와 checksum optional 계약은 `/workspace/tooling/v1-manual-api-inventory.md`, `v1-manual-official-contracts.md`의 공식 URL/설치 API 확인값이다. 해당 메모의 후보 정책/이전 verdict는 승인 계약이 아니며 본 결정이 우선한다. 실제 OAuth/Galaxy/별칭 호환은 미확인이다.
+
+결정 로직 위치: BoundDriveAuthorization.kt의 IO 없는 companion 함수에 picker/result/ticket/proof 판정, PrivateDriveUploader.kt의 IO 없는 metadata/checksum/실패분류 함수에 target 판정, ManualDriveUi.kt의 pure projection에 current status/허용 동작을 둔다. SQL validation은 기존 store decode/transaction 경계를 재사용한다. 별도 validator framework/새 sealed 패턴/새 dependency를 도입하지 않는다. ADR007은 실제 conformance 전 Proposed를 유지한다.
+```
+
 ## 3. 작업
 
 ### T1: 실제 요청 범위만 읽는 수동 HC adapter
@@ -460,3 +506,7 @@ API35/36 기존 CI를 사용한다. 기존 history host20/SyncState host17 verif
 ## 실행 승인 기록
 
 2026-11-12 소유자의 V1 자동승인 위임에 따라 root가 승인했다. 독립 계획 검토는 base `4b98aee1119ded1f1c6553e92198ac004d30fa87`에서 차단 지적 없이 APPROVE였다. parent 계약을 먼저 커밋하고 parent_rev를 고정했다. 실행 전 baseline 표기 Session10을 실제 Session12로 교정했으며 기능·기준 변경은 없다. 최초 실행은 T1/T2/T4의 분리 worktree authoring으로 시작하며 로컬 Gradle은 하나씩만 실행한다. 실제 Native 검증은 최종 CI까지 pending이다.
+
+### PLAN 복구 1/2 — 실행 전 브리프 계약 누락
+
+조립 결과 Shared design이 표 한 줄뿐이어서 상세 계약이 전달되지 않았다. parent의 ManualDriveContracts 원문을 child 2절의 단일 명명 코드 조각으로 복제했다. 인자·반환·동작 변경은 없고 parent_rev도 유지한다. 재조립한 T1/T2/T4가 상세 계약을 포함하며 해소 실패 0인지 확인 후 위임한다.
