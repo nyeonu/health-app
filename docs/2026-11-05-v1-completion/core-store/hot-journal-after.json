@@ -1,0 +1,109 @@
+{
+  "kind": "synthetic_android_hot_journal_fixed_verification",
+  "head": "764cc6916c4c6231beb9c9a13b6ab152f33159ac",
+  "run": "https://github.com/nyeonu/health-app/actions/runs/43158298634",
+  "results": [
+    {
+      "api": 35,
+      "artifactSha256": "ec2cac811cbd510e2be734f35a97c49f5162b6cc8b8431645a99a42a7270e8c5",
+      "native": {
+        "tests": 106,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "storeTests": 36,
+      "sessionTests": 12,
+      "oldHistoryHostTests": 20,
+      "recoveryVerifiers": 17,
+      "cleanupTests": 17,
+      "killedHoldsCountedAsPass": 0,
+      "actualSpillProved": true,
+      "seededRows": 4096,
+      "handleBytes": 4096,
+      "freshProcessFirstReadReadyVerified": true,
+      "sameAndCrossScopeUnknownCreateSqliteTestsPassed": true,
+      "actualHardlinkedOsAdmission": "unverified where platform denies creation"
+    },
+    {
+      "api": 36,
+      "artifactSha256": "f42e0a36c1a35710e570d87336362f6e18d2cbc9d1d30b29f8f5b50c3d7c83cf",
+      "native": {
+        "tests": 106,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "storeTests": 36,
+      "sessionTests": 12,
+      "oldHistoryHostTests": 20,
+      "recoveryVerifiers": 17,
+      "cleanupTests": 17,
+      "killedHoldsCountedAsPass": 0,
+      "actualSpillProved": true,
+      "seededRows": 4096,
+      "handleBytes": 4096,
+      "freshProcessFirstReadReadyVerified": true,
+      "sameAndCrossScopeUnknownCreateSqliteTestsPassed": true,
+      "actualHardlinkedOsAdmission": "unverified where platform denies creation"
+    }
+  ],
+  "previousCandidates": [
+    {
+      "kind": "synthetic_android_hot_journal_fixed_candidate",
+      "head": "be20fe67cfab0e7e87cc9613cd3738af2ecf3936",
+      "run": "https://github.com/nyeonu/health-app/actions/runs/43156361988",
+      "scope": "Q1/Q3 runtime candidate; cross-scope Q4 is fixed only in a later head and remains separately gated",
+      "results": [
+        {
+          "api": 35,
+          "artifactSha256": "c0c5d20ebc09c36d631062ad53dfc96d63f4693e4b93cdb01647374a69bcf4d3",
+          "native": {
+            "tests": 104,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "storeTests": 36,
+          "sessionTests": 10,
+          "oldHistoryHostTests": 20,
+          "recoveryVerifiers": 17,
+          "cleanupTests": 17,
+          "killedHoldsCountedAsPass": 0,
+          "actualSpillProved": true,
+          "seededRows": 4096,
+          "handleBytes": 4096,
+          "freshProcessFirstReadReadyVerified": true,
+          "sameScopeUnknownCreateSqliteTestPassed": true,
+          "actualHardlinkedOsAdmission": "unverified where platform denies creation"
+        },
+        {
+          "api": 36,
+          "artifactSha256": "79f4adc087e837ad4a535ecc5461facf5bf3f727c7b529501886ec62cb94391c",
+          "native": {
+            "tests": 104,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "storeTests": 36,
+          "sessionTests": 10,
+          "oldHistoryHostTests": 20,
+          "recoveryVerifiers": 17,
+          "cleanupTests": 17,
+          "killedHoldsCountedAsPass": 0,
+          "actualSpillProved": true,
+          "seededRows": 4096,
+          "handleBytes": 4096,
+          "freshProcessFirstReadReadyVerified": true,
+          "sameScopeUnknownCreateSqliteTestPassed": true,
+          "actualHardlinkedOsAdmission": "unverified where platform denies creation"
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "Real hardlinked OS admission remains unverified where platform denies link creation; shared stat predicate nlink1/2 is verified separately.",
+    "Physical ENOSPC/EIO injection, Galaxy/vendor, Google account, SAF/provider and worker acceptance are not inferred."
+  ]
+}

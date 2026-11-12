@@ -28,3 +28,45 @@ interface DriveUploader {
         }
     }
 }
+
+/**
+ * 접근 메타데이터와 이미 승인한 읽기 범위를 분리한다.
+ * MANUAL은 사용자가 요청한 제한된 과거 복구를 포함하는 명시적 전경 정책이다.
+ * SCHEDULED와 CATCH_UP은 자동·백그라운드 정책이며 호출별 trigger로 선택한다.
+ */
+interface ScopedHealthReader {
+    suspend fun access(trigger: SyncTrigger): ReadAccess
+    suspend fun readScoped(date: LocalDate, requestedScopes: Map<DataType, ReadScope>): ScopedSnapshot
+}
+
+interface SyncStateStore {
+    suspend fun load(): SyncStateRead
+    suspend fun transact(expected: DestinationGeneration?, mutation: SyncMutation): SyncCommit
+    suspend fun reset(expected: DestinationGeneration?): SyncCommit
+    suspend fun loadForScope(expected: DestinationGeneration, todayInSeoul: LocalDate, access: ReadAccess): SyncStateRead
+    /** 반복 확인은 현재 세대의 시도만 반환하며 전체 coverage 무결성을 주장하지 않는다. */
+    suspend fun loadCurrentAttempt(expected: DestinationGeneration): AttemptState? {
+        val read = load()
+        check(read.status == StateStatus.READY) { "동기화 상태를 읽을 수 없습니다" }
+        val state = checkNotNull(read.state)
+        return state.attempt.takeIf { state.generation == expected }
+    }
+    suspend fun loadDay(expected: DestinationGeneration, date: LocalDate, scopeKey: ReadScopeKey): DayState?
+    /** All profiles of this generation/date; only a stale generation returns null, read failures throw. */
+    suspend fun loadUnresolvedCreates(expected: DestinationGeneration, date: LocalDate): Set<Dataset>?
+}
+
+/** 파일 본문은 메모리에서만 전달하며 불명확한 기존 대상을 새로 만들지 않는다. */
+interface StorageDestination {
+    suspend fun reconcile(files: List<PlannedFile>): ReconciledFiles
+    suspend fun writePending(files: List<PlannedFile>, onConfirmed: suspend (FileConfirmation) -> Unit)
+}
+
+/** 제공자 메시지나 원인을 담지 않는 허용 목록 기반 목적지 실패다. */
+class DestinationException(val reason: BlockReason) : IllegalStateException(reason.name) {
+    init {
+        require(reason in setOf(BlockReason.DESTINATION_TRANSIENT_FAILURE,
+            BlockReason.DESTINATION_RECONCILIATION_REQUIRED, BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED,
+            BlockReason.DESTINATION_BLOCKED))
+    }
+}

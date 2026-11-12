@@ -170,4 +170,8 @@ The user requests later investigation of slow sync/upload, including measured bo
 
 ## V1 Drive 배치 한정 개선 — 2026-11-05
 
-[실행 증거와 남은 수용 조건](2026-11-05-drive-optimization/execution-report.md): clean 소스 `fdda2399304e578340f14af4d208d42e96549730`의 core55+app74=129개(실패/오류/skip0), APK/lint/테스트 APK 빌드 통과. 동일 지연 local TLS의 warm 3CSV에서 요청12→10·최대 활성1→2와 배치 한정 EXECUTION/DRIVE_TOTAL p50/p95 감소를 확인했다. JVM/APK/lint CI는 성공했고 API35/36 684 head의 양API CI는 각각57개+host20개, JVM CI129개와 fresh-context 스펙 적합성 검증이 통과했다. PR #15의 독립 품질/보안/성능은 정확9cd head에서 모두 APPROVE이며 최종 문서 head 재검토·병합은 대기다. 실제 Google 변경 후 latency/privacy/same-ID, Galaxy 성능·TalkBack·P0 및 더 넓은 V1 체크는 완료 처리하지 않는다. 기존 문단은 각 당시의 이력으로 보존한다.
+[실행 증거와 남은 수용 조건](2026-11-05-drive-optimization/execution-report.md): clean 소스 `fdda2399304e578340f14af4d208d42e96549730`의 core55+app74=129개(실패/오류/skip0), APK/lint/테스트 APK 빌드 통과. 동일 지연 local TLS의 warm 3CSV에서 요청12→10·최대 활성1→2와 배치 한정 EXECUTION/DRIVE_TOTAL p50/p95 감소를 확인했다. JVM/APK/lint CI는 성공했고 API35/36 684 head의 양API CI는 각각57개+host20개, JVM CI129개와 fresh-context 스펙 적합성 검증이 통과했다. PR #15의 독립 품질/보안/성능은 최종 `d864aee85a3bd2ab90de9cfcba911659c7d0f438`에서 모두 APPROVE이며 master `bf071e19e4e52c285e075b3dfe3db09e1bda8135`로 병합됐다. 실제 Google 변경 후 latency/privacy/same-ID, Galaxy 성능·TalkBack·P0 및 더 넓은 V1 체크는 완료 처리하지 않는다. 기존 문단은 각 당시의 이력으로 보존한다.
+
+## V1 개발 진행 — 2026-11-05
+
+소유자는 병목 개선부터 기존 V1 범위의 스펙·계획·구현·별도 세션 검토·수정·개발 병합을 자동 승인했다. [승인 스펙](2026-11-05-v1-completion/spec.md)과 [실행 기록](2026-11-05-v1-completion/execution-report.md)이 현재 기준이다. 날짜별 scope/revision/planner와 원격 현재성 재검증 core는 구현·유닛 검증됐으며 실제 SQLite 저장/OS 중단 복구를 진행 중이다. 이는 전체 V1 완료가 아니다. 미확인 P0/Galaxy/실계정/SAF/자동 실행·배터리·TalkBack 수용은 미확인으로 유지하며, 이전 단락의 미착수/성능보류 문구는 당시 이력이다. 실제 원본 비교는 관찰한 날짜에 대해 소유자가 확인했고 나머지는 미확인으로 두라는 지시를 유지한다.

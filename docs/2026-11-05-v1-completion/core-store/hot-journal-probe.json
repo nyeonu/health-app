@@ -1,0 +1,53 @@
+{
+  "kind": "synthetic_android_hot_journal_pre_fix_probe",
+  "head": "f12ac9e9c13f569edb95e14c525f2cc051334f4a",
+  "run": "https://github.com/nyeonu/health-app/actions/runs/43145722146",
+  "results": [
+    {
+      "api": 35,
+      "artifactSha256": "a4b2d2e9cd0606e248bc8968501893e640132611b7a8b7029fbb9930e3700d3a",
+      "native": {
+        "tests": 99,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "oldRecoveryVerifiers": 16,
+      "oldCleanupTests": 16,
+      "mainDigestChanged": true,
+      "journalMagicVerified": true,
+      "journalRegular": true,
+      "seededRows": 4096,
+      "handleBytes": 4096,
+      "failureStage": "reopen",
+      "failureTestLine": 181,
+      "expectedFirstReadStatus": "READY",
+      "actualFirstReadStatus": "not recorded in public diagnostics",
+      "actualSpillProved": true,
+      "newCasePassed": false
+    },
+    {
+      "api": 36,
+      "artifactSha256": "e03ba8c5e0ee7e84d071cac82bc6c8714be00eeb0632c69716f65bb4cad94c49",
+      "native": {
+        "tests": 99,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "oldRecoveryVerifiers": 16,
+      "oldCleanupTests": 16,
+      "mainDigestChanged": true,
+      "journalMagicVerified": true,
+      "journalRegular": true,
+      "seededRows": 4096,
+      "handleBytes": 4096,
+      "failureStage": "reopen",
+      "failureTestLine": 181,
+      "expectedFirstReadStatus": "READY",
+      "actualFirstReadStatus": "not recorded in public diagnostics",
+      "actualSpillProved": true,
+      "newCasePassed": false
+    }
+  ]
+}
