@@ -19,6 +19,15 @@ interface CsvExporter {
 interface DriveUploader {
     suspend fun upsert(file: CsvFile): String
 
+    suspend fun upsertTracked(files: List<CsvFile>, onConfirmed: suspend (CsvFile, String) -> Unit) {
+        for (file in files) {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val id = upsert(file)
+            check(id.isNotBlank()) { "Unconfirmed Drive upload" }
+            onConfirmed(file, id)
+        }
+    }
+
     suspend fun upsertBatch(files: List<CsvFile>, onConfirmed: suspend (String) -> Unit) {
         for (file in files) {
             kotlinx.coroutines.currentCoroutineContext().ensureActive()

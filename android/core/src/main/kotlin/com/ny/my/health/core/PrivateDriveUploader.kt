@@ -2,6 +2,8 @@ package com.ny.my.health.core
 
 import java.io.IOException
 import java.net.URLEncoder
+import java.time.Clock
+import java.security.MessageDigest
 import java.time.LocalDate
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
@@ -28,14 +30,16 @@ data class DriveResponse(val status: Int, val body: String)
 class PrivateDriveUploader(
     private val transport: DriveTransport,
     private val profiling: SyncProfiling? = null,
+    private val clock: Clock = Clock.systemUTC(),
 ) : DriveUploader {
     private val mutex = Mutex()
     private val base = "https://www.googleapis.com/drive/v3/files"
     private val upload = "https://www.googleapis.com/upload/drive/v3/files"
     private val folderMime = "application/vnd.google-apps.folder"
-    private val fields = "id,name,mimeType,parents,ownedByMe,shared,trashed,appProperties,driveId"
+    private val fields = "id,name,mimeType,parents,ownedByMe,shared,trashed,appProperties,driveId,md5Checksum,sha256Checksum"
 
     override suspend fun upsert(file: CsvFile): String = mutex.withLock {
+        preparedBatch = null
         currentCoroutineContext().ensureActive()
         val (dataset, name, bytes) = prepare(file)
         val root = appFolder()
@@ -43,7 +47,11 @@ class PrivateDriveUploader(
         uploadFile(name, parent, bytes)
     }
 
-    override suspend fun upsertBatch(files: List<CsvFile>, onConfirmed: suspend (String) -> Unit) = mutex.withLock {
+    override suspend fun upsertBatch(files: List<CsvFile>, onConfirmed: suspend (String) -> Unit) =
+        upsertTracked(files) { _, id -> onConfirmed(id) }
+
+    override suspend fun upsertTracked(files: List<CsvFile>, onConfirmed: suspend (CsvFile, String) -> Unit) = mutex.withLock {
+        preparedBatch = null
         currentCoroutineContext().ensureActive()
         val prepared = files.map(::prepare)
         require(files.map { it.relativePath }.toSet().size == files.size) { "Duplicate export path" }
@@ -59,7 +67,7 @@ class PrivateDriveUploader(
         val confirmations = Mutex()
         val failure = AtomicReference<Throwable?>(null)
         coroutineScope {
-            prepared.map { (dataset, name, bytes) ->
+            prepared.mapIndexed { index, (dataset, name, bytes) ->
                 async(start = CoroutineStart.UNDISPATCHED) {
                     slots.withPermit {
                         currentCoroutineContext().ensureActive()
@@ -68,7 +76,7 @@ class PrivateDriveUploader(
                             val confirmed = uploadFile(name, parents.getValue(dataset), bytes)
                             confirmations.withLock {
                                 currentCoroutineContext().ensureActive()
-                                if (failure.get() == null) onConfirmed(confirmed)
+                                if (failure.get() == null) onConfirmed(files[index], confirmed)
                             }
                         } catch (error: Throwable) {
                             // 대기 파일이 permit을 얻기 전에 실패를 게시한다.
@@ -80,6 +88,161 @@ class PrivateDriveUploader(
             }.awaitAll()
         }
         Unit
+    }
+
+    // 검증한 현재 배치만 보관하며 새 조회 또는 쓰기 진입에서 소모한다.
+    private data class PreparedBatch(val files: List<PlannedFile>, val root: String?,
+        val parents: Map<String, String?>, val targets: Map<FileKey, String?>)
+    private var preparedBatch: PreparedBatch? = null
+
+    suspend fun reconcileTracked(files: List<PlannedFile>, knownTargets: Map<Dataset, Set<String>>): ReconciledFiles = mutex.withLock {
+        preparedBatch = null
+        destinationBoundary {
+            validatePlanned(files)
+            if (files.isEmpty()) return@destinationBoundary ReconciledFiles(emptyList(), emptyList(), emptySet())
+            val date = files.first().key.date
+            val known = knownTargets.mapValues { (_, ids) -> ids.toSet() }.toMutableMap()
+            for (file in files) file.previousTargetHandle?.let {
+                known[file.key.dataset] = known[file.key.dataset].orEmpty() + it
+            }
+            val root = operation(DriveOperation.APP_FOLDER_LOOKUP) {
+                find(DriveOperation.APP_FOLDER_LOOKUP, "HealthApp", "root", folderMime)
+            }?.let(::id)
+            val parents = mutableMapOf<String, String?>()
+            val byDataset = mutableMapOf<Dataset, JsonObject?>()
+            for (dataset in (files.map { it.key.dataset } + known.keys).distinct()) {
+                val name = datasetPath(dataset)
+                val parent = if (root == null) null else operation(DriveOperation.DATASET_FOLDER_LOOKUP) {
+                    find(DriveOperation.DATASET_FOLDER_LOOKUP, name, root, folderMime)
+                }?.let(::id)
+                parents[name] = parent
+                val target = if (parent == null) null else operation(DriveOperation.FILE_LOOKUP) {
+                    find(DriveOperation.FILE_LOOKUP, "$date.csv", parent, "text/csv")
+                }
+                byDataset[dataset] = target
+                val ids = known[dataset].orEmpty()
+                if (ids.isNotEmpty() && (target == null || ids != setOf(id(target)))) {
+                    throw DestinationException(BlockReason.DESTINATION_BLOCKED)
+                }
+            }
+            val confirmed = mutableListOf<FileConfirmation>()
+            val pending = mutableListOf<PlannedFile>()
+            val targets = mutableMapOf<FileKey, String?>()
+            for (file in files) {
+                val target = byDataset[file.key.dataset]
+                if (target == null && file.createMayHaveSucceeded) {
+                    throw DestinationException(BlockReason.DESTINATION_RECONCILIATION_REQUIRED)
+                }
+                if (target != null && checksumMatches(target, file.file.content.toByteArray(Charsets.UTF_8), requirePresent = true)) {
+                    confirmed += FileConfirmation(file.key, id(target), clock.instant())
+                } else {
+                    pending += file
+                    targets[file.key] = target?.let(::id)
+                }
+            }
+            preparedBatch = PreparedBatch(pending.toList(), root, parents.toMap(), targets.toMap())
+            ReconciledFiles(confirmed, pending, emptySet())
+        }
+    }
+
+    suspend fun writeTrackedPending(files: List<PlannedFile>, onConfirmed: suspend (CsvFile, String) -> Unit) = mutex.withLock {
+        val batch = preparedBatch
+        preparedBatch = null
+        destinationBoundary {
+            if (batch == null || batch.files != files) throw DestinationException(BlockReason.DESTINATION_RECONCILIATION_REQUIRED)
+            validatePlanned(files)
+            if (files.isEmpty()) return@destinationBoundary
+            val root = batch.root ?: appFolder()
+            val parents = mutableMapOf<String, String>()
+            for (file in files) {
+                val name = datasetPath(file.key.dataset)
+                if (name !in parents) parents[name] = batch.parents[name] ?: folder(name, root,
+                    DriveOperation.DATASET_FOLDER_LOOKUP, DriveOperation.DATASET_FOLDER_CREATE)
+            }
+            val slots = Semaphore(2)
+            val confirmations = Mutex()
+            val failure = AtomicReference<Throwable?>(null)
+            coroutineScope {
+                files.map { file -> async(start = CoroutineStart.UNDISPATCHED) {
+                    slots.withPermit {
+                        currentCoroutineContext().ensureActive()
+                        if (failure.get() != null) return@withPermit
+                        try {
+                            val (_, name, bytes) = prepare(file.file)
+                            val parent = parents.getValue(datasetPath(file.key.dataset))
+                            val target = batch.targets[file.key]
+                            val result = mutateFile(name, parent, bytes, target, verifyChecksum = true)
+                            confirmations.withLock {
+                                currentCoroutineContext().ensureActive()
+                                if (failure.get() == null) onConfirmed(file.file, result)
+                            }
+                        } catch (error: Throwable) {
+                            failure.compareAndSet(null, error)
+                            throw error
+                        }
+                    }
+                } }.awaitAll()
+            }
+            Unit
+        }
+    }
+
+    private fun validatePlanned(files: List<PlannedFile>) {
+        require(files.map { it.key }.distinct().size == files.size)
+        require(files.map { it.file.relativePath }.distinct().size == files.size)
+        require(files.map { Triple(it.key.generation, it.key.date, it.key.scopeKey) }.distinct().size <= 1)
+        for (file in files) {
+            prepare(file.file)
+            require(file.file.relativePath == "${datasetPath(file.key.dataset)}/${file.key.date}.csv")
+            require(file.byteSha256 == digest("SHA-256", file.file.content.toByteArray(Charsets.UTF_8)))
+        }
+    }
+
+    private fun datasetPath(dataset: Dataset): String = when (dataset) {
+        Dataset.DAILY -> "daily"
+        Dataset.WORKOUTS -> "workouts"
+        Dataset.HEART_RATE -> "heart-rate"
+        Dataset.SLEEP -> "sleep"
+    }
+
+    private fun digest(algorithm: String, bytes: ByteArray): String =
+        MessageDigest.getInstance(algorithm).digest(bytes).joinToString("") { "%02x".format(it) }
+
+    private fun checksumMatches(value: JsonObject, bytes: ByteArray, requirePresent: Boolean): Boolean {
+        if (requirePresent && value["sha256Checksum"] != JsonPrimitive(digest("SHA-256", bytes))) return false
+        var present = false
+        for ((field, algorithm) in listOf("md5Checksum" to "MD5", "sha256Checksum" to "SHA-256")) {
+            val checksum = value[field] ?: continue
+            present = true
+            if (checksum != JsonPrimitive(digest(algorithm, bytes))) return false
+        }
+        return present || !requirePresent
+    }
+
+    private fun destinationReason(details: DriveFailureDetails): BlockReason {
+        if (details.httpStatus in setOf(401, 403)) return BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED
+        if (details.operation in setOf(DriveOperation.APP_FOLDER_CREATE, DriveOperation.DATASET_FOLDER_CREATE, DriveOperation.FILE_CREATE)) {
+            return BlockReason.DESTINATION_RECONCILIATION_REQUIRED
+        }
+        if (details.kind == DriveFailureKind.NETWORK || details.httpStatus in setOf(429, 500, 502, 503, 504)) {
+            return BlockReason.DESTINATION_TRANSIENT_FAILURE
+        }
+        if (details.operation == DriveOperation.FILE_UPDATE && details.kind in setOf(DriveFailureKind.RESPONSE_INVALID, DriveFailureKind.TARGET_REJECTED)) {
+            return BlockReason.DESTINATION_RECONCILIATION_REQUIRED
+        }
+        return BlockReason.DESTINATION_BLOCKED
+    }
+
+    private suspend fun <T> destinationBoundary(block: suspend () -> T): T = try {
+        block()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (safe: DestinationException) {
+        throw safe
+    } catch (safe: DriveUploadException) {
+        throw DestinationException(destinationReason(safe.details))
+    } catch (_: Exception) {
+        throw DestinationException(BlockReason.DESTINATION_BLOCKED)
     }
 
     private fun prepare(file: CsvFile): Triple<String, String, ByteArray> {
@@ -95,19 +258,23 @@ class PrivateDriveUploader(
 
     private suspend fun uploadFile(name: String, parent: String, bytes: ByteArray): String {
         val existing = operation(DriveOperation.FILE_LOOKUP) { find(DriveOperation.FILE_LOOKUP, name, parent, "text/csv") }
-        return if (existing != null) operation(DriveOperation.FILE_UPDATE) {
-            val remoteId = id(existing)
-            val confirmed = request(DriveOperation.FILE_UPDATE, "PATCH", "$upload/$remoteId?uploadType=media&fields=${encode(fields)}", "text/csv; charset=UTF-8", bytes)
+        return mutateFile(name, parent, bytes, existing?.let(::id))
+    }
+
+    private suspend fun mutateFile(name: String, parent: String, bytes: ByteArray, target: String?, verifyChecksum: Boolean = false): String {
+        return if (target != null) operation(DriveOperation.FILE_UPDATE) {
+            val confirmed = request(DriveOperation.FILE_UPDATE, "PATCH", "$upload/$target?uploadType=media&fields=${encode(fields)}", "text/csv; charset=UTF-8", bytes)
             validate(confirmed, name, parent, "text/csv")
-            check(id(confirmed) == remoteId) { "Unconfirmed Drive update" }
-            remoteId
+            check(id(confirmed) == target) { "Unconfirmed Drive update" }
+            check(!verifyChecksum || checksumMatches(confirmed, bytes, requirePresent = false)) { "Unconfirmed Drive checksum" }
+            target
         } else operation(DriveOperation.FILE_CREATE) {
-            // One multipart create, never a retried POST or a separate empty CSV create.
             val boundary = "healthapp-${UUID.randomUUID()}"
             val prefix = "--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata(name, parent, "text/csv")}\r\n--$boundary\r\nContent-Type: text/csv; charset=UTF-8\r\n\r\n"
             val body = prefix.toByteArray(Charsets.UTF_8) + bytes + "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
             val confirmed = request(DriveOperation.FILE_CREATE, "POST", "$upload?uploadType=multipart&ignoreDefaultVisibility=true&fields=${encode(fields)}", "multipart/related; boundary=$boundary", body)
             validate(confirmed, name, parent, "text/csv")
+            check(!verifyChecksum || checksumMatches(confirmed, bytes, requirePresent = false)) { "Unconfirmed Drive checksum" }
             id(confirmed)
         }
     }
