@@ -97,6 +97,24 @@ class ManualDriveSessionTest {
         assertTrue(external.resetConfiguration())
         assertFalse(external.expectExternalResult(resetTicket.id))
         assertFalse(external.acceptAuthorization(resetTicket, false, "synthetic-memory-only", scopes))
+
+        val latestPorts = FakePorts()
+        val latest = ready(latestPorts)
+        val authorizationA = checkNotNull(latestPorts.lastTicket)
+        val authorizationB = checkNotNull(latest.beginAuthorization())
+        assertTrue(latest.acceptAuthorization(authorizationB, false, "synthetic-memory-only", scopes))
+        val readyB = latest.state.value
+        assertFalse(latest.acceptAuthorization(authorizationA, false, "late-memory-only", scopes))
+        assertEquals(readyB, latest.state.value)
+        assertEquals(BatchStatus.COMPLETED, latest.continueManual()?.status)
+        assertEquals(1, latestPorts.rawReads)
+        val pickerA = checkNotNull(latest.beginAccountSelection())
+        val pickerB = checkNotNull(latest.beginAccountSelection())
+        val beforeLatePicker = latest.state.value
+        assertNull(latest.selectAccount(true, pickerA, true, account.name, account.type, setOf(DataType.STEPS)))
+        assertEquals(beforeLatePicker, latest.state.value)
+        assertNotNull(latest.selectAccount(true, pickerB, true, account.name, account.type, setOf(DataType.STEPS)))
+        assertEquals(1, latestPorts.configurations.size)
     }
 
     @Test
@@ -186,6 +204,11 @@ class ManualDriveSessionTest {
         assertEquals(BatchStatus.MERGED, session.continueManual()?.status)
         assertEquals(1, ports.proofs)
         val obsolete = checkNotNull(ports.lastTicket)
+        val admittedState = session.state.value
+        assertNull(session.beginAuthorization())
+        assertNull(session.beginAccountSelection())
+        assertNull(session.selectAccount(true, obsolete.id, true, account.name, account.type, setOf(DataType.STEPS)))
+        assertEquals(admittedState, session.state.value)
         assertFalse(session.acceptAuthorization(obsolete, false, "replacement-memory-only", scopes))
         release.complete(Unit)
         assertEquals(BatchStatus.COMPLETED, owner.await()?.status)
@@ -193,6 +216,44 @@ class ManualDriveSessionTest {
         assertEquals(1, ports.batches)
         assertEquals(1, ports.transports)
         assertFalse(session.state.value.toString().contains("replacement-memory-only"))
+
+        for (action in listOf("authorization", "picker", "selection")) {
+            val racingPorts = FakePorts()
+            val racing = ready(racingPorts)
+            val metadataEntered = CompletableDeferred<Unit>()
+            val metadataRelease = CompletableDeferred<Unit>()
+            val proofEntered = CompletableDeferred<Unit>()
+            val proofRelease = CompletableDeferred<Unit>()
+            val pauseMetadata: suspend () -> Unit = { metadataEntered.complete(Unit); metadataRelease.await() }
+            val selection = if (action == "selection") checkNotNull(racing.beginAccountSelection()) else null
+            when (action) {
+                "authorization" -> racingPorts.duringBinding = pauseMetadata
+                "picker" -> racingPorts.duringAccess = pauseMetadata
+                "selection" -> racingPorts.memory.duringLoad = pauseMetadata
+            }
+            val obsoleteRequest = async {
+                when (action) {
+                    "authorization" -> racing.beginAuthorization()
+                    "picker" -> racing.beginAccountSelection()
+                    else -> racing.selectAccount(true, selection, true, account.name, account.type, setOf(DataType.STEPS))
+                }
+            }
+            metadataEntered.await()
+            if (action == "selection") {
+                val newest = checkNotNull(racing.beginAuthorization())
+                assertTrue(racing.acceptAuthorization(newest, false, "synthetic-memory-only", scopes))
+            }
+            racingPorts.duringProof = { proofEntered.complete(Unit); proofRelease.await() }
+            val admitted = async { racing.continueManual() }
+            proofEntered.await()
+            val beforeObsoleteResume = racing.state.value
+            metadataRelease.complete(Unit)
+            assertNull(action, obsoleteRequest.await())
+            assertEquals(action, beforeObsoleteResume, racing.state.value)
+            proofRelease.complete(Unit)
+            assertEquals(action, BatchStatus.COMPLETED, admitted.await()?.status)
+            assertEquals(action, 1, racingPorts.rawReads)
+        }
 
         val executingPorts = FakePorts()
         val executing = ready(executingPorts)
@@ -268,6 +329,8 @@ class ManualDriveSessionTest {
         var lastTicket: BoundDriveAuthorization.Ticket? = null
         var duringProof: suspend () -> Unit = {}
         var duringRun: suspend () -> Unit = {}
+        var duringAccess: suspend () -> Unit = {}
+        var duringBinding: suspend () -> Unit = {}
         var proofBody = """{"user":{"emailAddress":"selected@example.invalid","me":true}}"""
         val configurations = mutableListOf<SyncConfiguration>()
         val configureExpected = mutableListOf<DestinationGeneration?>()
@@ -276,6 +339,9 @@ class ManualDriveSessionTest {
         val foundationHistory = "foundation-preserved"
         override val reader = object : ScopedHealthReader {
             override suspend fun access(trigger: SyncTrigger): ReadAccess {
+                val callback = duringAccess
+                duringAccess = {}
+                callback()
                 accesses++
                 return ReadAccess(true, grants, grants.associateWith { ReadScope.EXPLICIT_DAY })
             }
@@ -283,7 +349,12 @@ class ManualDriveSessionTest {
                 error("이 대역은 원시 건강 기록을 만들지 않는다")
             }
         }
-        override suspend fun binding(generation: DestinationGeneration) = boundAccount
+        override suspend fun binding(generation: DestinationGeneration): BoundDriveAuthorization.AccountSelection? {
+            val callback = duringBinding
+            duringBinding = {}
+            callback()
+            return boundAccount
+        }
         override suspend fun configure(expected: DestinationGeneration?, configuration: SyncConfiguration,
             account: BoundDriveAuthorization.AccountSelection): SyncCommit {
             configureExpected += expected
@@ -343,7 +414,13 @@ class ManualDriveSessionTest {
         var resetStatus = CommitStatus.COMMITTED
         val resetExpected = mutableListOf<DestinationGeneration?>()
         val resetGeneration = DestinationGeneration("reset-generation")
-        override suspend fun load() = SyncStateRead(if (current == null) StateStatus.ABSENT else StateStatus.READY, current)
+        var duringLoad: suspend () -> Unit = {}
+        override suspend fun load(): SyncStateRead {
+            val callback = duringLoad
+            duringLoad = {}
+            callback()
+            return SyncStateRead(if (current == null) StateStatus.ABSENT else StateStatus.READY, current)
+        }
         override suspend fun reset(expected: DestinationGeneration?): SyncCommit {
             resetExpected += expected
             if (resetStatus == CommitStatus.COMMITTED) current = current?.copy(generation = resetGeneration, configuration = null)

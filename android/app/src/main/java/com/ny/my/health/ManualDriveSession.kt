@@ -134,51 +134,74 @@ internal class ManualDriveSession(
     /** 권한 화면 복귀 때 메타데이터 권한만 갱신한다. */
     suspend fun refreshGrants() = safely { access() }
 
-    suspend fun beginAccountSelection(): Long? = safelyValue {
-        check(!ownerRunning && permitted())
-        clearAuthorization()
-        (++sequence).also { picker = it }
+    suspend fun beginAccountSelection(): Long? {
+        if (ownerRunning) return null
+        return requestValue { current ->
+            check(permitted(current))
+            requireRequest(current)
+            clearAuthorization()
+            (++sequence).also { picker = it }
+        }
     }
 
     suspend fun selectAccount(resultOk: Boolean, returnedTicket: Long?, extrasPresent: Boolean,
-        name: String?, type: String?, categories: Set<DataType>): BoundDriveAuthorization.Ticket? = safelyValue {
-        check(!ownerRunning)
-        val selected = BoundDriveAuthorization.pickerCandidate(resultOk, picker, returnedTicket, extrasPresent, name, type)
-        picker = null
-        externalRequest = null
-        checkNotNull(selected)
-        check(permitted() && categories.isNotEmpty() && categories.any { it in state.value.grantedCategories })
-        val expected = state.value.generation
-        val read = ports.store.load()
-        check(read.status == StateStatus.ABSENT || read.status == StateStatus.READY)
-        check(read.state?.generation == expected)
-        val existing = read.state?.configuration
-        val sameDestination = expected != null && existing?.categories == categories && ports.binding(expected) == selected
-        epoch++
-        clearAuthorization()
-        val generation = if (sameDestination) checkNotNull(expected) else {
-            val commit = ports.configure(expected, SyncConfiguration("private-drive", yesterday(), false, categories), selected)
-            check(commit.status == CommitStatus.COMMITTED)
-            checkNotNull(commit.generation)
+        name: String?, type: String?, categories: Set<DataType>): BoundDriveAuthorization.Ticket? {
+        if (ownerRunning || picker == null || picker != returnedTicket) return null
+        return requestValue { current ->
+            val selected = BoundDriveAuthorization.pickerCandidate(resultOk, picker, returnedTicket, extrasPresent, name, type)
+            checkNotNull(selected)
+            check(permitted(current) && categories.isNotEmpty() && categories.any { it in state.value.grantedCategories })
+            requireRequest(current)
+            val expected = state.value.generation
+            val read = ports.store.load()
+            requireRequest(current)
+            check(read.status == StateStatus.ABSENT || read.status == StateStatus.READY)
+            check(read.state?.generation == expected)
+            val existing = read.state?.configuration
+            val sameDestination = expected != null && existing?.categories == categories && ports.binding(expected) == selected
+            requireRequest(current)
+            val generation = if (sameDestination) checkNotNull(expected) else {
+                val commit = ports.configure(expected, SyncConfiguration("private-drive", yesterday(), false, categories), selected)
+                requireRequest(current)
+                check(commit.status == CommitStatus.COMMITTED)
+                checkNotNull(commit.generation)
+            }
+            val refreshed = ports.store.load()
+            requireRequest(current)
+            check(refreshed.status == StateStatus.READY)
+            val latest = checkNotNull(refreshed.state)
+            check(latest.generation == generation)
+            val config = checkNotNull(latest.configuration)
+            epoch++
+            picker = null
+            clearAuthorization()
+            mutableState.value = state.value.copy(generation = generation, configured = true,
+                categories = config.categories, enrolledDay = config.enrolledDay, coverage = latest.coverage,
+                phase = ManualDrivePhase.AUTHORIZATION_REQUIRED)
+            BoundDriveAuthorization.Ticket(++sequence, generation, selected).also { ticket = it }
         }
-        refresh()
-        check(state.value.generation == generation)
-        BoundDriveAuthorization.Ticket(++sequence, generation, selected).also { ticket = it }
     }
 
     /** 같은 목적지의 재인가에는 configure/invalidate를 호출하지 않는다. */
-    suspend fun beginAuthorization(): BoundDriveAuthorization.Ticket? = safelyValue {
-        check(!ownerRunning && permitted())
-        val generation = checkNotNull(state.value.generation)
-        check(state.value.configured)
-        val selected = checkNotNull(ports.binding(generation))
-        clearAuthorization()
-        BoundDriveAuthorization.Ticket(++sequence, generation, selected).also { ticket = it }
+    suspend fun beginAuthorization(): BoundDriveAuthorization.Ticket? {
+        if (ownerRunning) return null
+        return requestValue { current ->
+            check(permitted(current))
+            requireRequest(current)
+            val generation = checkNotNull(state.value.generation)
+            check(state.value.configured)
+            val selected = ports.binding(generation)
+            requireRequest(current)
+            checkNotNull(selected)
+            clearAuthorization()
+            BoundDriveAuthorization.Ticket(++sequence, generation, selected).also { ticket = it }
+        }
     }
 
     fun acceptAuthorization(returned: BoundDriveAuthorization.Ticket, hasResolution: Boolean,
         token: String?, grantedScopes: Collection<String>): Boolean {
-        if (ownerRunning || !state.value.foreground || !state.value.privateFolderConsent ||
+        if (ownerRunning || returned != ticket || returned.generation != state.value.generation ||
+            !state.value.foreground || !state.value.privateFolderConsent ||
             state.value.grantedCategories.isEmpty()) return false
         val accepted = BoundDriveAuthorization.acceptResult(returned, ticket, state.value.generation,
             hasResolution, token, grantedScopes)
@@ -196,6 +219,7 @@ internal class ManualDriveSession(
             ports.runPrepared(generation) {
                 ownsPreparation = true
                 ownerRunning = true
+                epoch++
                 ownerJob = currentCoroutineContext()[Job]
                 mutableState.value = state.value.copy(phase = ManualDrivePhase.RUNNING, outcome = null)
                 val currentTicket = checkNotNull(ticket)
@@ -249,8 +273,9 @@ internal class ManualDriveSession(
         epoch == capturedEpoch && ticket == expected && state.value.generation == expected.generation &&
             state.value.foreground && state.value.privateFolderConsent
 
-    private suspend fun access(): Set<DataType> {
+    private suspend fun access(current: () -> Boolean = { true }): Set<DataType> {
         val access = ports.reader.access(SyncTrigger.MANUAL)
+        requireRequest(current)
         val granted = if (access.available) access.granted.filterTo(mutableSetOf()) {
             access.scopeByType[it] == ReadScope.EXPLICIT_DAY
         } else emptySet()
@@ -258,7 +283,21 @@ internal class ManualDriveSession(
         if (granted.isEmpty()) clearAuthorization()
         return granted
     }
-    private suspend fun permitted() = state.value.foreground && state.value.privateFolderConsent && access().isNotEmpty()
+    private suspend fun permitted(current: () -> Boolean = { true }) =
+        state.value.foreground && state.value.privateFolderConsent && access(current).isNotEmpty()
+
+    private class SupersededRequest : RuntimeException()
+    private fun requireRequest(current: () -> Boolean) {
+        if (!current()) throw SupersededRequest()
+    }
+    private suspend fun <T> requestValue(action: suspend (() -> Boolean) -> T): T? {
+        val requestSequence = sequence
+        val requestEpoch = epoch
+        val generation = state.value.generation
+        val current = { !ownerRunning && sequence == requestSequence && epoch == requestEpoch &&
+            state.value.generation == generation }
+        return safelyValue(current) { action(current) }
+    }
     private fun yesterday() = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))).minusDays(1)
     private fun clearAuthorization() {
         authorization = null
@@ -268,13 +307,18 @@ internal class ManualDriveSession(
             mutableState.value = state.value.copy(phase = ManualDrivePhase.AUTHORIZATION_REQUIRED)
     }
     private suspend fun safely(action: suspend () -> Unit) { safelyValue { action() } }
-    private suspend fun <T> safelyValue(action: suspend () -> T): T? = try {
+    private suspend fun <T> safelyValue(current: () -> Boolean = { true }, action: suspend () -> T): T? = try {
         action()
     } catch (cancelled: CancellationException) {
         throw cancelled
+    } catch (_: SupersededRequest) {
+        null
     } catch (_: Exception) {
-        clearAuthorization()
-        mutableState.value = state.value.copy(phase = ManualDrivePhase.BLOCKED)
+        if (current()) {
+            clearAuthorization()
+            picker = null
+            mutableState.value = state.value.copy(phase = ManualDrivePhase.BLOCKED)
+        }
         null
     }
 }
