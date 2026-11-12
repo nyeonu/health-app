@@ -547,3 +547,7 @@ fresh quality 재검토가 `4500044529f073e8252893b60cb561717ed50779`의 신규 
 ### T3 검증 체크포인트
 
 root focused verify `/workspace/tooling/pr17-t3-root.log` BUILD SUCCESSFUL8초(동일 source 캐시), author actual 실행36초: Batch14+Reconciliation7+Uploader10=31/0/0/0 XML 대조. 기존23 회귀와 신규8개를 보존했다. SHA-256 exact reuse/MD5-only PATCH, no mutation reconcile, root/dataset/file unknown-create no blind POST, strict identity/single-use/preparation 변경 거부, bounded2/serialized callback/joined cancellation을 검증했다. T3 done이며 T4 actual Native pending과 별개로 승인된 disjoint T5 authoring을 시작한다. 실제 계정 결과나 실사용 개선 수치가 아니다.
+
+### CI 환경 관찰 — Native 시작 전 의존성 조회 실패
+
+head34147fd의 run43169661306/API35 job131019650187은 connectedDebugAndroidTest의 UTP 추가-output host tool configuration resolve에서 기존 Maven 좌표10개를 찾지 못해 Native 시작 전에 실패했다. 원본 job log에 protobuf/auto-service/dagger 등 기존 UTP transitive POM의 Google/MavenCentral 조회가 missing으로 나온다. 저장소 settings/의존성 변경은 없었다. 2026-11-12 06:50경 root가 공식 MavenCentral proto-google-common-protos2.17.0 및 auto-service1.1.1 POM을 다시 조회해 각각HTTP200을 확인했다. 제품/테스트 assertion 실패나 Native 통과로 세지 않으며 수정 source의 다음 CI head에서 같은 명령을 검증한다. API36은 당시 진행 중으로 미확정이었다. 새 mirror·버전 교체·검증 생략은 하지 않는다.
