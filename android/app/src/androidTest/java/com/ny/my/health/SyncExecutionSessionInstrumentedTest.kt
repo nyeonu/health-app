@@ -22,6 +22,142 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class SyncExecutionSessionInstrumentedTest {
     @Test
+    fun preparedSessionAdmitsOneCredentialFactoryAndBusyCallersOnlyMergeTriggers() = runBlocking {
+        val f = Fixture()
+        try {
+            f.configure()
+            val preparing = CountDownLatch(1)
+            val release = CompletableDeferred<Unit>()
+            val queued = CountDownLatch(1)
+            val prepared = AtomicInteger()
+            val busyPrepared = AtomicInteger()
+            val session = f.session(legacyEngine = false)
+            val owner = async(Dispatchers.IO) {
+                session.runPrepared(SyncTrigger.MANUAL, f.generation) {
+                    prepared.incrementAndGet()
+                    preparing.countDown()
+                    release.await()
+                    f.engine()
+                }
+            }
+            await(preparing)
+            val busy = async(Dispatchers.IO) {
+                f.session(alias = true, legacyEngine = false, observer = {
+                    if (it == SyncSessionPhase.RECEIPT_QUEUED) queued.countDown()
+                }).runPrepared(SyncTrigger.CATCH_UP, f.generation) {
+                    busyPrepared.incrementAndGet()
+                    error("대기 호출은 credential을 준비하면 안 됩니다")
+                }
+            }
+            await(queued)
+            assertFalse(busy.isCompleted)
+            assertEquals(1, prepared.get())
+            assertEquals(0, busyPrepared.get())
+            assertTrue(f.accesses.isEmpty())
+            assertEquals(0, f.reads.get())
+            assertEquals(0, f.writes.get())
+            assertNull(f.ready().attempt)
+            release.complete(Unit)
+            assertEquals(BatchStatus.MERGED, withTimeout(30000) { busy.await() }.status)
+            assertEquals(BatchStatus.COMPLETED, withTimeout(30000) { owner.await() }.status)
+            assertEquals(setOf(SyncTrigger.MANUAL, SyncTrigger.CATCH_UP), f.ready().attempt!!.pendingTriggers)
+            assertEquals(1, prepared.get())
+            assertEquals(0, busyPrepared.get())
+            assertEquals(listOf(SyncTrigger.MANUAL, SyncTrigger.MANUAL), f.accesses)
+            assertEquals(1, f.reads.get())
+            assertEquals(1, f.writes.get())
+            // 준비한 engine을 같은 session의 다음 legacy 호출에 재사용하지 않는다.
+            try { session.run(SyncTrigger.MANUAL, f.generation); fail("새 실행 준비가 필요합니다") }
+            catch (error: IllegalStateException) { assertEquals("동기화 실행 준비가 필요합니다", error.message) }
+            assertEquals(2, f.accesses.size)
+            assertEquals(1, f.reads.get())
+        } finally { f.close() }
+    }
+
+    @Test
+    fun failedOrCancelledPrepareResolvesReceiptsWithoutHealthIoAndAllowsFreshPreparation() = runBlocking {
+        for (cancelled in listOf(false, true)) {
+            val f = Fixture()
+            try {
+                f.configure()
+                val preparing = CountDownLatch(1)
+                val queued = CountDownLatch(1)
+                val release = CompletableDeferred<Unit>()
+                val prepared = AtomicInteger()
+                val busyPrepared = AtomicInteger()
+                val session = f.session(legacyEngine = false)
+                val owner = launch(Dispatchers.IO) {
+                    try {
+                        session.runPrepared(SyncTrigger.MANUAL, f.generation) {
+                            prepared.incrementAndGet()
+                            preparing.countDown()
+                            release.await()
+                            error("합성 준비 실패")
+                        }
+                        fail("준비 실패가 전파되어야 합니다")
+                    } catch (error: IllegalStateException) {
+                        assertFalse(cancelled)
+                        assertEquals("합성 준비 실패", error.message)
+                    }
+                }
+                await(preparing)
+                val busy = async(Dispatchers.IO) {
+                    f.session(legacyEngine = false, observer = {
+                        if (it == SyncSessionPhase.RECEIPT_QUEUED) queued.countDown()
+                    }).runPrepared(SyncTrigger.SCHEDULED, f.generation) {
+                        busyPrepared.incrementAndGet()
+                        error("대기 호출은 credential을 준비하면 안 됩니다")
+                    }
+                }
+                await(queued)
+                assertFalse(busy.isCompleted)
+                assertTrue(f.accesses.isEmpty())
+                if (cancelled) owner.cancel() else release.complete(Unit)
+                withTimeout(30000) { owner.join() }
+                assertEquals(cancelled, owner.isCancelled)
+                assertEquals(BatchStatus.BLOCKED, withTimeout(30000) { busy.await() }.status)
+                assertEquals(1, prepared.get())
+                assertEquals(0, busyPrepared.get())
+                assertTrue(f.accesses.isEmpty())
+                assertEquals(0, f.reads.get())
+                assertEquals(0, f.writes.get())
+                assertNull(f.ready().attempt)
+                assertEquals(BatchStatus.COMPLETED, session.runPrepared(SyncTrigger.MANUAL, f.generation) {
+                    prepared.incrementAndGet()
+                    f.engine()
+                }.status)
+                assertEquals(2, prepared.get())
+                assertEquals(1, f.reads.get())
+                assertEquals(1, f.writes.get())
+            } finally { f.close() }
+        }
+    }
+
+    @Test
+    fun prepareFollowsDurableRecoveryAndGenerationChangeRejectsBeforeAccess() = runBlocking {
+        val f = Fixture()
+        try {
+            f.configure()
+            val seeded = f.seed()
+            var prepared = 0
+            assertEquals(BatchStatus.STALE, f.session(legacyEngine = false).runPrepared(SyncTrigger.MANUAL, f.generation) {
+                prepared++
+                assertNotNull(f.ready().attempt!!.finishedAt)
+                assertEquals(seeded.afterInterruption(), f.day())
+                assertTrue(f.accesses.isEmpty())
+                assertEquals(0, f.reads.get())
+                assertEquals(CommitStatus.COMMITTED, f.store().invalidate(f.generation).status)
+                f.engine()
+            }.status)
+            assertEquals(1, prepared)
+            assertTrue(f.accesses.isEmpty())
+            assertEquals(0, f.reads.get())
+            assertEquals(0, f.writes.get())
+            assertNull(f.ready().attempt)
+        } finally { f.close() }
+    }
+
+    @Test
     fun concurrentManualPeriodicAndCatchUpRequestsAdmitOnceAndRejectOldGenerationCallbacksAfterRestart() = runBlocking {
         val f = Fixture()
         try {
@@ -468,9 +604,12 @@ class SyncExecutionSessionInstrumentedTest {
         fun store(alias: Boolean = false) = SqliteSyncStateStore(
             if (alias) SyncStateDatabase(File(file.parentFile, "./${file.name}")) else db, { date },
             { if (failCommit) error("합성 커밋 실패") })
-        fun session(alias: Boolean = false, sessionClock: Clock = clock, observer: suspend (SyncSessionPhase) -> Unit = {}): SyncExecutionSession {
+        fun engine(store: SqliteSyncStateStore = store(), sessionClock: Clock = clock) =
+            DestinationSync(store, reader, destination, sessionClock)
+        fun session(alias: Boolean = false, sessionClock: Clock = clock, legacyEngine: Boolean = true,
+            observer: suspend (SyncSessionPhase) -> Unit = {}): SyncExecutionSession {
             val store = store(alias)
-            return SyncExecutionSession(store, reader, DestinationSync(store, reader, destination, sessionClock), sessionClock,
+            return SyncExecutionSession(store, reader, if (legacyEngine) engine(store, sessionClock) else null, sessionClock,
                 { UUID.randomUUID().toString() }, observer)
         }
         suspend fun configure() {

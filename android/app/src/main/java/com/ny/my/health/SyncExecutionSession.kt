@@ -22,7 +22,7 @@ internal enum class SyncSessionPhase { BEFORE_START, STARTED, RECEIPT_QUEUED, EN
 internal class SyncExecutionSession(
     private val store: SqliteSyncStateStore,
     private val reader: ScopedHealthReader,
-    private val engine: DestinationSync,
+    private val engine: DestinationSync?,
     private val clock: Clock,
     private val newId: () -> String,
     private val observer: suspend (SyncSessionPhase) -> Unit = {},
@@ -53,7 +53,14 @@ internal class SyncExecutionSession(
         } finally { entry.gate.unlock() }
     }
 
-    suspend fun run(trigger: SyncTrigger, generation: DestinationGeneration): BatchOutcome {
+    suspend fun run(trigger: SyncTrigger, generation: DestinationGeneration): BatchOutcome =
+        runPrepared(trigger, generation) { checkNotNull(engine) { "동기화 실행 준비가 필요합니다" } }
+
+    suspend fun runPrepared(
+        trigger: SyncTrigger,
+        generation: DestinationGeneration,
+        prepare: suspend () -> DestinationSync,
+    ): BatchOutcome {
         if (!entry.gate.tryLock()) return merge(trigger, generation)
         val owner = Owner(generation)
         var outcome = result(BatchStatus.BLOCKED)
@@ -65,6 +72,10 @@ internal class SyncExecutionSession(
             val initial = ready()
             if (initial.generation != generation) return result(BatchStatus.STALE).also { outcome = it }
             val config = initial.configuration ?: return outcome
+            // 실행 credential을 포함하는 engine은 gate 소유자의 지역 변수로만 유지한다.
+            val preparedEngine = prepare()
+            currentCoroutineContext().ensureActive()
+            if (ready().generation != generation) return result(BatchStatus.STALE).also { outcome = it }
             val access = reader.access(trigger)
             val state = selected(generation, access)
             val key = SyncPlanner.scopeKey(config, access)
@@ -91,7 +102,7 @@ internal class SyncExecutionSession(
                 entry.receipts.clear()
             }
             observer(SyncSessionPhase.STARTED)
-            outcome = engine.run(trigger, generation, requireNotNull(owner.attemptId))
+            outcome = preparedEngine.run(trigger, generation, requireNotNull(owner.attemptId))
             observer(SyncSessionPhase.ENGINE_RETURNED)
             return outcome
         } catch (error: Throwable) {
