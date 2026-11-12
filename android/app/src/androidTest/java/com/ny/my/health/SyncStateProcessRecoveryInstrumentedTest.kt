@@ -1,6 +1,5 @@
 package com.ny.my.health
 
-import android.content.ContentValues
 import android.os.Bundle
 import android.os.Process
 import android.util.Base64
@@ -41,7 +40,9 @@ class SyncStateProcessRecoveryInstrumentedTest {
     private val access = ReadAccess(true, scopes.keys, scopes)
     private val key = SyncPlanner.scopeKey(config, access)!!
     private val revision = RevisionKey("a".repeat(64), time)
-    private val spillRows = 20_000
+    private val spillRows = 4096
+    private val spillHandleBytes = 4096
+    private val spillTargetHandle = "s".repeat(spillHandleBytes)
     private val spillEnrolled = today.minusDays(spillRows.toLong())
     private val spillConfig = config.copy(enrolledDay = spillEnrolled, categories = DataType.entries.toSet())
     private val spillScopes = spillConfig.categories.associateWith { ReadScope.EXPLICIT_DAY }
@@ -131,7 +132,7 @@ class SyncStateProcessRecoveryInstrumentedTest {
 
     private fun spillDay(generation: DestinationGeneration, date: LocalDate) = DayState(date, spillKey,
         spillScopes, revision, DayPhase.CONFIRMED, spillScopes, time, mapOf(Dataset.DAILY to
-            DatasetState(Dataset.DAILY, revision, FilePhase.CONFIRMED, true, "synthetic-spill-target",
+            DatasetState(Dataset.DAILY, revision, FilePhase.CONFIRMED, true, spillTargetHandle,
                 time, time.plusSeconds(1), null)), null).also {
         assertTrue(it.isValid(generation, spillEnrolled, today))
     }
@@ -143,31 +144,40 @@ class SyncStateProcessRecoveryInstrumentedTest {
         val generation = initial.configure(null, spillConfig, binding).also {
             assertEquals(CommitStatus.COMMITTED, it.status)
         }.generation!!
+        assertEquals(spillHandleBytes, spillTargetHandle.toByteArray(Charsets.UTF_8).size)
+        val encodedScopes = SyncStateCodec.encodeScopes(spillScopes)
+        val generatedAt = time.toString()
+        val confirmedAt = time.plusSeconds(1).toString()
         val database = SyncStateDatabase(file)
         database.openForWrite().use { db -> database.transaction(db) {
-            repeat(spillRows) { offset ->
-                val day = spillDay(generation, spillEnrolled.plusDays(offset.toLong()))
-                val leaf = day.datasets.getValue(Dataset.DAILY)
-                db.insertOrThrow("day", null, ContentValues().apply {
-                    put("generation", generation.value); put("date", day.date.toString()); put("scope_key", spillKey.value)
-                    put("requested_scopes_json", SyncStateCodec.encodeScopes(spillScopes))
-                    put("revision", revision.digest); put("generated_at", time.toString()); put("phase", day.phase.name)
-                    put("scopes_json", SyncStateCodec.encodeScopes(spillScopes)); put("checked_at", time.toString()); putNull("blocker")
-                })
-                db.insertOrThrow("dataset", null, ContentValues().apply {
-                    put("generation", generation.value); put("date", day.date.toString()); put("scope_key", spillKey.value)
-                    put("dataset", leaf.dataset.name); put("revision", revision.digest); put("generated_at", time.toString())
-                    put("phase", leaf.phase.name); put("populated", 1); put("target_handle", leaf.targetHandle)
-                    put("started_at", time.toString()); put("confirmed_at", leaf.confirmedAt.toString()); putNull("prior_confirmation_json")
-                })
+            // 동일한 canonical 상수와 준비된 statement를 재사용하며 날짜만 바꾼다.
+            db.compileStatement("INSERT INTO day (generation,date,scope_key,requested_scopes_json,revision,generated_at,phase,scopes_json,checked_at,blocker) VALUES (?,?,?,?,?,?,?,?,?,NULL)").use { day ->
+                db.compileStatement("INSERT INTO dataset (generation,date,scope_key,dataset,revision,generated_at,phase,populated,target_handle,started_at,confirmed_at,prior_confirmation_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL)").use { dataset ->
+                    day.bindString(1, generation.value); day.bindString(3, spillKey.value)
+                    day.bindString(4, encodedScopes); day.bindString(5, revision.digest)
+                    day.bindString(6, generatedAt); day.bindString(7, DayPhase.CONFIRMED.name)
+                    day.bindString(8, encodedScopes); day.bindString(9, generatedAt)
+                    dataset.bindString(1, generation.value); dataset.bindString(3, spillKey.value)
+                    dataset.bindString(4, Dataset.DAILY.name); dataset.bindString(5, revision.digest)
+                    dataset.bindString(6, generatedAt); dataset.bindString(7, FilePhase.CONFIRMED.name)
+                    dataset.bindLong(8, 1L); dataset.bindString(9, spillTargetHandle)
+                    dataset.bindString(10, generatedAt); dataset.bindString(11, confirmedAt)
+                    repeat(spillRows) { offset ->
+                        val date = spillEnrolled.plusDays(offset.toLong()).toString()
+                        day.bindString(2, date); day.executeInsert()
+                        dataset.bindString(2, date); dataset.executeInsert()
+                    }
+                }
             }
         } }
-        assertSpillState(store().load(), generation)
-        update { it.put("generation", generation.value).put("spillRows", spillRows).put("baselineDigest", digest(file)) }
+        // 최초 전체 load가 모든 행의 canonical 형식과 도메인 불변식을 검증한다.
+        assertSpillState(store().load(), generation, verifyScope = false)
+        update { it.put("generation", generation.value).put("spillRows", spillRows)
+            .put("handleBytes", spillHandleBytes).put("baselineDigest", digest(file)) }
         return generation
     }
 
-    private suspend fun assertSpillState(read: SyncStateRead, generation: DestinationGeneration) {
+    private suspend fun assertSpillState(read: SyncStateRead, generation: DestinationGeneration, verifyScope: Boolean = true) {
         assertEquals(StateStatus.READY, read.status)
         val state = read.state!!
         assertTrue(state.isValid()); assertEquals(generation, state.generation); assertEquals(spillConfig, state.configuration)
@@ -178,16 +188,18 @@ class SyncStateProcessRecoveryInstrumentedTest {
         assertNull(state.coverage.scopeCheckedThrough); assertNull(state.coverage.scopeUploadedThrough)
         assertNull(state.coverage.scopePendingCount); assertNull(state.coverage.scopeBlockedCount)
         assertTrue(state.coverage.recentCheckedDays.isEmpty()); assertTrue(state.coverage.recentUploadedDays.isEmpty())
-        val scoped = store().loadForScope(generation, today, spillAccess)
-        assertEquals(StateStatus.READY, scoped.status)
-        val selected = scoped.state!!
-        assertEquals(spillKey, selected.scopeKey); assertEquals(spillScopes, selected.requestedScopes)
-        assertEquals(date, selected.coverage.scopeCheckedThrough); assertEquals(date, selected.coverage.scopeUploadedThrough)
-        assertEquals(0L, selected.coverage.scopePendingCount); assertEquals(0L, selected.coverage.scopeBlockedCount)
-        val recent = setOf(today.minusDays(2), date)
-        assertEquals(recent, selected.days.keys); assertEquals(recent, selected.coverage.recentCheckedDays)
-        assertEquals(recent, selected.coverage.recentUploadedDays); assertTrue(selected.oldestPendingDays.isEmpty())
-        for (day in selected.days.values) assertEquals(spillDay(generation, day.date), day)
+        if (verifyScope) {
+            val scoped = store().loadForScope(generation, today, spillAccess)
+            assertEquals(StateStatus.READY, scoped.status)
+            val selected = scoped.state!!
+            assertEquals(spillKey, selected.scopeKey); assertEquals(spillScopes, selected.requestedScopes)
+            assertEquals(date, selected.coverage.scopeCheckedThrough); assertEquals(date, selected.coverage.scopeUploadedThrough)
+            assertEquals(0L, selected.coverage.scopePendingCount); assertEquals(0L, selected.coverage.scopeBlockedCount)
+            val recent = setOf(today.minusDays(2), date)
+            assertEquals(recent, selected.days.keys); assertEquals(recent, selected.coverage.recentCheckedDays)
+            assertEquals(recent, selected.coverage.recentUploadedDays); assertTrue(selected.oldestPendingDays.isEmpty())
+            for (day in selected.days.values) assertEquals(spillDay(generation, day.date), day)
+        }
         assertEquals(1, count("generation")); assertEquals(1, count("config")); assertEquals(0, count("attempt"))
         assertEquals(spillRows, count("day")); assertEquals(spillRows, count("dataset"))
         SyncStateDatabase(file).openForRead()!!.use { db ->
@@ -205,7 +217,7 @@ class SyncStateProcessRecoveryInstrumentedTest {
             0x20, 0xa1.toByte(), 0x63, 0xd7.toByte()), magic)
         assertNotEquals(owned().getString("baselineDigest"), digest(file))
         update { it.put("mainDigestChanged", true).put("journalMagicVerified", true).put("journalRegular", true) }
-        marker("SYNC_STATE_SPILL main_digest_changed=true journal_magic_verified=true journal_regular=true seeded_rows=20000")
+        marker("SYNC_STATE_SPILL main_digest_changed=true journal_magic_verified=true journal_regular=true seeded_rows=4096 handle_bytes=4096")
         hold()
     }
 
@@ -323,6 +335,7 @@ class SyncStateProcessRecoveryInstrumentedTest {
             }
         } else if (kind() == "reset-spill-before") {
             assertEquals(spillRows, ownership.getInt("spillRows"))
+            assertEquals(spillHandleBytes, ownership.getInt("handleBytes"))
             assertTrue(ownership.getBoolean("mainDigestChanged")); assertTrue(ownership.getBoolean("journalMagicVerified"))
             assertTrue(ownership.getBoolean("journalRegular"))
             val generation = DestinationGeneration(ownership.getString("generation"))

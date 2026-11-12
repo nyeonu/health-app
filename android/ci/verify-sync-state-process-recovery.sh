@@ -101,8 +101,8 @@ for fixture in pending-before pending-after confirm-before confirm-after running
   job=$!
   ready "$seed_output"
   if [[ "$fixture" == reset-spill-before ]]; then
-    grep -Eq '^SYNC_STATE_SPILL main_digest_changed=true journal_magic_verified=true journal_regular=true seeded_rows=20000 pid=[0-9]+' "$seed_output" || fail
-    printf 'spill fixture=reset-spill-before main_digest_changed=true journal_magic_verified=true journal_regular=true seeded_rows=20000\n' >>"$evidence"
+    grep -Eq '^SYNC_STATE_SPILL main_digest_changed=true journal_magic_verified=true journal_regular=true seeded_rows=4096 handle_bytes=4096 pid=[0-9]+' "$seed_output" || fail
+    printf 'spill fixture=reset-spill-before main_digest_changed=true journal_magic_verified=true journal_regular=true seeded_rows=4096 handle_bytes=4096\n' >>"$evidence"
   fi
   dead_pid=$(sed -n 's/.*SYNC_STATE_READY pid=\([0-9]*\).*/\1/p' "$seed_output" | head -1)
   [[ "$dead_pid" =~ ^[0-9]+$ ]] || fail
