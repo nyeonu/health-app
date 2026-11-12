@@ -1,6 +1,7 @@
 package com.ny.my.health
 
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteException
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
@@ -26,6 +27,7 @@ internal class SyncStateHotJournalRecovery(private val database: SyncStateDataba
         val work = File(source.parentFile,"${source.name}.hot-work-$owner")
         makeDirectory(work)
         writeNew(File(work,"owner"),owner.toByteArray())
+        var failure: Throwable? = null
         try {
             val candidate = File(work,"state.db")
             copy(File(raw,"raw/state.db"),candidate,checkCancelled)
@@ -55,8 +57,16 @@ internal class SyncStateHotJournalRecovery(private val database: SyncStateDataba
             }
             database.observe(SyncStatePhase.HOT_ORIGINAL_ROLLED_BACK)
             checkCancelled()
+        } catch (error: Throwable) {
+            failure = error
+            throw error
         } finally {
-            cleanupWork(work,owner)
+            try { cleanupWork(work,owner) } catch (cleanupError: Throwable) {
+                val original = failure
+                if (original == null) throw cleanupError
+                // 정리 경로ㆍ원시 IO 예외를 덧붙이지 않으며 최초 취소/실패 객체를 보존한다.
+                original.addSuppressed(IllegalStateException("동기화 복구 작업 정리 실패"))
+            }
         }
     }
 
@@ -98,22 +108,30 @@ internal class SyncStateHotJournalRecovery(private val database: SyncStateDataba
         private const val protocol = "sync-hot-journal/1"
 
         fun guardSidecarPaths(databaseFile: File) {
-            privateParent(databaseFile)
-            for (file in listOf(databaseFile,File(databaseFile.path + "-journal"),
-                File(databaseFile.path + "-wal"),File(databaseFile.path + "-shm"))) {
-                val stat = status(file) ?: continue
-                regular(stat)
-                withRead(file) { fd ->
-                    require(identity(Os.fstat(fd)) == identity(stat))
-                    if (file.name.endsWith("-journal")) {
-                        // 빈 정상 journal은 허용하되 짧은 비어 있지 않은 footer는 추측하지 않는다.
-                        if (stat.st_size > 0) {
-                            require(stat.st_size >= 8)
-                            require(!exact(fd,stat.st_size - 8,8).contentEquals(magic))
-                        }
-                    }
-                    require(identity(Os.fstat(fd)) == identity(stat))
+            try {
+                privateParent(databaseFile)
+                val companions = listOf(File(databaseFile.path + "-journal"),
+                    File(databaseFile.path + "-wal"),File(databaseFile.path + "-shm"))
+                if (status(databaseFile) == null && companions.any { status(it) != null }) {
+                    throw SQLiteException("원본 없는 동기화 DB 보조 파일을 보존합니다")
                 }
+                for (file in listOf(databaseFile) + companions) {
+                    val stat = status(file) ?: continue
+                    regular(stat)
+                    withRead(file) { fd ->
+                        require(identity(Os.fstat(fd)) == identity(stat))
+                        if (file.name.endsWith("-journal")) {
+                            // 빈 정상 journal은 허용하되 짧은 비어 있지 않은 footer는 추측하지 않는다.
+                            if (stat.st_size > 0) {
+                                require(stat.st_size >= 8)
+                                require(!exact(fd,stat.st_size - 8,8).contentEquals(magic))
+                            }
+                        }
+                        require(identity(Os.fstat(fd)) == identity(stat))
+                    }
+                }
+            } catch (_: IllegalArgumentException) {
+                throw SQLiteException("동기화 DB 경로를 사용할 수 없습니다")
             }
         }
 

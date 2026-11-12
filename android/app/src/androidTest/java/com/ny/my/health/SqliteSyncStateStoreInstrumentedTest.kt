@@ -834,11 +834,47 @@ class SqliteSyncStateStoreInstrumentedTest {
 
     @Test
     fun unsafeRollbackSidecarsAndChangedSourcePairsNeverFollowExternalPathsOrDeleteUnknownFiles() = runBlocking {
-        for (kind in listOf("footer","wal","shm","journal-link","journal-hardlink","db-link","db-hardlink",
+        for (kind in listOf("main-directory","orphan-journal","orphan-wal","orphan-shm","footer","wal","shm","journal-link","journal-hardlink","db-link","db-hardlink",
             "short-journal","short-db","raw-unknown","raw-manifest","raw-owner","raw-order","raw-size","raw-hash","raw-link","work-unknown","changed")) {
             val h = HotFixture()
             val sentinel = File(h.f.db.databaseFile.parentFile,"synthetic-sentinel-${UUID.randomUUID()}")
             try {
+                if (kind == "main-directory") {
+                    val main = h.f.db.databaseFile
+                    assertTrue(main.mkdir())
+                    val unknown = File(main,"unknown")
+                    val bytes = "합성 알 수 없는 디렉터리 내용".toByteArray(Charsets.UTF_8)
+                    unknown.writeBytes(bytes)
+                    var phaseObserved = false
+                    val store = h.f.store({ phaseObserved = true })
+                    assertEquals(StateStatus.UNAVAILABLE,store.load().status)
+                    assertEquals(CommitStatus.UNAVAILABLE,store.configure(null,h.f.config(),
+                        PrivateDestinationBinding("SYNTHETIC")).status)
+                    assertTrue(main.isDirectory)
+                    assertEquals(listOf("unknown"),main.list()!!.toList())
+                    assertArrayEquals(bytes,unknown.readBytes())
+                    assertFalse(phaseObserved)
+                    assertTrue(h.artifacts(".init-").isEmpty())
+                    assertTrue(h.artifacts(".hot-").isEmpty())
+                    continue
+                }
+                if (kind.startsWith("orphan-")) {
+                    val main = h.f.db.databaseFile
+                    val sidecar = File(main.path + "-" + kind.removePrefix("orphan-"))
+                    val bytes = "합성 미소유 보조 파일".toByteArray(Charsets.UTF_8)
+                    sidecar.writeBytes(bytes)
+                    assertEquals(StateStatus.UNAVAILABLE,h.f.store().load().status)
+                    // 유효한 어제 등록 입력으로 실제 파일 admission까지 도달한다.
+                    val result = h.f.store().configure(null,h.f.config(),PrivateDestinationBinding("SYNTHETIC"))
+                    assertEquals(CommitStatus.UNAVAILABLE,result.status)
+                    assertNull(result.generation)
+                    assertFalse(main.exists())
+                    assertTrue(h.artifacts(".init-").isEmpty())
+                    assertFalse(h.f.db.resetDirectory.exists())
+                    assertTrue(h.artifacts(".hot-").isEmpty())
+                    assertArrayEquals(bytes,sidecar.readBytes())
+                    continue
+                }
                 h.seed(); h.dirty()
                 val db = h.f.db.databaseFile
                 val journal = File(db.path + "-journal")
@@ -897,7 +933,9 @@ class SqliteSyncStateStoreInstrumentedTest {
                         }
                     }
                 }
-                assertNotEquals(StateStatus.READY,h.f.store(observer).load().status)
+                val result = h.f.store(observer).load()
+                if (kind == "db-link") assertEquals(StateStatus.UNAVAILABLE,result.status)
+                else assertNotEquals(StateStatus.READY,result.status)
                 assertEquals(0,rolled)
                 assertArrayEquals(sentinelBytes,sentinel.readBytes())
                 if (kind !in setOf("db-link")) assertArrayEquals(expectedDb,db.readBytes())
@@ -960,6 +998,35 @@ class SqliteSyncStateStoreInstrumentedTest {
             h.assertRestored(h.f.store().load())
             h.assertRaw()
         } finally { h.close() }
+        val interrupted = HotFixture()
+        try {
+            interrupted.seed(); interrupted.dirty()
+            val cancelled = CancellationException("합성 unknown 작업 취소")
+            var unknown: File? = null
+            val store = interrupted.f.store({ phase ->
+                if (phase == SyncStatePhase.HOT_CANARY_VALIDATED) {
+                    unknown = File(interrupted.artifacts(".hot-work-").single(),"unknown").also {
+                        it.writeText("합성 unknown 보존")
+                    }
+                    throw cancelled
+                }
+            })
+            try {
+                store.load()
+                fail("최초 취소가 전파되어야 합니다")
+            } catch (error: CancellationException) {
+                assertSame(cancelled,error)
+                assertEquals(1,error.suppressed.size)
+                assertEquals("동기화 복구 작업 정리 실패",error.suppressed.single().message)
+                assertNull(error.suppressed.single().cause)
+            }
+            interrupted.assertOriginal()
+            interrupted.assertRaw()
+            assertEquals("합성 unknown 보존",checkNotNull(unknown).readText())
+            val work = interrupted.artifacts(".hot-work-").single()
+            assertTrue(File(work,"owner").exists())
+            assertTrue(File(work,"state.db").exists())
+        } finally { interrupted.close() }
     }
 
     /** 실제 kill의 대체 증거가 아닌, 검증된 dirty pair fault 분할용 작은 합성 fixture. */
