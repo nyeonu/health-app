@@ -68,3 +68,5 @@ Important Q3는별도품질댓글6814539633에REQUESTCHANGES로기록했다. 공
 7dc API36 실제PASS: Native103/0/0/0(store36/session9/performance1),기존historyhost20및새host17verifier/17cleanup·죽인holdPASS0. root가ZIP SHA256 03dc5e69fe46848bfe5d5d5038be0fbab1b2b01d609228edc3eda9ec4b25c807과원본XML/정형host결과를검증했다. 실제main변경/regularjournalmagic4096×4096입증→force-stop/새PID첫일반read READY·이전전체state복원/후속mutation이통과하여API36의Q1수정전후proof가성립했다. API35는기존PixelCopycapture실패로host미실행이며양API최종gate는아직미완료다. Q3교정뒤최신source전체CI와독립최종검토를유지한다.
 
 be20 rootfull2분7초/JVM142/0/0/0·APK/lint/testAPK PASS. 별도spec/security는같은scopeQ3보정과별개로scope전환Q4누락을발견하여FAIL/REQUESTCHANGES,댓글6814802584에보존했다. 지금generation/date의모든scope physicaldataset불명상태를조회/투영하는T3복구6을계획보정했다. 현재CI결과·기존회차·같은scope의실패후통과증거를유지하고최신head전체검증/재검토전병합하지않는다.
+
+범위전환Q4는A EXPLICIT_DAY unknown/새B SUMMARY에서flagfalse라는실제red6/1/0/0을확인했다. T3복구6은date별모든scope의nulltarget unresolved Dataset집합을조회/검증하고기존journal/PlannedFile에합친다. SQL은기존PK의generation/date범위2orderedcursor·canonicaldecode·orphan거부이며형식/index/cache추가없다. 복구7은Nativefixture의모듈공개API한줄만교정했다. 실행자focused8/0/0/0+fullJVM145/0/0/0·APK/lint/testAPK PASS후5파일후보aba7fc6을받았고최종root/CI/독립재검토는아직대기다.
