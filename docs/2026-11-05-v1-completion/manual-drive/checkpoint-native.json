@@ -1,0 +1,53 @@
+{
+  "status": "interim_native_evidence_not_final_pr_acceptance",
+  "source": "34147fdffea4d623db0690568a1c6ea6b5878893",
+  "run": 43169661306,
+  "api36": {
+    "job": 131019649891,
+    "artifact": 13922867679,
+    "artifact_sha256": "36b7394921a6824a3f08b7364eee0fb13c6fe37b2acb8c950832286fab5bb265",
+    "native": {
+      "tests": 108,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": {
+      "com.ny.my.health.DurableHistoryActivityInstrumentedTest": 3,
+      "com.ny.my.health.HealthAppInstrumentedTest": 6,
+      "com.ny.my.health.HealthHomeScreenInstrumentedTest": 20,
+      "com.ny.my.health.HistoryDatabaseInstrumentedTest": 3,
+      "com.ny.my.health.ManualDriveStoreInstrumentedTest": 2,
+      "com.ny.my.health.PhoneProfilingClipboardInstrumentedTest": 1,
+      "com.ny.my.health.PhoneProfilingScreenInstrumentedTest": 5,
+      "com.ny.my.health.SqliteHistoryStoreInstrumentedTest": 19,
+      "com.ny.my.health.SqliteSyncStateStoreInstrumentedTest": 36,
+      "com.ny.my.health.SyncExecutionSessionInstrumentedTest": 12,
+      "com.ny.my.health.SyncStateStorePerformanceInstrumentedTest": 1
+    },
+    "foundation_host": {
+      "verifier": 8,
+      "settings": 4,
+      "cleanup": 8,
+      "killed_holds_counted_as_pass": 0
+    },
+    "sync_state_host": {
+      "verifier": 17,
+      "cleanup": 17,
+      "killed_holds_counted_as_pass": 0,
+      "first_normal_read_after_verified_spill": true
+    }
+  },
+  "api35": {
+    "job": 131019650187,
+    "result": "failed_before_native_utp_dependency_resolution",
+    "test_count": null
+  },
+  "limits": [
+    "Before orphan fixture isolation change",
+    "Before prepared-session T6 and T7 controller code",
+    "API35 did not execute Native tests",
+    "Final exact-head API35/36 verification still pending",
+    "Synthetic emulator evidence is not real Google/Galaxy/TalkBack acceptance"
+  ]
+}
