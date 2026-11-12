@@ -33,7 +33,7 @@ tasks:
   - id: T5
     title: Drive destination의 typed 확인 연결
     depends_on: [T3, T4]
-    status: pending
+    status: done
     tier: standard
   - id: T6
     title: gate 소유자만 실행 credential을 준비
@@ -561,3 +561,7 @@ root pre-build 검토에서 신규 public DriveApiDestination의 store secondary
 ### T5 복구 2/2 — 실제 TLS에서 드러난 GET 503 숨은 재시도
 
 최초 focused 실제 실행은 2개 중1개 실패했다. `DriveApiDestinationTest.kt:168`에서 기대1전송/실제2전송이며 fixture는 GET503에도 Retry-After:0을 보낸다. 이는 no-retry parent236/child86 계약과 달리 OkHttp retryOnConnectionFailure(false)만으로 server-directed GET followup이 막히지 않는 결함이다. hostile header를 제거해 테스트를 통과시키지 않는다. T5 배정에 기존 GoogleDriveTransport.kt와 GoogleDriveTransportTest.kt를 추가(총4파일)한다. 설치된5.3.0 followup 소스를 확인하여503 재시도 trigger만 좁게 차단하고 원래 status/body·GET no-body·HTTPS·timeout·no redirect·POST/PATCH one-shot 정책을 보존한다. local TLS exact1전송/503 반환·명시적 다음 호출만 새 요청을 단언하고 기존13개 관련 focused 회귀를 함께 실행한다. 새 라이브러리/버전/프로토콜 downgrade는 없다. 로그 `/workspace/tooling/pr17-t5-initial.log`; 실패 XML은 원본 보존 후 재실행한다.
+
+### T5 검증 체크포인트
+
+복구2 focused 실제 실행40초와 root 재검증14초 통과. XML Bound2+DriveApi2+Transport10=14/0/0/0. initial FAIL 원본을 보존했으며 GET503 Retry-After:0 fixture나 기대1전송 단언을 약화하지 않았다. 설치된 OkHttp5.3.0 RetryAndFollowUpInterceptor bytecode에서503 followup이 retryOnConnectionFailure를 조회하지 않음을 확인했다. productionClient의 network interceptor가503 Retry-After만 제거하여 caller에게 기존503 status/빈 error body를 돌려주고 별도 명시적 호출만 다음 응답을 받는다. bodyless files/about GET 및 기존POST/PATCH one-shot 회귀를 검증했다. 일반 외부 injected/shared client의421 coalescing은 새 보장 대상이 아니며 production은 단일 exact host의 독립 client로 제한한다. T5 done; T7은 producer API 검증 뒤 source authoring에 진입하며 T4/T6 actual Native는 최종 gate pending을 유지한다.
