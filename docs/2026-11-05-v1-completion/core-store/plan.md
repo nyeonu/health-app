@@ -15,7 +15,7 @@ tasks:
   - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: done, tier: standard}
   - {id: T4, title: 실제 SQLite의 원자적 상태 저장, depends_on: [T3], status: done, tier: standard}
   - {id: T5, title: process 공용 admission과 중단 복구, depends_on: [T4], status: in_progress, tier: standard}
-  - {id: T6, title: OS 강제종료의 실제 commit 검증, depends_on: [T5, T7, T8, T9], status: pending, tier: standard}
+  - {id: T6, title: OS 강제종료의 실제 commit 검증, depends_on: [T4, T7, T9], status: in_progress, tier: standard}
   - {id: T7, title: 누적 메타데이터 비용 측정, depends_on: [T3], status: done, tier: standard}
   - {id: T8, title: 측정된 metadata 반복 조회 축소, depends_on: [T4, T7], status: in_progress, tier: standard}
   - {id: T9, title: 계정없는 emulator bootstrap 안정화, depends_on: [T7], status: done, tier: light}
@@ -473,7 +473,7 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
   | `android/ci/verify-sync-state-process-recovery.sh` | 신규 | host force-stop 경계와 새 PID 검증 |
   | `.github/workflows/android-emulator-tests.yml` | 수정 | normal discovery 제외·별도 harness·합성 결과 |
 
-- **인터페이스**: 2절 `SyncState` 참조. 2절 `SqliteSyncStateStore` schema/reset 계약. host flag `syncStateProcessHost=true`, markers `SYNC_STATE_READY pid=...`, `SYNC_STATE_REOPENED pid=...`, 2절 `ProcessRecoveryCases`의 16개 fixture allowlist. 별도 sync-state-process-fixture.db와 ownership marker만 사용한다.
+- **인터페이스**: 2절 `SyncState` 참조. 2절 `SqliteSyncStateStore` schema/reset 계약. 2절 `SyncExecutionSession` 참조: running verifier는 read-first RUNNING 원본을 관찰한 뒤 새process session.detectPending으로 owner없는시도를복구하여 INDETERMINATE/finish와health·remote IO0을 확인한다. host flag `syncStateProcessHost=true`, markers `SYNC_STATE_READY pid=...`, `SYNC_STATE_REOPENED pid=...`, 2절 `ProcessRecoveryCases`의 16개 fixture allowlist. 별도 sync-state-process-fixture.db와 ownership marker만 사용한다.
 - **결정 로직**: 없음.
 - **호출 순서**:
   ```
@@ -491,7 +491,7 @@ class SyncExecutionSession(store: SqliteSyncStateStore, reader: ScopedHealthRead
   bash -n android/ci/verify-sync-state-process-recovery.sh
   bash android/ci/verify-sync-state-process-recovery.sh
   ```
-- **주의사항**: T5 후 시작. 기존 host shell의 bounded install/poll/PID/reap 구조를 재사용하되 system settings 전환은 추가하지 않는다. API flags 미확인은 read-only 확인 후 지시 범위만 구현하며 기동/컴파일/검증 실패시 blocked로 보고한다. 일반 discovery 제외는 ignore/Assume skip으로 대체하지 않는다. 공개 evidence는 fixture enum·count·boolean만, DB/CSV/계정/URI/원본 instrumentation dump 업로드 금지.
+- **주의사항**: T5/T8 source 통합 compile 체크포인트 확인 후 시작하며 T5/T8 actual Native/성능 gate는 최종 통합 CI에서 함께 충족해야 한다. 기존 host shell의 bounded install/poll/PID/reap 구조를 재사용하되 system settings 전환은 추가하지 않는다. API flags 미확인은 read-only 확인 후 지시 범위만 구현하며 기동/컴파일/검증 실패시 blocked로 보고한다. 일반 discovery 제외는 ignore/Assume skip으로 대체하지 않는다. 공개 evidence는 fixture enum·count·boolean만, DB/CSV/계정/URI/원본 instrumentation dump 업로드 금지.
 
 ### T7: 누적 메타데이터 비용 측정
 
@@ -606,6 +606,9 @@ bash android/ci/verify-sync-state-process-recovery.sh
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
 |---|---|---|---|---|---|---|---|
+| T5 | 4 (소유자자동승인 compiler한정추가교정;누적유지) | recovery3 productioncompilePASS후Native fixture의inlinevalueclass DestinationGeneration에lateinit불가, testkt309 | nullableprivatebacking+requireNotNull getter, configure가실제committed generation만저장하도록유지 | 가짜default세대/기대변경/API변경없음; 기존9사례유지 | SyncExecutionSessionInstrumentedTest.kt fixture만 | core4PASS/appcompilePASS/AndroidTestcompileFAIL, /workspace/tooling/v1-t5-recovery3-verify.log | resume_v1_session_t5 한정교정후같은명령 |
+| T5 | 3 (소유자 자동승인 추가교정; 계획교정2회유지) | 최초verify core SyncStateTest4/4PASS 후 appcompile 실패: 다른module public read.state smartcast불가, SyncExecutionSession.kt193 | requireReady에서read.state를local val로잡아동일null/status검증후반환 | API/오류/동작/기대검증불변; 기본2회한도소진을숨기지않고V1자동승인에따라compiler정합성만한정수정 | T5session1파일만;core/9Native테스트유지 | 최초명령exit1 /workspace/tooling/v1-t5-resume-verify.log; 수정후동일명령예정 | resume_v1_session_t5 한정교정, Gradle직렬 |
+| T8 | 1/2 | firstverify core65중새identity fixture1실패: malformed UUID changed로기대STALE전에INVALID/BLOCKED. production narrow다른generation은null대신throw. 사전편집cwd오류후verify계속도보고됨 | 다른generation header=null계약복원·valid replacement fixture·actualSQLite stale-null회귀, full aggregate는scalar만보존하여전체candidate최대9유지 | 기존31회귀/성능72fixture/검증강도불변, malformed DB는계속오류이며fake malformed를정상identity교체로표현하지않음 | T8기존5파일중store/coretest/nativeTest한정; exact3load숫자보다파일수1/4비례증가없음과최초검증존재확인 | 최초전체명령 core65/1실패에서중단·native미실행; 교정후동일전체verify예정 | resume_v1_store_perf_t8 부분교정, shell set-e/절대경로 |
 | T2 | 3 (소유자 자동승인에 따른 추가 교정; 기존2회 보존) | root 및 독립 사전 계약 검토: finished 수동 attempt가 새 자동 scope selected snapshot을 영구 invalid로 만들어 새 start 불가 | selected-scope equality는 unfinished attempt에만 적용하고 finished 자체 fingerprint/categories 검증은 유지. fresh id의 새 profile start만 허용 | 승인된 manual/automatic 분리 및 previous finished 교체 계약 불변. 기본한도 초과를 숨기지 않고 현재 자동승인 범위의 제한 교정 | SyncState.kt/SyncStateTest.kt만; 기존unfinished mismatch/start/confirmation 거부 유지 | core64/실패·오류·skip0; 실행자21초·최종 root9초 PASS | v1_core_t2 한정 교정 |
 | T2 | 2/2 | root source 대조: load()는 선택 scope 없이 현재 attempt를 반환하지만 isValid가 attempt.scopeKey와 null selected scope를 무조건 비교해 정상 journal을 거부 | unscoped snapshot은 attempt 자체의 canonical/profile/config 관계만 검사하고 selected scope가 있을 때만 equality 검사; 날짜행/선택 coverage를 unscoped에 혼입하지 않음 | load() 무선택 계약과 엄격한 selected-scope CAS 불변 | SyncState.kt/SyncStateTest.kt만; 기존 mutation·hash·codec 유지 | core64개/실패·오류·skip0; 실행자9초/root7초 PASS(입력동일 UP-TO-DATE XML대조) | v1_core_t2 부분 교정 |
 | T9 | 3 (소유자 자동승인에 따른 실행기호환 교정; 기존2회보존) | 실제79ffd/CI41975679263 API35: runner가각script줄을개별sh -c로실행하여 multiline if 첫줄에서 fi기대EOF, Native0개/산출물없음 | 동일presence조건/force-stop을한줄의완결if로표현. 실행기실제line단위문법검증추가 | 이미지/권한/대상패키지/테스트/timeout/skip불변; staticwhole-scriptPASS와runtime구분 | workflow1파일만 | 줄별syntax·조건제어·양API Native 재실행대기 | v1_emulator_bootstrap_t9 한정교정 |
@@ -721,3 +724,7 @@ T5 recovery2/2 — 조립 브리프 직접 대조에서 recovery1의 상세 공�
 T6 recovery1/2 — 독립 읽기전용 소스점검으로 T4 교정9가 추가한 initial/reset publication 경계가 원래7개 host계획에 빠져 있음을 확인했다. 승인된 원자성/중단복구 기준에 따라 기존7개를 유지하고 기존enum seam9개를 추가한16개로 보정했다. initial게시전ABSENT·게시후READY, resetmarker전원본UNSUPPORTED·후UNAVAILABLE와명시retry 차이를2절에고정했다. 제품API/권한/시스템설정/timeout확대없음. 각phase process죽음만 증명하며전원손실일반화금지.
 
 2026-11-12 재개 확인: immutable head cb89da7783eb8420fca0440cf7b29e61955bca95의 CI41977482571이 양API35/36 SUCCESS다. root가 ZIP digest와 XML을 직접 확인: 각89/실패0/오류0/skip0, SQLite31개 모두PASS, performance1개PASS/72관측, 기존history host8recovery+4settings+8cleanup=20/죽인holdPASS0. ZIP API35 SHA2566a554f674da83fd532138cba0210d189bbadd303e324d2b9a38333c430fee948/API36 0cdb685adbb4c4a9f07aae82f81b995d9b07ce5339b56b8e7aaa31dd61ba0f8e. T4/T9 done; 새session/T6 process와T8性能후측정은별도미완료. T5/T8 파일불겹침/별도worktree로진행, sharedGradle직렬.
+
+T6 recovery2/2 — 파일/API 의존성을 재대조하여 불필요한 runtime 직렬대기를 보정했다. T6의3파일은T5/T8 제품·테스트파일과겹치지않고기존T4enum/store 및T5constructor/API만사용한다. 이미실제통과한T4/T7/T9를depends_on으로유지하고T5/T8 source통합compile체크포인트뒤host작성에착수한다. T5/T8는actualNative/성능전까지in_progress이며done을꾸미지않는다. 최종head의T5/T6/T8전체Native·같은성능fixture·모든16force-stop과독립review gate는그대로다. CI대기중독립authoring만병렬화하며test/timeout/성공기준변경없음.
+
+T5/T8 통합 source checkpoint: root가모든제품source동결후전체명령1분51초PASS(/workspace/tooling/v1-combined-t5-t8-root.log). 실제XMLcore65/app74=139/실패0·오류0·skip0, APK/lint/testAPK PASS. T5 nineNative/T8store32 및성능72/API실행은아직pending이므로두T는in_progress유지. compile통합checkpoint에따라T6작성시작, 최종새head전체Native/16host/후측정과독립리뷰게이트불변.

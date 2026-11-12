@@ -22,3 +22,22 @@
 |36/partial|3650|4599.27|8928.78|8502.65|
 
 현재 snapshot의 active row 검증과 profile scan은 day마다 day/dataset pointSELECT를 반복하며, engine의 파일별 current/confirmation도 이 snapshot을 다시 요청한다. 반환 최대9행은 SQL/decode 작업량 제한이 아니다. static N+1 분석과 위 실제 비용이 T8의 근거다. 수정은 streaming bulk validation/집계와 좁은 attempt identity 조회를 사용하되 비선택profile 손상·privatebinding·generation/attempt/date/scope/revision·원격 journal gate를 유지한다. across-call cache나 SQLite durability 하향, 측정fixture/규모/검증완화로 속도를 만들지 않는다. API별 hosted machine 차이가 있어 API35↔36 우열이나 실제기기 수치를 단정하지 않는다.
+
+## Correctness 수정 후 비교 기준선
+
+T8 변경 직전 source `cb89da7783eb8420fca0440cf7b29e61955bca95`의 [양API 전체PASS run](https://github.com/nyeonu/health-app/actions/runs/41977482571)에서도 같은72관측씩을 확보했다. 위 초기진단 기준선은 보존하되, 이후 비교는 손상쓰기/원자적게시 수정을 포함한 이 기준선을 우선 사용한다. 원본 JSON의 correctedSourceBaseline에 144관측을 추가했다. setup/assert/fixture/규모/반복횟수는 동일하며 hosted runner간변동 한계는 남는다. 아래도 반복3 median(ms)이다.
+
+| API/profile | N | load ms | scoped load ms | confirmation ms |
+|---|---:|---:|---:|---:|
+|35/FULL_EXPLICIT|30|169.30|146.35|177.95|
+|35/FULL_EXPLICIT|365|1523.49|1408.77|1412.56|
+|35/FULL_EXPLICIT|3650|13983.49|24040.31|13501.77|
+|35/PARTIAL_SUMMARY|30|71.79|129.85|153.95|
+|35/PARTIAL_SUMMARY|365|696.34|1267.85|1301.01|
+|35/PARTIAL_SUMMARY|3650|7208.77|15138.22|12202.18|
+|36/FULL_EXPLICIT|30|87.08|79.03|91.91|
+|36/FULL_EXPLICIT|365|865.09|842.05|831.49|
+|36/FULL_EXPLICIT|3650|8016.62|8056.36|8036.18|
+|36/PARTIAL_SUMMARY|30|36.90|68.75|87.18|
+|36/PARTIAL_SUMMARY|365|384.69|741.42|743.52|
+|36/PARTIAL_SUMMARY|3650|3909.59|7424.24|7331.93|

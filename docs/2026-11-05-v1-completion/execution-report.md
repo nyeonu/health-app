@@ -17,7 +17,8 @@
 | PR15 병합 후 통합 | core63+app74=137/0/0/0, APK/lint/testAPK 2분21초 | 그 시점 source에 대한 검증; 이후 변경의 통합 검증을 대신하지 않음 |
 | T2 recovery2 | unscoped unfinished/finished attempt·구성 categories·정확한 journal/CAS/start 거부 fixture; core64/0/0/0 | 실행자9초 PASS; root 명령7초 입력동일 UP-TO-DATE와 실제 XML 대조. source 수정은 `947b0c7` 포함 |
 | T3 reconciliation recovery1 | 모든 intended 파일 재조회, 과거 확인은 prior로 보존, unsafe/moved/shared/absent/조회실패로 과거 성공 재사용 금지, healthy 무쓰기; target 실행자/root 각20초 PASS | recovery2의 typed failure 보정 진행 중. 최신 전체 head 통과를 아직 주장하지 않음 |
-| T4~T6 | 실제 SQLite와 OS force-stop 검증 필요 | pending; 로컬 환경 emulator/KVM 없음. API35/36 CI의 실제 XML·host evidence 필요 |
+| T4/T9 | cb89da7 API35/36 Native89/0/0/0·SQLite31PASS·기존host20PASS | done; 새session과V1 force-stop/T8후측정은아직미완료 |
+| T5/T8/T6 | 공용gate·저장소반복조회개선·새force-stop16경계 | T5/T8 구현중, T6선행gate대기. 로컬KVM없음으로실제Native는CI에서확인 |
 
 T3 오류 분류의 durable contract는 상위 `980a38b`에 기술 보정했고 child parent revision을 재검토·고정했다. generic PENDING은 자동 재시도 권한이 아니다. 실제 provider 오류 매핑·worker retry budget 소비는 각각 후속 작업에서 검증한다.
 
@@ -42,3 +43,9 @@ T7 actual측정은양API각1 testcasePASS·72관측으로 [baseline보고](core-
 79ffd actualCI41975679263은양API 모두emulator-runner가script각줄을개별sh -c로실행하여새multiline if 첫줄에서EOF/fi오류로Native전에중단했다. 실제test0/산출물0이며수정store통과/실패증거로쓰지않는다. 원인은source4d와무관한검증scriptcompatibility다. 한줄완결guard7a6c954로수정했고root의line별sh -n·mockexact/other/absent stop1/0/0을확인했다. 이미지/permission/timeout/assertion/skip/host는그대로이며새양API결과를확인한다.
 
 2026-11-12 재개: head cb89da7783eb8420fca0440cf7b29e61955bca95, [NativeCI41977482571](https://github.com/nyeonu/health-app/actions/runs/41977482571) 양API SUCCESS, 각89/0/0/0·store31/31·performance1/1+72관측·기존host20/죽인holdPASS0을root가원본XML/결과로확인했다. APK/JVM CI41977482722도SUCCESS. T4/T9 done으로전환하고T5/T8을시작한다. 초기독립지적의실패→수정후실제통과는확인했으나 PR16전체리뷰/T6/後측정은미완료다. T5 상세gate계약이조립브리프에누락된것을같은문구2절이동으로복구2/2기록, T6 기존7사례+initial3/reset6=16의정확한read-first/retry기대값을복구1/2로보완했다.
+
+T8 비교기준 보강: 최초 d158 진단측정144관측을 유지하고 수정후전체NativePASS인 cb89의같은fixture144관측을 baseline JSON의correctedSourceBaseline에추가했다. 이후전후비교는동일correctness코드를포함한기준선을우선한다. API35 runner편차가커3650 full LOAD약14초/scoped약24초/confirmation약13.5초, API36약8초이며실기기수치나SLA가아니다. 동일반복3median만제시하고p95를추정하지않는다.
+
+T8 recovery1 로컬full1분56초PASS, XML core65/app74/실패·오류·skip0 및APK/lint/testAPK. 첫실패는새fake의malformedUUID를정상identity교체로표현한기대불일치였고validfixture·실제generation불일치null계약·selected최대9보존으로한정교정했다. T5 focused최초core4PASS후crossmodulepublicnullable smartcast compile오류는기본계획복구2회와별도owner-auto추가교정3으로기록했다. root가T8patch를T5focused검증중통합했으므로그중간결과를동결source전체증거로쓰지않으며, 모든source동결후rootfull명령으로다시확정한다.
+
+T5/T8 통합 source동결후 root full명령이1분51초PASS했다. 실제XML core65/app74=139/실패·오류·skip0, APK/lint/testAPK 통과. T5 productionnullable/Nativeinlinefixture compiler교정은추가회차3/4로누적기록했다. sourcecheckpoint는actualSQLite32·Session9·성능72/API PASS가아니며T5/T8는in_progress다. T6 initial/reset을포함한16host작성에진입하며완료판정은최종head전체실행과별도review후에만한다.
