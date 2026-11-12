@@ -2,13 +2,19 @@
 
 이 문서는 진행 증거이며 V1 수용 완료나 출시 승인이 아니다. 소유자의 자동승인 범위에서 구현·독립 검토·개발 병합을 진행한다. 실제 Galaxy/Google/SAF provider/Doze·재부팅·TalkBack의 미실행 항목은 pending이다.
 
+## 현재 상태 (2026-11-12)
+
+core-store의 소프트웨어 구현·검증은 완료했고 PR #16의 최종 문서 head 대조/개발 병합 단계다. 검증한 코드 source는 `764cc6916c4c6231beb9c9a13b6ab152f33159ac`이며 root 전체 JVM145(core71/app74)/실패0·오류0·skip0, APK/lint/testAPK와 CI43158298603이 통과했다. Native43158298634는 API35·36 각각106/0/0/0, 기존 host20 및 새 복구17/정리17·죽인 hold PASS0, 같은72관측/API다. 별도 스펙 검증은 **core-store 배정 기준 PASS**, 품질 APPROVE, 보안·성능 차단 지적 없음이며 원본 XML/정형 host/metrics를 독립 대조했다. Q1 실제 spill 복구와 Q3/Q4 미확인 create의 동일/교차 scope·SQLite 재열기 회귀가 포함된다.
+
+수정 전후 실패·fixture/환경 문제·추가 복구 회차는 아래 시점별 기록으로 보존한다. `plan.md` frontmatter와 위 현재 상태가 이전 진행 중 문구보다 우선한다. Drive 계정 연결·SAF·WorkManager·통합 UI는 후속이며 전체 V1는 진행 중이다. P0/Galaxy/실계정/provider/Doze/TalkBack·물리 ENOSPC/EIO 주입·생성 거부 환경의 실제 hardlinked admission은 완료 처리하지 않는다. 성능72관측은 새 engine uncertainty query의 독립 비용이나 실기기 전체 업로드 효과를 측정하지 않는다.
+
 ## 선행 작업
 
 - PR #14의 앱 최초 진입/맨 위 제목과 날짜 가림: 소유자 답변 “정상으로 보여”. 사용자 관찰 결과이며 새 V1 화면의 접근성 전반 통과로 확대하지 않는다.
 - 성능 PR #15: master `bf071e19e4e52c285e075b3dfe3db09e1bda8135`로 병합. 현재 worktree에는 `1cbf860c6c431edd437a5d039fe1d36eafade2f6`로 반영했다. 성능 source·별도 검토·합성 local TLS·API35/36 증거는 해당 PR 댓글/문서가 원본이다.
 - 고정 서명 APK: [trusted master build](https://github.com/nyeonu/health-app/actions/runs/41959514365), [artifact](https://github.com/nyeonu/health-app/actions/runs/41959514365/artifacts/13385245747). 다운로드한 ZIP digest/실제 APK 서명/기존 certificate 동일/package를 확인했다. APK SHA256 `e6f1f55adc442498f900a9e678446ae0630ac41258aa0db6731742165ef50f31`. 새 바이너리의 실기기 업로드 성능 측정은 아직 없다.
 
-## core-store 진행
+## core-store 초기 진행 이력
 
 | 단계 | 실제 검증 | 상태·한계 |
 |---|---|---|
@@ -70,3 +76,5 @@ Important Q3는별도품질댓글6814539633에REQUESTCHANGES로기록했다. 공
 be20 rootfull2분7초/JVM142/0/0/0·APK/lint/testAPK PASS. 별도spec/security는같은scopeQ3보정과별개로scope전환Q4누락을발견하여FAIL/REQUESTCHANGES,댓글6814802584에보존했다. 지금generation/date의모든scope physicaldataset불명상태를조회/투영하는T3복구6을계획보정했다. 현재CI결과·기존회차·같은scope의실패후통과증거를유지하고최신head전체검증/재검토전병합하지않는다.
 
 범위전환Q4는A EXPLICIT_DAY unknown/새B SUMMARY에서flagfalse라는실제red6/1/0/0을확인했다. T3복구6은date별모든scope의nulltarget unresolved Dataset집합을조회/검증하고기존journal/PlannedFile에합친다. SQL은기존PK의generation/date범위2orderedcursor·canonicaldecode·orphan거부이며형식/index/cache추가없다. 복구7은Nativefixture의모듈공개API한줄만교정했다. 실행자focused8/0/0/0+fullJVM145/0/0/0·APK/lint/testAPK PASS후5파일후보aba7fc6을받았고최종root/CI/독립재검토는아직대기다.
+
+be20/Native43156361988 양API원본대조: 각각104/0/0/0, store36/Session10/성능1·기존host20·새17복구/17정리·killedholdPASS0. 실제spill main변경/regularmagic/4096×4096→새PID firstread READY 및이전state복원/후속write는양API통과했다. API35의이전7dc PixelCopywait실패와달리같은UI source의재검증도통과했다. ZIP SHA256 API35 c0c5d20ebc09c36d631062ad53dfc96d63f4693e4b93cdb01647374a69bcf4d3/API36 79f4adc087e837ad4a535ecc5461facf5bf3f727c7b529501886ec62cb94391c를root검증했고hot-journal-after.json에안전한관측을보존했다. 이는Q1/same-scopeQ3의actual증거이며Q4최신764cc/106개및portquery의통과를승계하지않는다.

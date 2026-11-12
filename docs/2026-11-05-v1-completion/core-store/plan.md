@@ -1,18 +1,18 @@
 ---
 plan_id: core-store
 title: 날짜별 복구와 내구성 상태
-status: in_progress
+status: done
 author: Codex
 created: 2026-11-05
 parent: ../plan.md
-parent_rev: 9e673d801375b3d0f66a4e2a3df18fa47dff6603
+parent_rev: c0a8fa7587410efbf96d5da6f727e65e360b4a3b
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feat/v1-completion
 tasks:
   - {id: T1, title: 등록 이후 bounded 날짜 계획, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 재읽기 revision과 scope별 확인, depends_on: [T1], status: done, tier: standard}
-  - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: in_progress, tier: standard}
+  - {id: T3, title: pending 기반 destination 실행, depends_on: [T2], status: done, tier: standard}
   - {id: T4, title: 실제 SQLite의 원자적 상태 저장, depends_on: [T3], status: done, tier: standard}
   - {id: T5, title: process 공용 admission과 중단 복구, depends_on: [T4], status: done, tier: standard}
   - {id: T6, title: OS 강제종료의 실제 commit 검증, depends_on: [T4, T7, T9], status: done, tier: standard}
@@ -20,7 +20,7 @@ tasks:
   - {id: T8, title: 측정된 metadata 반복 조회 축소, depends_on: [T4, T7], status: done, tier: standard}
   - {id: T9, title: 계정없는 emulator bootstrap 안정화, depends_on: [T7], status: done, tier: light}
   - {id: T10, title: 실제 hot journal Android 재현, depends_on: [T4, T7, T9], status: done, tier: standard}
-  - {id: T11, title: 검증된 SQLite crash rollback, depends_on: [T4, T7, T9], status: in_progress, tier: standard}
+  - {id: T11, title: 검증된 SQLite crash rollback, depends_on: [T4, T7, T9], status: done, tier: standard}
 ---
 
 # 날짜별 복구와 내구성 상태
@@ -35,9 +35,9 @@ tasks:
 | planner는 등록 이후 recent 두 날짜를 포함해 가장 오래된 eligible 누락으로 채운 최대 7개 고유 날짜를 오름차순으로 만들고 남은 gap·history blocker를 내구성 pending으로 유지한다. | `Recent two days reserve slots before oldest eligible gaps and retain blocked pending days` (①·②·④/유닛 및 SQLite 통합) | T1/T4 완료 기준 |
 | EMPTY·제한된 category 확인·upload confirmation·연속 checked-through·uploaded-through를 구분하고 일부 허용 범위나 worker 실행 성공만으로 5종 전체 완료·현재성·gap 없는 coverage를 주장하지 않는다. | `Empty and partial grants never claim five categories upload success or continuous uploaded coverage` (①·②·④/유닛 및 Compose E2E) | T1/T2/T5 부분; automation-ui 후속 |
 | 매 실행 한국 시간 오늘에서 30일을 뺀 보수적 HC read floor 이전 또는 가용성/권한이 불명확한 날짜를 HISTORY_ACCESS_REQUIRED와 미확인 gap으로 유지하고 추정 최초 grant 시각을 저장하거나 원본 제한·오류·page/sample 초과를 빈 데이터로 처리하지 않는다. | `Dates below the conservative history floor and unknown access remain blocked instead of empty` (①·②·③/유닛 및 HC adapter 통합) | T1/T3 부분; manual-drive 후속 |
-| destination generation/date/dataset/revision과 시도·시작·확인 시각을 원자적으로 저장하고 저장 실패·강제 종료 전후 재열기에서 확인되지 않은 파일/날짜의 성공을 만들지 않는다. | `Reopening around atomic commits never confirms an unacknowledged file or date` (①·③·④/실제 SQLite·host process 통합) | T4/T6 완료 기준 |
+| destination generation/date/dataset/revision과 시도·시작·확인 시각을 원자적으로 저장하고 저장 실패·강제 종료 전후 재열기에서 확인되지 않은 파일/날짜의 성공을 만들지 않는다. | `Reopening around atomic commits never confirms an unacknowledged file or date` (①·③·④/실제 SQLite·host process 통합) <br>`validatedHotJournalsRestoreCommittedStateThroughEveryStoreEntryWithoutFabricatingConfirmations`<br>`unsupportedOrMalformedRecoveredPairsPreserveOriginalBytesWithoutAWritableOriginalOpen`<br>`unsafeRollbackSidecarsAndChangedSourcePairsNeverFollowExternalPathsOrDeleteUnknownFiles`<br>`interruptedRollbackPreparationRetainsRawEvidenceAndSafelyRetriesWithoutInventingSuccess`| T4/T6 완료 기준 |
 | canonical content가 같으면 generated_at 차이로 새 revision을 만들지 않고 원본 재읽기로 revision을 확인한 뒤에만 이전 확인을 재사용하며 달라진 snapshot은 새 revision으로 전환한다. | `Source reread reuses canonical revision despite generated time and advances changed snapshots` (①·②·④/유닛) | T2/T3 완료 기준 |
-| 부분 실패·취소·결과불명 후 대상 reconciliation을 거쳐 pending 파일만 다시 처리하고 이미 확인된 동일 revision의 건강한 파일을 중복 create하거나 prior success를 지우지 않는다. | `After partial failure cancellation or unknown create reconciliation retries only pending files` (①·③·④/유닛 및 local TLS·provider 통합) | T3 부분; manual-drive/saf-local 후속 |
+| 부분 실패·취소·결과불명 후 대상 reconciliation을 거쳐 pending 파일만 다시 처리하고 이미 확인된 동일 revision의 건강한 파일을 중복 create하거나 prior success를 지우지 않는다. | `After partial failure cancellation or unknown create reconciliation retries only pending files` (①·③·④/유닛 및 local TLS·provider 통합) <br>`Reread journal preserves unknown create uncertainty before reconciliation is interrupted again`<br>`Unknown null handle remains unresolved across changed revision and conservative phases`<br>`Unknown create survives empty roundtrip while fresh pending and proven targets remain usable`<br>`New scope preserves unknown create from another scope for the same physical dataset`<br>`Reduced grants adopt a freshly proven target despite another scope unknown create`<br>`Uncertainty queries exclude other dates and generations and fail closed on stale or unavailable reads`<br>`unknownCreateSurvivesRereadCancellationAndSqliteReopenWithoutBlindCreate`<br>`crossScopeUnknownCreatesSurviveNewJournalCancellationAndSqliteReopen`<br>`physicalUncertaintyReadRejectsMalformedOtherProfilesOrphansAndUnavailableDatabases`| T3 부분; manual-drive/saf-local 후속 |
 | 이전 populated dataset이 비게 되면 잔존 원격 파일을 REMOTE_STALE로 표시하여 새 revision의 full-current를 막고 원격 삭제·완료를 꾸며내지 않는다. | `Disappearing populated datasets retain remote stale and prevent full current without deletion` (①·④/유닛 및 Compose E2E) | T1/T2/T5 부분; automation-ui 후속 |
 | 전경·주기·catch-up·중복 UI가 동시에 진입해도 공용 gate로 단일 실행만 시작하고 프로세스 손실 후 durable journal을 복구하며 설정 generation 변경 뒤 지연 결과가 새 coverage를 덮지 못한다. | `Concurrent manual periodic and catch up requests admit once and reject old generation callbacks after restart` (①·③·④/유닛 및 SQLite·worker 통합) | T1/T2/T5 부분; automation-ui 후속 |
 
@@ -920,3 +920,9 @@ T3 recovery6 pre-fix actual: be20제품동일4047005+test-only에서6tests/1fail
 T3 recovery7 (owner-auto Nativefixture의모듈공개API교정;앞선6회보존) — recovery6 focused8/0/0/0은통과했으나첫full의compileDebugAndroidTestKotlin line358이internal scopeFingerprint를app Native모듈에서호출하여실패했다. 동일공개 SyncPlanner.scopeKey(f.config,ReadAccess(true,summary.keys,summary))로새fixture한줄만교체한다. production/포트/SQL/기대값/기존회귀불변이며실패log를보존하고활성Gradle종료뒤별도절대경로편집/전체검증1회로한정한다. Native실행실패가아니며회차초기화나숨은재시도없다.
 
 T3 recovery6/7 로컬후보aba7fc6: 수정전6/1/0/0→수정후focused8/0/0/0(26초). 첫full은Nativefixture internal접근compile실패2분31초/JVM145통과증거로보존했고R7공개API한줄교정후full1분20초PASS(이전source동일JVMtaskUP-TO-DATE/core71+app74=145/0/0/0),APK/lint/testAPK·lint0error2warning. 실제SQLite신규2함수는compile만이며최종Native106/host17/17/성능72·독립재검토전T3/T11/PR완료아니다. root직접full검증은통합뒤실행한다. actualprovider의flag소비/knownID검증은후속manual-drive의명시필수계약으로남는다.
+
+T3 R7 통합764cc rootfull2분25초PASS/core71+app74=145/0/0/0·APK/lint/testAPK. 별도4source세션최신head새차단지적없음은PR댓글6815154161/6815156016/6815157626/6815159276에보존했다. 앞선be20actual양API104/0/0/0·17복구/17정리·기존20host/Q1spill과same-scopeSqlite가통과했으나새crossscope현재head106/성능/host gate는진행중으로완료가아니다.
+
+최종 core-store 소프트웨어검증 완료: source764cc6916c4c6231beb9c9a13b6ab152f33159ac, Native43158298634양API각106/0/0/0(store36/session12/performance1),기존host20·새복구17/정리17·killedholdPASS0. 실제4096×4096 spill/유효journal→새PID첫일반read READY와전체이전state복원/후속mutation을양API원본으로root및별도4세션이대조했다. rootfull145(core71/app74)/0/0/0·APK/lint/testAPK2분25초PASS, JVM/APK CI43158298603SUCCESS. 같은72/API의관측과전체비교는store-performance-after.json latestVerifiedCandidate,수정전f12/수정후be20·최신764의정형proof는hot-journal-probe.json/hot-journal-after.json에있다. scoped core-spec PASS·품질APPROVE·보안차단없음·성능차단없음이며이후docs-only최종head의source동일성/PR댓글확인후개발병합한다.
+
+T3복구7/T11복구9등이전실패와회차를보존했다. 셀별측정편차/미계측새enginequery,실제hardlinked OSadmission(생성거부시stat검증만),물리ENOSPC/EIO실주입및Galaxy/실계정/SAF/WorkManager/TalkBack은완료가아니다. 실제Driveprovider의flag소비·전체scope knownID검증은manual-drive에서반드시연결한다. 이child done은전체V1/P0수용또는출시승인이아니다.

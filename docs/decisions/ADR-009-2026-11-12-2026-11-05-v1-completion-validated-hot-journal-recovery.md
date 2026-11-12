@@ -1,7 +1,7 @@
 # ADR-009: 원본 pair를 보존하고 검증한 뒤 SQLite crash rollback 허용
 
 ## 상태
-Proposed
+Accepted
 
 ## 날짜
 2026-11-12
@@ -10,14 +10,14 @@ Proposed
 2026-11-05-v1-completion
 
 ## 배경
-PR #16의 별도 코드 검토에서, 대량 reset이 cache spill한 뒤 프로세스가 종료되면 읽기 전용 admission이 SQLite의 정상 rollback까지 막을 수 있음을 발견했다. 데스크톱 SQLite의 DELETE/FULL·FK RESTRICT·20,000행 프로세스 종료로 재현했으며 Android 실제 spill/수정 전후 검증은 아직 대기다. 모든 read를 쓰기 가능하게 바꾸면 미지원/손상 원본을 먼저 변경할 수 있어 기존 보존 계약에 맞지 않는다.
+PR #16의 별도 코드 검토에서, 대량 reset이 cache spill한 뒤 프로세스가 종료되면 읽기 전용 admission이 SQLite의 정상 rollback까지 막을 수 있음을 발견했다. 데스크톱 SQLite의 DELETE/FULL·FK RESTRICT·20,000행 프로세스 종료로 재현했다. Android는4,096개 유효 날짜×4,096-byte 합성 handle로 실제 main 변경·유효 journal을 입증하고 force-stop/새 프로세스의 첫 read를 비교했다. 미수정 f12는 양API 첫 READY 요구 실패, 수정 source764cc691은 양API Native106/0/0/0과17개 복구·17개 정리 및 첫 READY/이전 state 복원·후속 mutation을 통과했다. 모든 read를 쓰기 가능하게 바꾸면 미지원/손상 원본을 먼저 변경할 수 있어 기존 보존 계약에 맞지 않는다.
 
 소유자의 기존 V1 자동승인 범위에서 원자적 복구 요구를 충족하기 위한 기술 보정이다. 실제 기기 수용이나 새로운 계정·권한 승인을 뜻하지 않는다.
 
 ## 결정
 ADR-006의 별도 noBackup SQLite·exact scope 모델·generation CAS·기존 reset 결정을 승계하고, 정상 READONLY fast path를 유지한다. 실제 typed readonly 실패와 엄격한 단일 DELETE pair 조건에서만 raw pair를 보관하고 별도 work pair를 SQLite로 rollback·전체 검증한 뒤, 원본 identity/hash가 그대로일 때 원래 경로의 native rollback을 허용한다.
 
-지원 schema/metadata로의 애플리케이션 repair·upgrade·재생성·empty reset은 하지 않는다. 원본을 SQLite가 변경하기 전에 durable raw 생바이트 pair를 남기며, 실패·unknown 입력의 원본은 변경하지 않는다. 성공한 active DB는 rollback 결과이므로 변경 전과 생바이트가 같다고 주장하지 않는다.
+지원 schema/metadata로의 애플리케이션 repair·upgrade·재생성·empty reset은 하지 않는다. 원본을 SQLite가 변경하기 전에 durable raw 생바이트 pair를 남기며, 검증 실패·unknown 입력은 원본을 writable로 열지 않는다. 검증 후 허용한 native rollback은 I/O 실패 도중 원본 일부를 변경할 수 있으므로 이 단계의 실패까지 생바이트 비변경을 보장하지 않으며, 사전 raw pair 보존과 실패 표시를 유지한다. 성공한 active DB는 rollback 결과이므로 변경 전과 생바이트가 같다고 주장하지 않는다.
 
 ## 검토한 대안
 ### 모든 read를 READWRITE로 열기
@@ -42,7 +42,7 @@ schema/FK/quick_check뿐 아니라 Store의 private binding·attempt·모든 act
 
 raw 보관본은 noBackup 안에 남기며 동일 pair fingerprint의 완전한 보관본은 엄격히 재검증해 재사용한다. 불완전 준비물은 active로 채택하지 않는다. work는 자기 소유와 모든 entry를 입증한 경우만 정리한다. raw 보관과 두 번의 검증은 비정상 복구 시 I/O·저장공간 비용이며, 공간 부족이면 원본을 보존하고 실패한다. 새로운 자동 보존기간/정리 UI는 도입하지 않는다.
 
-실제 Android cache-spill force-stop, 지원/미지원·canonical 손상·외부 footer·파일 종류·취소/재시작 회귀와 최종 독립 스펙/코드/보안/성능 검토를 통과하기 전에는 Accepted로 바꾸지 않는다. upstream footer 규칙의 확인과 실제 Galaxy/vendor 수용은 구별한다.
+Accepted 근거는 source764cc691의 실제 양API cache-spill force-stop·지원/미지원/canonical 손상·외부 footer·파일 종류·취소/재시작 검증과 core-store 배정 기준의 독립 적합성 PASS, 품질·보안·성능 재검토다. CI43158298634의 원본과 안전한 요약은 아래 증거에 보존한다. 실제 hardlinked 파일 admission은 양API SELinux 생성 거부 때문에 stat 경계 검증과 구분해 미검증으로 남기며, 물리 ENOSPC/EIO 실주입·Galaxy/vendor 수용도 수행하지 않았다. upstream footer 규칙 확인을 그 수용 증거로 바꾸지 않는다.
 
 ## 참고 자료
 - [승인 스펙](../2026-11-05-v1-completion/spec.md), [에픽 계획](../2026-11-05-v1-completion/plan.md), [작업 계획](../2026-11-05-v1-completion/core-store/plan.md)
@@ -53,4 +53,6 @@ raw 보관본은 noBackup 안에 남기며 동일 pair fingerprint의 완전한 
 
 공식 AOSP15/16 사전 확인: journal mode를 생략하면 기존 mode 보존이 아니라 SQLiteGlobal의 property/resource 기본값(TRUNCATE)을 선택한다. 따라서 strict rollback-family header·WAL/SHM 부재·외부 footer 거부 후 work/original에 같은 명시 DELETE/FULL을 적용한다. original open은 work 전체 검증과 source 불변 이후로 제한하며, unknown WAL 전환을 허용하지 않는다. complete manifest 재사용에도512byte 사전 상한·정확 정규형·owner/fingerprint/raw hash 검증을 적용한다.
 
-Android 재현 입력은 seed-ready budget에서20,000행 중복 관찰이 끝나지 않아, 독립 품질 검토 의견에 따라4,096개의 유효 날짜와 각4,096-byte 합성 handle(16MiB 이상)로 바꾼다. 원본 main digest 변경과 유효 journal header를 beforeCommit에서 입증하는 조건은 그대로이며, 행 수나 파일 크기만으로 spill을 가정하지 않는다. 데스크톱20,000행 재현과 Android의 실제 입력·증거는 구분한다.
+Android 재현 입력은 seed-ready budget에서20,000행 중복 관찰이 끝나지 않아, 독립 품질 검토 의견에 따라4,096개의 유효 날짜와 각4,096-byte 합성 handle(16MiB 이상)로 바꿨다. 원본 main digest 변경과 유효 journal header를 beforeCommit에서 입증하는 조건은 그대로이며, 행 수나 파일 크기만으로 spill을 가정하지 않는다. 데스크톱20,000행 재현과 Android의 실제 입력·증거는 구분한다.
+
+검증 근거: [최신 Native run43158298634](https://github.com/nyeonu/health-app/actions/runs/43158298634), [수정 전 안전한 재현](../2026-11-05-v1-completion/core-store/hot-journal-probe.json), [수정 후 관측](../2026-11-05-v1-completion/core-store/hot-journal-after.json), [측정과 한계](../2026-11-05-v1-completion/core-store/store-performance.md). 개발 결정의 Accepted이며 실제 계정·기기 수용이나 전체 V1 출시 승인이 아니다.
