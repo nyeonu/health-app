@@ -62,6 +62,7 @@ WorkManager 2.11.0의 work-runtime과 work-testing을 같은 버전으로 도입
 | C/DestinationSync.kt | 신규 | source 재읽기·reconciliation·파일 확인 실행 | core-store |
 | C/Ports.kt | 수정 | store/destination/tracked confirmation 포트 | core-store; manual-drive |
 | A/SyncStateDatabase.kt, A/SqliteSyncStateStore.kt | 신규 | 별도 DB·atomic CAS·명시적 reset | core-store |
+| A/SyncStateHotJournalRecovery.kt | 신규 | 검증된 DELETE crash rollback·private raw pair 보존 | core-store |
 | A/SyncExecutionSession.kt | 신규 | process 공용 gate·pending merge·중단 복구 | core-store; manual-drive; automation-ui |
 | CT/SyncStateTest.kt, CT/SyncPlannerTest.kt, CT/SyncRevisionTest.kt, CT/DestinationSyncTest.kt | 신규 | 의미·경계·실패·동시성 baseline | core-store |
 | AI/SqliteSyncStateStoreInstrumentedTest.kt, AI/SyncStateProcessRecoveryInstrumentedTest.kt | 신규 | 실제 재열기·schema·commit 중단·generation | core-store |
@@ -321,3 +322,5 @@ SAF capability 오판은 truncate 실패나 suffix 중복을 만들 수 있으�
 실행 중 기술 보정(2026-11-05): core-store T3의 generic PENDING은 자동 재시도 권한을 뜻하지 않는다. 승인 spec의 제한된 transient retry와 불명확 create 금지를 보존하기 위해 고정된 목적지 실패 사유3종과 RETRYABLE outcome을 저장 전 계약에 추가한다. provider 메시지/예외 cause/개인정보는 경계에 전달하지 않는다. 실제 Drive 오류 매핑은 manual-drive, worker budget 소비/백오프는 automation-ui 소유이며 core-store는 합성 경계의 분류·저장·planner 영구차단만 검증한다. source unknown 예외는 기존 SOURCE_READ_FAILED를 유지하고 service의 확인된 transient 매핑은 해당 adapter 계획에서 별도로 정의한다.
 
 실행 중 검증 배치 보정(2026-11-05): 공용session의 실제SQLite concurrency tests를 별도 SyncExecutionSessionInstrumentedTest.kt에 둔다. 기존 SQLstore fixture와 성공기준을 삭제하지 않으며, 측정된 metadata N+1 보정과 session 구현의 파일 충돌을 피한다. 별도 Android synthetic store 측정은 full/partial·30/365/3650행에서 실제 비용을 확인했고, 그 근거에 따라 core-store 안에서 streaming bulk 조회를 보정한다. 기존4개PR/WorkManager·실계정·SAF 범위와 승인 spec은 바꾸지 않는다. 계정없는CI의 GoogleSdkSetup ANR은 image/permission/assertion을 바꾸지 않고 해당 setup package의 시작 간섭만 제거해 재검증한다.
+
+PR16 Important Q1 보정: SQLite hot rollback journal은 정상원자복구에도쓰기권한이필요하다. 정상 READONLY fast path는 유지하되 typed readonly 실패에서만 noBackup raw DB/journal pair를보존하고별도work pair의native rollback·schema/binding/모든active행검증·원본불변확인뒤에만original native rollback을허용한다. unknown/corrupt 입력을자동repair/reset하지않고raw생바이트를보관한다. 정상읽기=항상원본불변이라는절대문구만이한정crash-recovery 예외로보완하며모델/schema/권한/외부서비스범위는불변이다. ADR009 Proposed가ADR006의나머지결정을승계한다. 실제Android20kspill 미수정실패→수정후같은assertions PASS와최종독립재검토전완료가아니다.

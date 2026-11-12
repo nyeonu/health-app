@@ -1,7 +1,7 @@
 # ADR-006: 날짜별 coverage와 generation journal을 별도 SQLite에 보관
 
 ## 상태
-Proposed
+Superseded by ADR-009-2026-11-12-2026-11-05-v1-completion
 
 ## 날짜
 2026-11-05
@@ -46,3 +46,5 @@ READY configuration=null은 새 generation·자동 off·빈 coverage를 가진 d
 ## 참고 자료
 - [승인 스펙](../2026-11-05-v1-completion/spec.md)
 - [에픽 계획](../2026-11-05-v1-completion/plan.md)
+
+ADR009 Proposed가이모델/schema/세대결정을승계하며검증된hotjournal crash rollback의한정예외를추가한다. 새결정의Accepted는실제수정전후Android/독립적합성검증후에만가능하다.
