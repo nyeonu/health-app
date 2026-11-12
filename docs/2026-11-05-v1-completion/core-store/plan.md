@@ -728,3 +728,9 @@ T6 recovery1/2 — 독립 읽기전용 소스점검으로 T4 교정9가 추가�
 T6 recovery2/2 — 파일/API 의존성을 재대조하여 불필요한 runtime 직렬대기를 보정했다. T6의3파일은T5/T8 제품·테스트파일과겹치지않고기존T4enum/store 및T5constructor/API만사용한다. 이미실제통과한T4/T7/T9를depends_on으로유지하고T5/T8 source통합compile체크포인트뒤host작성에착수한다. T5/T8는actualNative/성능전까지in_progress이며done을꾸미지않는다. 최종head의T5/T6/T8전체Native·같은성능fixture·모든16force-stop과독립review gate는그대로다. CI대기중독립authoring만병렬화하며test/timeout/성공기준변경없음.
 
 T5/T8 통합 source checkpoint: root가모든제품source동결후전체명령1분51초PASS(/workspace/tooling/v1-combined-t5-t8-root.log). 실제XMLcore65/app74=139/실패0·오류0·skip0, APK/lint/testAPK PASS. T5 nineNative/T8store32 및성능72/API실행은아직pending이므로두T는in_progress유지. compile통합checkpoint에따라T6작성시작, 최종새head전체Native/16host/후측정과독립리뷰게이트불변.
+
+T6 recovery3 (소유자자동승인·앞선계획교정2회유지) — 최초compile30초PASS뒤실행자가host실패진단한계보고: genericfail후privateoutput삭제로실패fixture/step/위치판정불가. host1파일만고정allowlist fixture/stage와pass=false, 정확한test파일의숫자line만추출한안전진단을추가한다. raw메시지/DB/UUID/PID/경로/계정/CSV출력·업로드는금지하며새진단도고정enum/숫자/boolean만이다. 성공조건16verifier/16cleanup/죽인holdPASS0·timeout·단언·Native불변. shellsyntax/가짜실패출력에개인식별자문자열을넣어고정field만출력됨을staticdriver로검증한다.
+
+T6 recovery4 (root검증driver cwd교정,owner-auto추가/앞선회차보존) — root의safe진단6입력/YAML/discovery/runner-line sh문법은PASS했으나같은명령의Gradle cwd를repo root로두어 wrapper ./gradlew파일부재로task시작전실패했다. source/기대/환경설정은불변, 로그 v1-core-store-final-root-wrong-cwd.log 보존. android cwd로동일full명령1회실행하여검증한다. 제품실패나NativePASS로집계하지않는다.
+
+T6 source동결checkpoint: 실행자APK/testAPKcompile30초PASS, root직접safe진단6입력과YAML/discovery/runner각line sh문법PASS·전체명령43초PASS(대부분입력동일UP-TO-DATE), 기존JVM139/0/0/0 XML확인. v1-core-store-final-root.log. T6 class일반discovery제외와새16verifier/16cleanup host를workflow에연결했다. 실제Native99/양API72성능후측정/16process는CI대기이며T5/T6/T8 in_progress유지.

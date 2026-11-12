@@ -49,3 +49,5 @@ T8 비교기준 보강: 최초 d158 진단측정144관측을 유지하고 수정
 T8 recovery1 로컬full1분56초PASS, XML core65/app74/실패·오류·skip0 및APK/lint/testAPK. 첫실패는새fake의malformedUUID를정상identity교체로표현한기대불일치였고validfixture·실제generation불일치null계약·selected최대9보존으로한정교정했다. T5 focused최초core4PASS후crossmodulepublicnullable smartcast compile오류는기본계획복구2회와별도owner-auto추가교정3으로기록했다. root가T8patch를T5focused검증중통합했으므로그중간결과를동결source전체증거로쓰지않으며, 모든source동결후rootfull명령으로다시확정한다.
 
 T5/T8 통합 source동결후 root full명령이1분51초PASS했다. 실제XML core65/app74=139/실패·오류·skip0, APK/lint/testAPK 통과. T5 productionnullable/Nativeinlinefixture compiler교정은추가회차3/4로누적기록했다. sourcecheckpoint는actualSQLite32·Session9·성능72/API PASS가아니며T5/T8는in_progress다. T6 initial/reset을포함한16host작성에진입하며완료판정은최종head전체실행과별도review후에만한다.
+
+T6 구현3파일과안전진단보정source동결후rootfull43초PASS: JVM139/0/0/0(입력동일대부분캐시), APK/lint/testAPK. root진단mock6입력·YAML/discovery·runner각줄shell문법PASS. 신규harness는16실제force-stop verifier와16cleanup을실행하며hold성공집계0을강제하고raw출력을업로드하지않는다. 실제실행전이므로완료가아니다. 8c3b416 별도fresh4세션검토는확정source차단지적없음이나최종head/harness/후측정은pending으로각PR댓글에기록했다.
