@@ -95,3 +95,5 @@ manual-drive T1은 root verify25/0/0/0으로 완료했다. T4는 testAPK 컴파�
 manual-drive 중간 통합 head34147fd(이후 문서만 변경) root 전체 검증: `/workspace/tooling/pr17-checkpoint-t124.log` BUILD SUCCESSFUL3분8초. actual XML core72+app80=152/0/0/0, APK/lint/testAPK 통과. Android SQLite2개는 compile만 확인한 상태이며 CI43169661306 실행 결과 대기다. 독립 quality 중간 검토에서 차단0·Suggestion1(orphan fixture 분리성)으로 test-only 보정을 배정했다.
 
 manual-drive T12346 중간 전체 검증 source `c10a5445758dcb48404757b910bb8bb5a206bbb6`: root `/workspace/tooling/pr17-checkpoint-t12346.log` BUILD SUCCESSFUL2분7초, core80+app80=160/0/0/0, APK/lint/testAPK 통과. 이후 문서만 변경했다. 신규 store2/Session3 actual Native는 pending이다. 독립 quality r2가 c10의 취소 테스트 Important와 orphan Suggestion 정적 해결을 확인했고 새 차단 지적 없이 현재 slice APPROVE; 최종 구현 head와 actual Native 확인은 별개다.
+
+manual-drive T123456 source `8b2f04bb7833887cba7e7c9685a63a0c3eeac5e1` root 전체 검증163/0/0/0(80core+83app), APK/lint/testAPK 성공1분51초. GET503 교정의 actual TLS14건과 exact1전송 회귀를 포함하며 독립 quality r3에서 새 차단 지적이 없었다. T7 구현 중이고 actual Native 및 최종 PR head 독립 검토는 pending이다.

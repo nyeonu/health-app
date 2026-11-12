@@ -43,7 +43,7 @@ tasks:
   - id: T7
     title: 명시 계속으로만 전경 수동 batch 실행
     depends_on: [T2, T5, T6]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T8
     title: 수동 구성과 복구 화면 합성
@@ -565,3 +565,7 @@ root pre-build 검토에서 신규 public DriveApiDestination의 store secondary
 ### T5 검증 체크포인트
 
 복구2 focused 실제 실행40초와 root 재검증14초 통과. XML Bound2+DriveApi2+Transport10=14/0/0/0. initial FAIL 원본을 보존했으며 GET503 Retry-After:0 fixture나 기대1전송 단언을 약화하지 않았다. 설치된 OkHttp5.3.0 RetryAndFollowUpInterceptor bytecode에서503 followup이 retryOnConnectionFailure를 조회하지 않음을 확인했다. productionClient의 network interceptor가503 Retry-After만 제거하여 caller에게 기존503 status/빈 error body를 돌려주고 별도 명시적 호출만 다음 응답을 받는다. bodyless files/about GET 및 기존POST/PATCH one-shot 회귀를 검증했다. 일반 외부 injected/shared client의421 coalescing은 새 보장 대상이 아니며 production은 단일 exact host의 독립 client로 제한한다. T5 done; T7은 producer API 검증 뒤 source authoring에 진입하며 T4/T6 actual Native는 최종 gate pending을 유지한다.
+
+### T123456 통합 체크포인트
+
+root source8b2f04b 전체 명령 BUILD SUCCESSFUL1분51초: core80+app83=163/0/0/0, APK/lint/testAPK 통과. 독립 quality r3는 exact8b2f04b 전체 관련 diff와 T5 local TLS XML14건을 대조해 새 차단 지적 없이 현재 구현 slice APPROVE였다. Native actual·controller/UI/Activity 최종 head 검토는 여전히 pending이다. T7은 검증된 producer API 위에서 별도 worktree에 authoring 중이며 로컬 Gradle slot은 현재 반환했다.
