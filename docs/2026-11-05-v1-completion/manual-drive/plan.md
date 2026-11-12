@@ -13,7 +13,7 @@ tasks:
   - id: T1
     title: 실제 요청 범위만 읽는 수동 HC adapter
     depends_on: []
-    status: in_progress
+    status: done
     tier: standard
   - id: T2
     title: 계정과 동일 token의 Drive 사용자 증명
@@ -515,3 +515,7 @@ API35/36 기존 CI를 사용한다. 기존 history host20/SyncState host17 verif
 ### T2 복구 1/2 — 기존 JSON parser의 모듈 경계
 
 실행 전 조사에서 app에는 Android org.json stub만 있고 core의 기존 kotlinx JSON은 implementation-only라 app compile API에서 보이지 않았다. 새 의존성/Gradle 수정 대신 다섯 번째 배정 파일 C/DrivePrincipalProof.kt에 SDK-free Boolean proof predicate를 둔다. app의 판정은 이를 위임하며 exact email/me 조건·malformed 거부·redacted 오류를 유지한다. 기존 JSON 좌표와 runtime graph는 그대로다. T2 최초 구현 및 local TLS 검증에 포함하며 다른 작업 파일은 보존한다.
+
+### T1/T4 체크포인트
+
+T1 root focused verify `/workspace/tooling/pr17-t1-root-final.log` BUILD SUCCESSFUL 23초: core DestinationSync9 + app HealthConnectReader16, failure/error/skip0. 마지막 fixture는 100페이지×1000레코드 실제 전달/조회 횟수를 포함하며 기존 CSV/overlap/uncertainty 회귀를 보존한다. T1 done. T4 root testAPK verify `/workspace/tooling/pr17-t4-root.log` BUILD SUCCESSFUL 12초; 실제 SQLite 두 테스트는 아직 CI pending이므로 T4 in_progress를 유지한다. disjoint T6 authoring은 앞서 승인한 Native 최종 gate 대기 예외로 진행할 수 있으나 actual 완료 주장은 보류한다.
