@@ -87,3 +87,5 @@ be20/Native43156361988 양API원본대조: 각각104/0/0/0, store36/Session10/�
 ### manual-drive 실행 승인 (2026-11-12)
 
 PR16 병합 master `4b98aee1119ded1f1c6553e92198ac004d30fa87`에서 9T 계획을 root 승인했다. 별도 fresh-context 계획 검토에서 차단 지적은 없었다. parent 계약 선행 커밋과 child revision 고정을 마쳤으며 구현·실행 증거는 이후 누적한다. 승인만으로 기능·실기기 수용 완료를 뜻하지 않는다.
+
+최초 브리프는 T1 217줄/6671추정토큰, T2 219줄/6726추정토큰, T4 217줄/6666추정토큰이며 모두 상세 Shared design47줄·해소 실패0이었다. PLAN 복구1은 조립기 표기 보정이다. T2 복구1은 새 의존성 없이 기존 core JSON parser를 이용하는 fifth-file predicate 경계 보정이다. T1/T2/T4 분리 authoring을 시작했으며 Gradle은 아직 실행하지 않았다.

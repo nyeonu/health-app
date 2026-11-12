@@ -13,12 +13,12 @@ tasks:
   - id: T1
     title: 실제 요청 범위만 읽는 수동 HC adapter
     depends_on: []
-    status: pending
+    status: in_progress
     tier: standard
   - id: T2
     title: 계정과 동일 token의 Drive 사용자 증명
     depends_on: []
-    status: pending
+    status: in_progress
     tier: standard
   - id: T3
     title: journal 이후 쓰기와 읽기 전용 Drive 재조정
@@ -28,7 +28,7 @@ tasks:
   - id: T4
     title: 현재 세대의 target 증거와 명시 복구 원자성
     depends_on: []
-    status: pending
+    status: in_progress
     tier: standard
   - id: T5
     title: Drive destination의 typed 확인 연결
@@ -177,6 +177,7 @@ ManualDriveSession은 작은 app controller이며 credential은 UiState 밖에 �
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
   | `android/app/src/main/java/com/ny/my/health/BoundDriveAuthorization.kt` | 신규 | plain account/ticket 판정·memory credential·about proof |
+  | `android/core/src/main/kotlin/com/ny/my/health/core/DrivePrincipalProof.kt` | 신규 | 기존 JSON 의존성으로 SDK-free exact principal proof predicate |
   | `android/app/src/main/java/com/ny/my/health/GoogleDriveTransport.kt` | 수정 | exact GET about fields만 추가 허용 |
   | `android/app/src/test/java/com/ny/my/health/BoundDriveAuthorizationTest.kt` | 신규 | synthetic strings로 picker/result/proof 판정 |
   | `android/app/src/test/java/com/ny/my/health/GoogleDriveTransportTest.kt` | 수정 | local TLS about request·host/path/method/query 거부 |
@@ -510,3 +511,7 @@ API35/36 기존 CI를 사용한다. 기존 history host20/SyncState host17 verif
 ### PLAN 복구 1/2 — 실행 전 브리프 계약 누락
 
 조립 결과 Shared design이 표 한 줄뿐이어서 상세 계약이 전달되지 않았다. parent의 ManualDriveContracts 원문을 child 2절의 단일 명명 코드 조각으로 복제했다. 인자·반환·동작 변경은 없고 parent_rev도 유지한다. 재조립한 T1/T2/T4가 상세 계약을 포함하며 해소 실패 0인지 확인 후 위임한다.
+
+### T2 복구 1/2 — 기존 JSON parser의 모듈 경계
+
+실행 전 조사에서 app에는 Android org.json stub만 있고 core의 기존 kotlinx JSON은 implementation-only라 app compile API에서 보이지 않았다. 새 의존성/Gradle 수정 대신 다섯 번째 배정 파일 C/DrivePrincipalProof.kt에 SDK-free Boolean proof predicate를 둔다. app의 판정은 이를 위임하며 exact email/me 조건·malformed 거부·redacted 오류를 유지한다. 기존 JSON 좌표와 runtime graph는 그대로다. T2 최초 구현 및 local TLS 검증에 포함하며 다른 작업 파일은 보존한다.
