@@ -100,11 +100,11 @@ internal fun HealthHomeScreen(
         if (manualState != null && manualActions != null) {
             ManualDriveUi(manualState, manualActions, manualCategories)
             Text("이전 동기화 이력 · 읽기 전용 기록", style = MaterialTheme.typography.titleMedium)
-            Text("아래 foundation 이력은 과거 기록입니다. V1의 현재 날짜별 확인 범위로 사용하지 않습니다.")
+            Text("아래 이전 동기화 이력은 과거 기록입니다. V1의 현재 날짜별 확인 범위로 사용하지 않습니다.")
         }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("현재 상태", style = MaterialTheme.typography.titleMedium)
+                Text(if (manualState != null && manualActions != null) "이전 기록의 상태" else "현재 상태", style = MaterialTheme.typography.titleMedium)
                 Text(status, color = if (storageError || session?.deleteFailed == true || attempt?.phase == HistoryPhase.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                 if (session?.error == HistoryError.RECOVERY_WRITE && readable && recoveredOutcome != null) {
                     Text(recoveredOutcome)
