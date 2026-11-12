@@ -53,7 +53,7 @@ tasks:
   - id: T9
     title: 실제 Activity의 bound 경로와 통합 회귀
     depends_on: [T8]
-    status: pending
+    status: in_progress
     tier: standard
 ---
 
@@ -599,3 +599,9 @@ T7 수정 후 author 실제3/0/0/0·root 동일source13초 통과이며 red3/2/0
 ### T8 복구1/2 — 이전/현재 표시 문구
 
 root는 bound mode의 이전 이력 카드가 현재 상태로 보이는 혼동과 사용자 문구의 구현 용어 foundation을 찾아 배정했다. 이전 기록의 상태로 conditional label을 바꾸고 아래 이전 동기화 이력으로 표시한다. optional legacy path 현재 상태는 보존하고 기존 bound test가 이전 label/현재 label 부재를 단언한다. 별도2파일 수정이며 root통합컴파일/최종Native에서 확인한다.
+
+### T9 환경 준비 및 복구1/2 — SDK 결과의 launch 상관관계
+
+installed JDK javap이 PATH에 없어 첫 읽기 전용 조회가 실패했다. 기존 /workspace/tooling/jdk-21.0.13+9/bin/javap 절대 경로로 조회하도록 승인했으며 도구/버전/설정 변경은 없다. product 복구 회차와 별도 환경 준비1회다.
+
+최초 Activity source 검토에서 단일 queued closure 및 pickerResult/authorizationResult 슬롯이 overlap된 이전 Android result/늦은 SDK callback으로 새 요청 값을 덮을 수 있는 경계를 발견했다. 각 launch는 정확한 request identity와 대응시키고 pending launcher의 callback을 새 launch로 대체하지 않는다. 실제foreground/현재ticket·generation·expected external 상태에 해당하는 결과만 private transient queue에 두고 stale/reset/unexpected pause는 token을 폐기한다. 기존 controller 최종 거부만으로 queue overwrite를 허용하지 않는다. 배정5파일 범위에서 launcher/request correlation·resume 이전 결과·겹침/늦은응답 회귀를 검증한다. 아직 최초 Gradle 전이며 authsetAccount/minimumscope/explicitcontinue 및 token 비영속 조건은 보존한다.
