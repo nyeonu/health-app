@@ -19,8 +19,8 @@ tasks:
   - {id: T7, title: 누적 메타데이터 비용 측정, depends_on: [T3], status: done, tier: standard}
   - {id: T8, title: 측정된 metadata 반복 조회 축소, depends_on: [T4, T7], status: done, tier: standard}
   - {id: T9, title: 계정없는 emulator bootstrap 안정화, depends_on: [T7], status: done, tier: light}
-  - {id: T10, title: 실제 hot journal Android 재현, depends_on: [T4, T7, T9], status: in_progress, tier: standard}
-  - {id: T11, title: 검증된 SQLite crash rollback, depends_on: [T4, T7, T9], status: pending, tier: standard}
+  - {id: T10, title: 실제 hot journal Android 재현, depends_on: [T4, T7, T9], status: done, tier: standard}
+  - {id: T11, title: 검증된 SQLite crash rollback, depends_on: [T4, T7, T9], status: in_progress, tier: standard}
 ---
 
 # 날짜별 복구와 내구성 상태
@@ -848,3 +848,18 @@ T10 recovery3 (owner-auto 추가교정;앞선2회보존) — e8a93/CI43141798089
 T11 recovery3 (owner-auto 일정한정추가교정;계획교정2회보존) — Q1은실제데스크톱SQLite로확인됐고새동등Androidprobe를immutable commit에고정해CI를시작한다. T11 의존성은기존T4/T7/T9 actualgate로두고, test-only T10source compile/pin뒤별도worktree에서localfix작성은겹칠수있다. T10 actual실패확인전fix공개/완료판정금지및최종양API17host/모든회귀/동일성능/독립Q1재검토gate는그대로다. T10과겹치는ProcessTest는authoring동결snapshot에서분기하고추가test보정과충돌시둘모두보존해재통합한다.
 
 실제e62/CI43139507838 원본대조완료: 양API각99/0/0/0, 새16recovery+16cleanup/holdPASS0, 기존historyhost20. ZIP SHA256 API35 c7958e6ce0f49f34c9c92dd1d9fd2fc230a599104177d37c7c0346cce115ff85/API36 01af04d4119a6c9d319535537fa2d7f685b742eae4c683994dc6a46b51782b34. T5/T6/T8 지정범위done이며새Q1은T10/T11로전체병합을계속차단한다. Q1수정뒤전체회귀를다시검증한다.
+
+T11 local authoring 착수: immutable test-only f12ac9e9c13f569edb95e14c525f2cc051334f4a가CI43145722146에서시작된것을root가확인했다. /workspace/health-app-v1-hot-recovery의별도branch로분리하여5파일만작성한다. Android미수정실제실패확인전productionfix공개금지이며Native0/seed-timeout을Q1재현으로오인하지않는다.
+
+T11 recovery4 (owner-auto compiler정합성추가교정;기존3회유지) — 최초fullverify53초FAIL: private read에coroutine인자를추가한뒤recoverReset의272행이옛3인자호출로남았다. 이미captured coroutine을그호출에도전달하는1행과Database의일반RO/한정rollback예외주석만교정한다. status/reset/원본보존/4새test·기존32기대불변, Native실행아님. 로그v1-t11-first-verify.log 보존,같은full명령재검증.
+
+T11 recovery5 (owner-auto 호출경로/기존compiler교정누적) — recovery4 실행자는android cwd에서android/상대경로편집을시도해FileNotFound, set-e가편집뒤라미수정Gradle이시작되어자기wrapper/daemon만종료(exit130)했다. source추가변경0·추가테스트0, v1-t11-recovery4-verify.log보존. 새회차는절대Path/명시rootcwd의별도편집호출(첫줄set-e)과별도빌드호출로분리한다. 최초미해결coroutine인자와root가확정한inlinevalueclass lateinit generation/key를nullablebacking/getter로교정,Database주석만정확화한다. dummy세대/기대변경/기존32단언변경없음, 앞선회차를초기화하지않는다.
+
+T11 recovery6 (owner-auto 정상canonical alias호환교정;앞선5회유지) — root가현재기존Session첫Native의335/336행 ./filename alias를확인했다. literalparent/absolute==canonical 강제는동일canonical path를공유하는지원alias까지거부하여이미합격한기존case를깨뜨린다. helper의private parent만canonical/normalize해UID/GID/noworldwrite를확인하고finalDB/journal leaf는lstat/O_NOFOLLOW/nlink로검증하여따라가지않는다. 기존Sessionalias단언을유지하고새hotentry그룹에도alias-load대표를추가한다. source전체canonicalize로leafsymlink를지우거나unsafe외부경로를허용하지않는다. recovery5 localfull2분10초/JVM139/0/0/0·APK/lint/testAPK PASS는보존, Native는아직미실행이다.
+
+T11 recovery7 (owner-auto 독립재검토한정추가교정;앞선6회유지) — local후보d475의별도quality ImportantQ2: main부재+regularorphan sidecar를ABSENT로취급해새main게시와오래된journal결합을허용할수있다. helper첫guard에서main부재+정확한journal/wal/shm 중하나라도존재시UNAVAILABLE·무생성·원본sidecar bytes보존으로거부한다. 별도security Low: cleanup finally예외가원래CE를덮을수있음;원래Throwable을우선보존하고cleanup오류는suppressed/내부실패로남기며unknown work는지우지않는다. helper+기존4grouped NativeTest2파일만, 각orphan종류/load/유효새configure경계와unknownwork+CE조합을추가,기존32/Session9/host17/성능fixture/4test함수기대유지. sourceproof는데스크톱orphan대조+실제분기검토이며Android의oldcoverage자동채택을확인했다고과장하지않는다.
+
+T11 recovery8 (owner-auto 기존상태분류회귀한정교정;앞선7회유지) — root source대조: guardSidecarPaths의파일종류require가IllegalArgumentException을던져Store.classify에서CORRUPT로오분류된다. 기존schemaCorruptionAndUnknownPaths...의directory/unknownpath UNAVAILABLE 기대가깨지는확정반례다. filesystem guard 내부의IllegalArgumentException만고정redacted SQLiteException(UNAVAILABLE)으로변환하고Store의metadata/canonical IllegalArgumentException→CORRUPT 분류는유지한다. helper+기존4grouped NativeTest파일만,기존32기대변경금지. normalABSENT/orphan거부/Q1pair/cancel 보존은그대로다.
+
+T10 actual 완료: immutablef12/CI43145722146 양API XML각99/0/0/0·기존16recovery/16cleanup PASS, 새4096×4096bytecase의main-digestchanged/regularjournalmagic입증후새PID첫일반read READY assert(line181)가양API실패했다. root ZIP digest·원본safe결과대조 및hot-journal-probe.json 보존. 실제status문자열은safe진단에기록하지않아임의추정하지않는다. 이는이전20kseed-ready timeout/UTP문제와다른actual회귀실패다. T11 fix공개전실패gate를충족했다.
+T11 final-local bd6e26faaba4127f6cccd7c4a81182146995e56e: rootfull1분59초PASS/JVM139/0/0/0·APK/lint/testAPK, 원래32/Session9 유지·새4group(총store36)compile. 별도4세션source재검토에서Q2/cleanupLow/unknownpath분류를source상해소했다고확인받았다. actualfixedNative103/17host·cleanup/성능72/API는미실행이며T11는in_progress·ADR009 Proposed다.
