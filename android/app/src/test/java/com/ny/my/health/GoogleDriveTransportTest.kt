@@ -227,6 +227,34 @@ class GoogleDriveTransportTest {
     }
 
     @Test
+    fun `Server retry after zero never replays bodyless GET and a separate explicit call receives next response`() = runBlocking {
+        for (url in listOf(endpoint, BoundDriveAuthorization.ABOUT_URL)) LocalTls().use { local ->
+            val transport = local.transport()
+            local.server.enqueue(MockResponse.Builder().code(503).addHeader("Retry-After", "0")
+                .body("synthetic-private-provider-error").build())
+            local.enqueue("{}")
+            val first = transport.execute("GET", url)
+            assertEquals(503, first.status)
+            assertEquals("", first.body)
+            assertEquals(1, local.server.requestCount)
+            val firstRequest = local.request()
+            assertEquals("GET", firstRequest.method)
+            assertEquals("", firstRequest.body?.utf8() ?: "")
+            assertNull(firstRequest.headers["Content-Type"])
+            assertEquals("Bearer synthetic-test-token", firstRequest.headers["Authorization"])
+            assertNotNull(firstRequest.handshake)
+            val next = transport.execute("GET", url)
+            assertEquals(200, next.status)
+            assertEquals("{}", next.body)
+            assertEquals(2, local.server.requestCount)
+            val nextRequest = local.request()
+            assertEquals(firstRequest.url, nextRequest.url)
+            assertEquals("GET", nextRequest.method)
+            assertEquals("", nextRequest.body?.utf8() ?: "")
+        }
+    }
+
+    @Test
     fun `Server retry after zero never replays POST or PATCH without an explicit new attempt`() = runBlocking {
         for (method in listOf("POST", "PATCH")) {
             for (body in listOf(file.content.toByteArray(), null)) {

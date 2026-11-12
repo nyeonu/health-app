@@ -114,6 +114,12 @@ class GoogleDriveTransport internal constructor(
             .followSslRedirects(false)
             .retryOnConnectionFailure(false)
             .authenticator(Authenticator.NONE)
+            .addNetworkInterceptor { chain ->
+                val response = chain.proceed(chain.request())
+                // OkHttp의 503 후속 요청은 연결 재시도 설정과 별개다. 재시도는 호출자가 정한다.
+                if (response.code == 503) response.newBuilder().removeHeader("Retry-After").build()
+                else response
+            }
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
