@@ -569,3 +569,11 @@ root pre-build 검토에서 신규 public DriveApiDestination의 store secondary
 ### T123456 통합 체크포인트
 
 root source8b2f04b 전체 명령 BUILD SUCCESSFUL1분51초: core80+app83=163/0/0/0, APK/lint/testAPK 통과. 독립 quality r3는 exact8b2f04b 전체 관련 diff와 T5 local TLS XML14건을 대조해 새 차단 지적 없이 현재 구현 slice APPROVE였다. Native actual·controller/UI/Activity 최종 head 검토는 여전히 pending이다. T7은 검증된 producer API 위에서 별도 worktree에 authoring 중이며 로컬 Gradle slot은 현재 반환했다.
+
+### T7 복구 1/2 — 부분 권한·동일 구성 보존
+
+root 최초 source 검토에서 selectAccount가 configured categories 전부의 HC grant를 요구하여 부분 허용1/5에서 전체 의도5개 설정을 거부함을 발견했다. categories 비어 있음은 거부하되 현재 grant와 교집합이 하나 이상이면 설정하고 ungranted는 기존 planner profile에서 제외한다. 동일 account/categories 재선택은 현재 binding/config를 검증한 뒤 generation/enrolledDay/unknown intent를 보존하며 실제 계정/구성 변경만 configure CAS한다. 배정 controller와 grouped test에 부분1/5→config5 및 동일 재선택/configure0·unknown 보존 단언을 추가한다. 기존 grant0/no fallback 정책은 유지한다.
+
+### T7 복구 2/2 — 외부 동의 ticket과 실행 취소의 수명 분리
+
+현재 setForeground(false)/consent(false)가 credential 참조만 지우고 admitted owner Job을 취소하지 않아 proof 이후 engine IO가 이어질 수 있다. 또한 expected external Google resolution pause에서 pending ticket까지 지워 복귀 수락이 불가능하다. owner Job은 admitted prepare 안에서만 포착해 pause/withdraw/reset 시 취소하고 busy 호출은 소유권을 대체하지 않는다. 명시된 expected-external handoff에서만 token/active execution 없이 pending ticket을 보존하며 실제 foreground 복귀 전 결과를 수락하지 않는다. Activity bridge(T9)는 결과를 resume까지 private 메모리에서 대기시키고 지연 ticket/reset/unexpected pause를 거부한다. 배정 두 파일 내에서 exact API를 보고하고 grouped lifecycle 테스트에 proof 전/후 중단·busy 보호·expected pause/foreground acceptance·unexpected pause 거부를 검증한다. 새 Android API/의존성/자동 continuation은 도입하지 않는다. 아직 Gradle 첫 실행 전이며 원래 범위의 취소·동의·부분 권한 성공 기준을 보존하는 기술 보정이다.
