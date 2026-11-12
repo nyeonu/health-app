@@ -527,3 +527,7 @@ T1 root focused verify `/workspace/tooling/pr17-t1-root-final.log` BUILD SUCCESS
 ### PLAN 복구 2/2 — root 문서 명령 경로
 
 root가 android/에서 상대 docs 경로로 문서 기록을 시도해 FileNotFoundError로 멈췄다. cherry-pick은 성공했고 문서·제품 파일 손실이나 Gradle 실행은 없었다. 이후 문서 편집은 절대 경로를 쓰고 빌드는 별도 명령으로 분리한다. 기존 자동승인 범위의 운영 보정이며 기능·검증 기준은 유지한다.
+
+### T3 복구 1/2 — 재사용 digest 계약
+
+root의 실행 전 source 검토에서 requirePresent checksum 판정이 MD5만 있는 metadata도 재사용하는 것을 발견했다. 승인 parent의 SHA-256 metadata 재사용 계약에 따라 reuse는 유효한 exact sha256Checksum을 필수로 한다. MD5만 있거나 SHA가 없으면 safe existing same-ID PATCH pending이며 이전 확인으로 채택하지 않는다. fresh write ACK는 checksum 부재를 허용하되 존재하는 SHA/MD5는 일치해야 한다. T3 assigned uploader와 reconciliation test만 보정하며 MD5-only same-ID PATCH 및 SHA exact adoption을 단언한다. 아직 Gradle 미실행이며 baseline·동시2·callback·single-use·read-only 계약은 보존한다.
