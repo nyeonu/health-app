@@ -180,7 +180,7 @@ internal class SyncStateHotJournalRecovery(private val database: SyncStateDataba
             if (error.errno == OsConstants.ENOENT) null else throw error
         }
         private fun exists(file: File) = status(file) != null
-        private fun regular(stat: StructStat) {
+        internal fun regular(stat: StructStat) {
             require(OsConstants.S_ISREG(stat.st_mode) && stat.st_nlink == 1L && stat.st_uid == Os.getuid())
         }
         private fun identity(stat: StructStat) = listOf(stat.st_dev,stat.st_ino,stat.st_size,stat.st_nlink)

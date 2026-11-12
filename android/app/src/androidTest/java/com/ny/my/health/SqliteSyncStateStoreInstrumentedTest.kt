@@ -897,7 +897,39 @@ class SqliteSyncStateStoreInstrumentedTest {
                     }
                     "journal-hardlink","db-hardlink" -> {
                         val target = if (kind == "journal-hardlink") journal else db
-                        java.nio.file.Files.createLink(File(db.parentFile,db.name + ".hardlink").toPath(),target.toPath())
+                        val alias = File(db.parentFile,db.name + ".hardlink")
+                        val before = android.system.Os.lstat(target.path)
+                        assertEquals(1L,before.st_nlink)
+                        try {
+                            java.nio.file.Files.createLink(alias.toPath(),target.toPath())
+                        } catch (_: java.nio.file.AccessDeniedException) {
+                            // 플랫폼 생성 거부와 stat 경계 검증을 실제 hardlink admission 증거로 합치지 않는다.
+                            assertFalse(java.nio.file.Files.exists(alias.toPath(),java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                            val current = android.system.Os.lstat(target.path)
+                            assertEquals(before.st_dev,current.st_dev)
+                            assertEquals(before.st_ino,current.st_ino)
+                            assertEquals(1L,current.st_nlink)
+                            h.assertOriginal()
+                            assertArrayEquals(sentinelBytes,sentinel.readBytes())
+                            assertTrue(h.artifacts(".hot-").isEmpty())
+                            SyncStateHotJournalRecovery.regular(current)
+                            val linked = android.system.StructStat(current.st_dev,current.st_ino,current.st_mode,2L,
+                                current.st_uid,current.st_gid,current.st_rdev,current.st_size,current.st_atime,
+                                current.st_mtime,current.st_ctime,current.st_blksize,current.st_blocks)
+                            try {
+                                SyncStateHotJournalRecovery.regular(linked)
+                                fail("여러 링크의 stat은 거부해야 합니다")
+                            } catch (_: IllegalArgumentException) { }
+                            continue
+                        }
+                        val linked = android.system.Os.lstat(target.path)
+                        val aliasStat = android.system.Os.lstat(alias.path)
+                        assertEquals(before.st_dev,linked.st_dev)
+                        assertEquals(before.st_ino,linked.st_ino)
+                        assertEquals(linked.st_dev,aliasStat.st_dev)
+                        assertEquals(linked.st_ino,aliasStat.st_ino)
+                        assertEquals(2L,linked.st_nlink)
+                        assertEquals(2L,aliasStat.st_nlink)
                     }
                     "short-journal" -> { journal.writeBytes(byteArrayOf(1)); expectedJournal = journal.readBytes() }
                     "short-db" -> { db.writeBytes(h.dirtyDb.copyOf(40)); expectedDb = db.readBytes() }
