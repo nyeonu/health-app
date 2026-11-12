@@ -95,6 +95,8 @@ class SyncExecutionSessionInstrumentedTest {
                             error("합성 준비 실패")
                         }
                         fail("준비 실패가 전파되어야 합니다")
+                    } catch (cancel: CancellationException) {
+                        throw cancel
                     } catch (error: IllegalStateException) {
                         assertFalse(cancelled)
                         assertEquals("합성 준비 실패", error.message)
