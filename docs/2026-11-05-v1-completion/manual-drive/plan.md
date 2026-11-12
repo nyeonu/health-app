@@ -539,3 +539,7 @@ root의 실행 전 source 검토에서 requirePresent checksum 판정이 MD5만 
 ### T6 source 체크포인트 및 T3 분류 해석
 
 T6 prepared-session3개+기존12개를 보존한 testAPK 컴파일을 author1분18초/root13초로 확인했다. 준비 factory는 gate owner 등록·복구 뒤, source access/planner 전에만 호출되고 busy factory는 소비하지 않는다. credential-bound engine은 지역 변수이며 native15개 실제 실행은 pending이다. T6 in_progress 유지. T3의 POST 분류는 401/403만 account blocked이고 나머지 실패는 보수적으로 reconciliation required를 유지한다. 명시적4xx도 원격 mutation 부재를 새 보장으로 가정하지 않으며 blind create/자동 재시도는 금지다. lookup/PATCH의 명시 transient 분류는 그대로다.
+
+### T6 복구 1/2 — 취소 테스트의 예외 상속
+
+fresh quality 재검토가 `4500044529f073e8252893b60cb561717ed50779`의 신규 Native 테스트에서 Important1을 발견했다. JVM CancellationException은 IllegalStateException 하위 타입이므로 cancelled=true 경로가 broad catch에 잡혀 assertFalse(cancelled)로 실패한다. 배정 Session instrumented test의 owner launch에서 CancellationException을 먼저 rethrow하고 일반 합성 실패만 IllegalStateException 단언으로 처리한다. production gate/cancel 코드는 변경하지 않는다. 기존 취소 표시·busy receipt 해결·raw health0·재진입 단언을 유지하고 compile/actual Native/독립 재검토로 확인한다. compile 통과를 실제 테스트 성공으로 주장하지 않았으며 현재 완료 판정은 보류다.
