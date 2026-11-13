@@ -19,7 +19,7 @@ tasks:
   - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: pending, tier: standard}
   - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9], status: pending, tier: standard}
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
-  - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: done, tier: standard}
+  - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: in_progress, tier: standard}
   - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: in_progress, tier: standard}
 ---
 
@@ -585,3 +585,7 @@ T3상대경로설정이cwd android와중복되어미적용된상태의build가�
 ### 순수 UI 병렬 분리 승인 — T9
 
 소유자의기존V1자동승인·병렬지시에따라root는실제core CoverageSummary/BatchStatus/DestinationGeneration을대조한exactstate/actions및captured-generation reset계약을승인했다. 새DTO1file은기존노출metadata와callback의소유분리이며DB/health/권한/동작요구추가아니다. 기존T5widget과T7pure semantics를T9의3파일로옮겨T3/T4와충돌없이작성한다. T5controller는T4와T9뒤, T6는둘다뒤이며T7실제복구/full gate불변이다. parent65abc08으로rev를고정했다. UI추가진단saf-ui는고정class1개만의optionaldispatch로root별도CI작성하며전체full을대체하지않는다.
+
+### T8 순수 UI 고정 진단 추가 배정
+
+T9병렬분리로기존4진단완료증거를보존하고fixed saf-ui choice1개를선택목록에추가한다. 같은기존두CI파일만대상이며공통prep/defaultfull/host/API/settings/timeout/권한불변이다. T8을추가분기검증기간만in_progress로되돌리고actualUI Native양API는T9완료조건과별도로대조한다. 기존성공을다시실패로바꾸거나source없는class를PASS로표시하지않는다.
