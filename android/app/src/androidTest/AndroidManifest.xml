@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 합성 provider는 테스트 APK에만 등록한다. -->
+    <application>
+        <provider
+            android:name="com.ny.my.health.SyntheticDocumentsProvider"
+            android:authorities="com.ny.my.health.test.synthetic.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+        <activity
+            android:name="com.ny.my.health.SyntheticDocumentsProvider$GrantActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
+</manifest>
