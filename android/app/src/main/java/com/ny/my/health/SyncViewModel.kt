@@ -77,12 +77,21 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     }
     internal val manual = ManualDriveSession(syncStore, reader, execution, clock)
     private val mutableCategories = MutableStateFlow(DataType.entries.toSet())
+    private var categoriesEdited = false
     internal val manualCategories = mutableCategories.asStateFlow()
     private var manualJob: Job? = null
     private var resumeJob: Job? = null
 
     internal fun changeManualCategories(categories: Set<DataType>) {
-        if (manual.state.value.phase != ManualDrivePhase.RUNNING) mutableCategories.value = categories.toSet()
+        if (manual.state.value.phase != ManualDrivePhase.RUNNING) {
+            categoriesEdited = true
+            mutableCategories.value = categories.toSet()
+        }
+    }
+
+    /** 초기 읽기보다 늦게 도착한 저장 구성은 사용자의 새 선택을 덮어쓰지 않는다. */
+    internal fun restoreInitialManualCategories(categories: Set<DataType>) {
+        if (!categoriesEdited) mutableCategories.value = categories.toSet()
     }
 
     internal fun selectManualAccount(bridge: ManualDriveBridge) {
@@ -124,6 +133,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     internal fun resetManualConfiguration() {
+        categoriesEdited = true
         viewModelScope.launch {
             if (manual.resetConfiguration()) mutableCategories.value = DataType.entries.toSet()
         }
@@ -156,7 +166,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             manual.refresh()
-            if (manual.state.value.configured) mutableCategories.value = manual.state.value.categories
+            if (manual.state.value.configured) restoreInitialManualCategories(manual.state.value.categories)
         }
         viewModelScope.launch {
             historySession.state.collect { history ->

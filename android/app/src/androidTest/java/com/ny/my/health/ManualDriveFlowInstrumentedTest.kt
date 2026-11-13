@@ -169,6 +169,22 @@ class ManualDriveFlowInstrumentedTest {
         }
     }
 
+    @Test fun lateInitialConfigurationRestorePreservesEditedDraftWithoutChangingConfiguredCategories() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity {
+                val model = ViewModelProvider(it)[SyncViewModel::class.java]
+                val configured = model.manual.state.value.categories
+                // 초기 복원 → 사용자 변경 → 지연된 초기 복원 순서를 실제 화면 모델에 전달한다.
+                model.restoreInitialManualCategories(setOf(DataType.STEPS))
+                assertEquals(setOf(DataType.STEPS), model.manualCategories.value)
+                model.changeManualCategories(setOf(DataType.WEIGHT))
+                model.restoreInitialManualCategories(setOf(DataType.HEART_RATE))
+                assertEquals(setOf(DataType.WEIGHT), model.manualCategories.value)
+                assertEquals(configured, model.manual.state.value.categories)
+            }
+        }
+    }
+
     private class SyntheticBridge : ManualDriveBridge {
         var pickerResult: ((Boolean, Boolean, String?, String?) -> Unit)? = null
         var authorizationResult: ((Boolean, String?, List<String>) -> Unit)? = null

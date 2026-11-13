@@ -123,7 +123,10 @@ class MainActivity : ComponentActivity() {
                     .setRequestedScopes(listOf(Scope(BoundDriveAuthorization.DRIVE_FILE_SCOPE)))
                     .build()
                 authorizationClient.authorize(request).addOnSuccessListener { authorization ->
-                    if (!current(owner)) return@addOnSuccessListener
+                    if (!current(owner)) {
+                        finishRequest(owner)
+                        return@addOnSuccessListener
+                    }
                     if (authorization == null) deliver(owner) { result(false, null, emptyList()) }
                     else if (authorization.hasResolution()) {
                         val pendingIntent = authorization.pendingIntent
