@@ -795,3 +795,9 @@ T12첫gate는targeted5JVM/실패·오류·skip0 및APK1분52초PASS이며root가
 ### T6/T12 source gate 실제 완료와 T11 시작
 
 T6R4 source3파일은app96JVM/lint/APK/testAPK2분19초PASS와독립updatedTerra APPROVE(실제T12/T11조건부)를받았다. T12수정2파일은targeted5JVM/APK44초PASS와독립updatedTerra APPROVE로처음finding을해결했다. root가두원본XML집합(96+5중4공통=app97)·실패/오류/skip0·다섯sourceSHA를직접대조해통합했다. core84는불변기존검증을보존한다. 통합source의app97는T11신규Native파일compile때같이실행하고최종full에서는core84+app97=181및전체Native/host를검증한다. T6/T12done은source/unitgate만이며T11actualVM/Activity/SQLite/provider검증은아직미완료다. T11은두선행gate완료뒤한파일의두실제행동을작성한다. 원래T6교정이력1~4및T12추가순서교정은숨기거나리셋하지않는다.
+
+### T11 실제 반환과 controller 수락 사이의 결정적 제어
+
+실행자는GrantActivity가즉시finish라fixturehold가없다고보고했으며소스변경/빌드0이다. root는기존MainActivity.internal var safBridge와원래productionbridge의selectTree callback을대조했다. Native파일안의test wrapper가원래bridge를그대로호출해실제GrantActivity/StartActivityForResult/실제URI·flags/productionbuffer를통과시키고,그반환후controller로전달할callback만private메모리에보관할수있다. 관측gate뒤실제input편집또는ActivityScenario추가pause/resume를완료하고동일actualURI/flags로소비callback을호출하면capturedticket의stale/secondpause거부를결정적으로검증한다. positive/read-only는보류없이원래bridge를써rawresult와동의·설정만/명시실행을검증한다.
+
+이는GrantActivity자체나framework rawcallback전단계를hold했다고주장하지않고실제반환→appcontroller수락경계를제어한다. 원래한Native파일/기존seam/실제SQL·provider/기존두행동을보존하며flags를발명하거나fixture/manifest/timeout/sleep을추가하지않는다. 소스에이미있는callback연결의clarification이고권한/동작기준을좁히지않는다. 필요하면metadata access gate도가능하지만실행자는간단한기존bridgewrapper를우선한다.
