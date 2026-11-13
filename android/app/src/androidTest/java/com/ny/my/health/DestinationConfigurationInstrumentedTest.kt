@@ -66,7 +66,7 @@ class DestinationConfigurationInstrumentedTest {
             val readsBefore = f.rawReads
             val writesBefore = f.writes
             val historyBefore = historyStore.load().history
-            assertEquals(BatchStatus.BLOCKED, drive.continueManual()?.status)
+            assertEquals(BatchStatus.STALE, drive.continueManual()?.status)
             assertTrue("이전 세대 실행은 proof·읽기·쓰기 없음", f.proofs == proofsBefore &&
                 f.rawReads == readsBefore && f.writes == writesBefore)
             assertTrue("이전 세대 실행 뒤 초기화 상태 보존", f.reopen().load().state == reset)
