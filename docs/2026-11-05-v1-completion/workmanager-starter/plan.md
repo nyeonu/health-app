@@ -12,6 +12,7 @@ baseline: b35c11c8b4651cf9b12b004a7fc4ae3d52a4d3ee
 tasks:
   - {id: T1, title: WorkManager 의존성 초기 감사, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 실제 test WorkManager 합성 starter, depends_on: [T1], status: in_progress, tier: standard}
+  - {id: T3, title: 기존 hot-journal fixture의 실제 writer spill 증거, depends_on: [T1], status: in_progress, tier: standard}
 ---
 
 # 독립 WorkManager 기반 준비
@@ -68,6 +69,18 @@ closeWorkDatabase는testscope/DB를닫지만defaultdelegate를복원하지않는
 ```
 
 **의존성 부수효과 경계:** work-runtime 자체의 manifest가 default Startup initializer, scheduler service/receiver/permission을 가져올 수 있다. 따라서 dependency 추가를 “앱 초기화 영향 0”이라고 부르지 않는다. T1은 실제 debug/release merger diff로 모두 기록한다. 초기화는 library 기본값 그대로 두며 앱은 work를 enqueue하지 않는다. ADR-008의 custom Configuration.Provider/initializer 제거/diagnostics 비활성화는 후속 단계로 남는다. 이 기본 initializer의 존재 자체가 승인된 조기 추출 제약과 양립하지 않거나 test helper를 설치하려면 production Application/manifest 변경이 필요하면 **blocked**로 보고한다. 앱 초기화를 먼저 만들거나 숨은 test runner 변경으로 우회하지 않는다.
+
+### HotWriterFixture
+
+```text
+// HotWriterFixture — 실제 writer 연결의 spill 준비와 기존 증거 불변
+대상은 SqliteSyncStateStoreInstrumentedTest.HotFixture.dirty의 test-only writer 준비뿐.
+PRAGMA cache_size=1 및 cache_spill=1은 db.beginTransaction 뒤 동일 transaction block 안에서 UPDATE 전에 적용/실제값조회.
+page_size/page_count/cache_size/cache_spill/journal_mode/synchronous를 같은 writer에서 조회하여 고정 bool/enum/numeric 진단만 기록.
+UPDATE후 main bytes changed 증거·8byte hot-journal magic·journal>512·실제 typed readonly exception 및 모든 원본byte보존/복구assertions은그대로필수.
+원본을 fake patch하거나 journal header를써서만들기/skip/timeout상향/재시도/payload·URI·pathdump/production설정수정금지.
+동일96-row 유효합성데이터/공개schema와 기존4개test body 유지; 변화는 testwriter의connection-boundcache 준비/관측뿐.
+```
 
 ## 3. 추적성
 
@@ -150,6 +163,21 @@ closeWorkDatabase는testscope/DB를닫지만defaultdelegate를복원하지않는
 
 - **주의사항**: 현재 workflow의 API35/36 full discovery가 starter를 포함하므로 이번 계획에서 workflow/helper를 고치지 않는다(SAF 병렬 파일과 충돌 방지). focused CI가 필요하면 별도 범위가 확인된 orchestration 작업으로 분리하며 full gate 증거로 쓰지 않는다. test-only factory는 합성 worker만 인식하고 unexpected class construction을 성공으로 바꾸지 않는다. 최초 구현 보정은 이 test 파일 내부의 확인된 helper/executor/factory/cleanup 배선만 허용한다. production Application 변경이 필요하거나 기동/컴파일/실행 실패 시 우회하지 말고 blocked로 보고한다. global singleton 교체가 다른 test class에 영향을 주지 않도록 지원 cleanup 계약을 T1에서 확인한다.
 
+### T3: 기존 hot-journal fixture의 실제 writer spill 증거
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `android/app/src/androidTest/java/com/ny/my/health/SqliteSyncStateStoreInstrumentedTest.kt` | 수정 | test-only HotFixture writer connection에 cache/spill pin 및 안전한 실제 PRAGMA 관측 |
+
+- **인터페이스**: §2 `HotWriterFixture` 참조.
+- **결정 로직**: 기존 모든 prod/recovery 판정 불변, 합성 dirty pair 준비 단계만 보정.
+- **작성할 테스트**: 기존4메서드 `validatedHotJournalsRestoreCommittedStateThroughEveryStoreEntryWithoutFabricatingConfirmations`, `unsupportedOrMalformedRecoveredPairsPreserveOriginalBytesWithoutAWritableOriginalOpen`, `unsafeRollbackSidecarsAndChangedSourcePairsNeverFollowExternalPathsOrDeleteUnknownFiles`, `interruptedRollbackPreparationRetainsRawEvidenceAndSafelyRetriesWithoutInventingSuccess`의 실 writer/copy/recovery assertions 유지. 새 product regression 꾸며내지 않음.
+- **완료 기준**: 최초 바이트 변경/spill/magic/read-only proof부터 양API 실제 PASS 및 전체 기존Native/host/starter PASS. 관측값만으로완료선언금지.
+- **검증 방법**: source assertion보존검사+wrapped :app:assembleDebugAndroidTest; 실제 API35/36 전체 Native/host는 rootCI. 동일 JVM/production 변경없어176unit 중복실행금지.
+- **주의사항**: 첫컴파일/실제검증실패시STOP보고. 추측에의한seed증량/production변경/hiddenretry금지. 원본실패로그/짝보존, 고정수치진단으로다음가설에필요한실측확보.
+
 ## 5. 전체 검증과 통합
 
 T1 초기 audit PASS → T2 local build + actual CI API35/36 PASS → current-head 독립 검토와 차단 지적 수정/재검토 순서다. 전체 제품 기능 실행은 이 초기 audit와 실제 starter 통과 전 시작하지 않는다. 초기 감사 후 최종 automation 통합 head에서 네 graph/OSV/manifest/AAR 재감사는 별도로 유지한다.
@@ -189,3 +217,7 @@ root는4실제graph/155OSV응답/0vulnerability·error와13Gradle rawlog SHA256�
 첫전체gate2분24초는JVM176/0/0/0뒤AndroidTest컴파일에서Operation.result/getWorkInfoById의ListenableFuture타입을해석하지못했다. main/testedruntimeGuava존재를androidTestcompile공개타입가용성으로잘못확장한전제다. 실제2.11Operation.java의공개getState():LiveData<State> terminal API와이미승인된getWorkInfoByIdFlow로같은enqueue/cancel성공과workstate를bounded관찰한다. Operation.await는inline으로result타입을다시노출하므로우회보장으로추정하지않는다. 새dependency/버전/manifest없이test+report2파일만교정하며mainthread에Observer등록/제거, off-main coroutine boundedwait, finally observer해제·cancel성공·DB/2executors정리·primaryfailure보존을유지한다. counter0/driver/정확SUCCESS·output·counter1단언불변. 최초실패원본log/XML보존뒤영향compile/lint확인하고이미통과한동일176JVM중복실행은생략한다. actualAPI35/36은 pending.
 
 T2복구1 공개Operation.state observer와WorkInfoFlow로교정한뒤lint/APK/testAPK 실제1분PASS. 초기JVM176/0/0/0은같은production/dependency이며중복재실행없이원본XML대조했다. 실제API35/36 fullCI와최신head독립리뷰전T2완료아님.
+
+### T2 전체 gate 복구2 / T3 파일 소유 — 실제 hot-journal 준비 실패
+
+run43435616205 source d07284f 양API121 tests중117PASS/4FAIL/0skip. newWorkManagerstarter는양API1PASS이며실패4개는기존HotFixture.dirty:1116 before==dirtyDb로hotpair생성전같은지점이다. API35 artifact14044461973 sha35f5d7e614daeada102c02ff2c412b67256807976fa5495a91d80be5d8f0a2b4; API36 artifact14044991845 shadd6ab646456b8043b178b391ee0c123a88235e622e3b50a180db5e1f48e47680을root원본대조했다. prod store/database/testsource는b35와동일이고새explicithelper기동은실패뒤에실행되어원인아니다. 기본initializer/Room간접효과나PRAGMA실효연결/threshold중정확원인은현재관측부재로미확정이다. 기존transaction밖cache설정을실제writer transaction안에서pin·조회하는제한가설로T3를분리하되T2복구는기존Future보정1뒤누적2이며리셋하지않는다. 소유자기존V1자동수정·병렬승인범위의testfixture1파일이며모든실제증거assertion·전체gate를유지한다. 새로운실패시실측보고뒤중단한다.
