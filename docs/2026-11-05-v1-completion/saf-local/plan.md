@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 288d8d0e8f84545e996b0f45805a0d41616c7b99
+parent_rev: 8c2d4ec92a07041c529cb9dba6aafd99a2e8ad4a
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-saf-local
@@ -18,10 +18,11 @@ tasks:
   - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: done, tier: standard}
   - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: done, tier: standard}
   - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9, T10], status: in_progress, tier: standard}
-  - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
+  - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T11], status: pending, tier: standard}
   - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: in_progress, tier: standard}
   - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: done, tier: standard}
   - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: done, tier: standard}
+  - {id: T11, title: 실제 Activity SAF 선택과 전경 수동 실행 검증, depends_on: [T6], status: pending, tier: standard}
 ---
 
 # 검증된 local tree 전경 내보내기
@@ -473,7 +474,6 @@ internal interface ManualSafPorts {
   | `A/MainActivity.kt` | 수정 | raw Intent flags를 보존한 tree launcher·현재 request/foreground delivery |
   | `A/SyncViewModel.kt` | 수정 | SAF session·단일 목적지 routing·permission/lifecycle/reset 연결 |
   | `A/HealthHomeScreen.kt` | 수정 | local/Drive 명시 선택과 SafManualUi 합성·기존 optional 순서/기본값 보존, SAF optional은 todayInSeoul 뒤에 추가 |
-  | `AI/SafManualFlowInstrumentedTest.kt` | 신규 | 실제 Activity와 target resolver·SQLite·합성 provider 전경 실행 |
 
 - **인터페이스**: §2 `SafActivityIntegration`, `ManualDestinationDependencies`, `SafDestinationRouting`, `ManualSafSession`, `ManualSafState`, `SafManualActions`, `SafManualUi`, `SafUiProtocol`, `SafGrantProtocol` 참조. T9 DTO/widget을 중복 선언하지 않고 actions를 기존 session/Activity 경계에 연결하며 resetConfiguration(expected)는 확인한 generation으로 session.reset(expected)를 요청한다. tree bridge는 StartActivityForResult의 resultCode/data.uri/**data.flags**를 그대로 전달한다. OpenDocumentTree contract의 Uri-only 반환으로 실제 flags를 꾸며내지 않는다. test launcher는 T1 GrantActivity로 주입하며 production은 ACTION_OPEN_DOCUMENT_TREE다.
 - **결정 로직**:
@@ -494,26 +494,50 @@ internal interface ManualSafPorts {
   4. lifecycle pause/consent 철회/reset→두 destination request 무효화 → 이미 발행된 write는 rollback 성공으로 표시하지 않음.
   ```
 
-- **작성할 테스트**:
-  - "SAF actual activity selection configures without exporting and explicit continue confirms only selected local target"
-  - "SAF actual activity rejects stale tree results and paused revoked grants without Drive fallback"
+- **작성할 테스트**: 기존 core84/app96 합180 JVM과 기존 Native source 컴파일 회귀를 재사용한다. 새 실제 Activity 두 행동은 동일 승인 기준 그대로 T11로 옮겨 작성·실행하며 이 T6 source gate를 Native 통과로 부르지 않는다.
 - **테스트 조건/층**: UI categories를 실제 session setter에 전달하고 picker 도중 입력 변경/partial grant 전체 intended 유지·grant0 차단을 확인한다. target resolver·실제 SQLite reopen·합성 HC input을 사용하고 실제 AccountPicker/계정/HC provider는 열지 않는다(①·②·③·④/Android E2E).
-- **완료 기준**: picker 복귀/앱 복원이 health export를 시작하지 않으며 explicit continue 후 selected generation만 확인된다. 기존 bound Drive와 foundation history/phone profiling/PR14 inset 동작을 보존한다.
+- **완료 기준**: 제품 세 파일 배선이 기존180 JVM/빌드/lint/testAPK 컴파일과 독립 소스 검토를 통과한다. 새 실제 picker/선택/explicit continue/SQL reopen 검증은 T11에서 필수 수행하고 T7·최종병합은 그 뒤다.
 - **검증 방법**:
 
   ```bash
   cd android
-  ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
-  ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SafManualFlowInstrumentedTest,com.ny.my.health.ManualDriveFlowInstrumentedTest
+  ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:assembleDebugAndroidTest
   ```
 
 - **주의사항**: §2 확인: MainActivity의 기존 bridgeBusy/request epoch는 계정/authorization용이다. SAF launcher도 같은 외부 요청 busy 경계에 참여하되 Drive current()의 privateFolderConsent/Account ticket 조건을 SAF로 잘못 복사하지 않는다. 실제 결과 flags 확보를 위해 SDK result contract를 바꾸지 않고 별도 raw Intent launcher를 사용한다. 추정이 틀리면 우회하지 말고 blocked.
 
-체크포인트 3(T5·T6 뒤): metadata-only 복원/명시 continue·stale picker/pause/reset/double continue·실제 Activity 단일 목적지 routing과 기존 Drive/history/profiling/insets 회귀를 대조한 뒤 T7 전체 회복·접근성 검증으로 진행한다.
+체크포인트 3(T5·T6·T11 뒤): metadata-only 복원/명시 continue·stale picker/pause/reset/double continue·실제 Activity 단일 목적지 routing과 기존 Drive/history/profiling/insets 회귀를 대조한 뒤 T7 전체 회복·접근성 검증으로 진행한다.
+
+### T11: 실제 Activity SAF 선택과 전경 수동 실행 검증
+
+- T6 제품 배선 source gate 완료 후 시작한다. CI saf-flow는 T8 고정 source 후보를 사용하며 전체 gate를 대체하지 않는다.
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `AI/SafManualFlowInstrumentedTest.kt` | 신규 | 실제 Activity·raw flags·target resolver·SQLite·합성 HC 전경 실행 |
+
+- **인터페이스**: §2 `SafActivityIntegration`, `ManualDestinationDependencies`, `SafDestinationRouting`, `ManualSafSession`, `ManualSafState`, `SafManualActions`, `SafUiProtocol`, `SafGrantProtocol` 참조. 실제 T6 구현 API를 직접 읽고 사용한다. production seam을 테스트 편의로 바꾸거나 static global/invented proof를 추가하지 않는다.
+- **결정 로직**: 제품 판정을 테스트에 복제하지 않는다.
+- **호출 순서**: Application.onActivityPreCreated에서 instance factory와 test picker Intent를 주입 → 실제 MainActivity 생성 → UI 입력/consent/실제 launcher 결과 flags → 구성만 저장/health export0 → explicit continue → 실제 core/SQLite/provider 확인 → 모든 callback/scenario/grant/파일 정리.
+- **작성할 테스트**:
+  - "SAF actual activity selection configures without exporting and explicit continue confirms only selected local target"
+  - "SAF actual activity rejects stale tree results and paused revoked grants without Drive fallback"
+- **테스트 조건/층**: UI categories 실제 setter, picker 도중 입력 변경, partial grant 전체 intended 유지, grant0 configure/read/write0, read-only 결과flags, 일반pause/secondpause/stale ticket/revoke 후 health read0를 검증한다. selected local generation과 실제SQLite reopen/targetresolver readback을 대조한다. 실제 계정/HealthConnect provider는 열지 않고 합성 ScopedHealthReader·기존 test-only authority constructor를 주입한다. Drive bridge는 counting/throwing sentinel이며 fallback0이다. 허용된 synthetic capability probe쓰기를 health export0과 혼동하지 않는다. URI/body/credentials를 assertion message/log/screenshot에 노출하지 않는다.
+- **완료 기준**: 새2methods와 기존ManualDriveFlow6methods가 saf-flow 양API에서 실패·오류·skip·중복0이며 root가 원본 XML/정확class+method/SHA를 대조한다. 실제기기/계정/TalkBack 수용은 pending이다.
+- **검증 방법**:
+
+  ```bash
+  cd android
+  ./gradlew :app:assembleDebugAndroidTest
+  ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SafManualFlowInstrumentedTest,com.ny.my.health.ManualDriveFlowInstrumentedTest
+  ```
+
+- **주의사항**: 기존 fixture의 target UID/grant/ResultReceiver를 재사용하고 actual launcher는 NEW_TASK/MULTIPLE_TASK 없이 launch한다. 임의sleep/timeout증가/단언완화/skip/production allowlist확장 금지. 필요하면 미커버를 보고하고 제품코드를 임의수정하지 않는다.
 
 ### T7: 실패 복구와 최종 통합 회귀
 
-- T6 완료 후 시작.
+- T11 완료 후 시작.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -711,3 +735,7 @@ T6 검증명령은새SafManualFlow2method와기존ManualDriveFlow6method의실�
 ### T10 실제 완료와 T6 재개
 
 sourcef863887001e788a11f31bff563905751830266f7의run43480662382는양API각정확4method, run43480668622는양API각정확provider1method가성공했다. root가네ZIP SHA/원본XML/exactclass+method/실패·오류·skip·중복0을직접대조했다. T4원래fixture실패는교정후실제로통과했고T10done이다. T6의선행조건이모두충족되어실제Activity네파일연결을재개한다. 전체SAF/fullNative/host/최종freshPR검토·댓글·병합은아직미완료다.
+
+### T6 작업 크기 보정1 — Terra 제품 배선과 실제 flow 시험 분리
+
+첫Terra 실행자는네파일전체의배선과새Native2개를한세션에완료할수없다고보고했고파일변경/빌드/테스트는0이었다. 작업실패를성공으로세지않고원래T6를제품배선3파일source gate와의존T11 actualflow1파일로나눈다. 기존두행동·실제SQLite/provider·양API8methods gate를T11에원문유지하고T7선행을T11로옮겼다. T6는기존180 JVM/빌드/lint/testAPK·독립source검토까지이며실제E2E통과라고하지않는다. 원래T6기술보정1/2를기록하며모델교체로횟수를초기화하지않는다. 소유자의Terra작업별새세션·자동승인·병렬지시에따른작업크기보정이고scope/성공기준/권한/데이터/의존성/schema/최종full gate는불변이다.
