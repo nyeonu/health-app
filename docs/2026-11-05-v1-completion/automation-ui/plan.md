@@ -686,3 +686,7 @@ T19는earlystarter의옛script가아닌실제mergedSAF의진단earlyexit·critic
 ### T19 교정3 — 독립 소스 검토의 네 국소 지적
 
 기준3510bee, 보고 auto-t19-independent-review.md의 APK 재설치/runner 확인·private raw allowlist·다중 class별 inventory·실패/timeout 정리를 기존 verify-workmanager-isolation.sh 안에서 교정한다. 기존 probe와 모든 기존 suite/assertion·source는 보존한다. 교정1·2 및 이번 교정3을 원래T19에 누적하며 AGENTS.md의 같은V1 자동 승인으로 새 근거를 가진 가역 수정을 진행한다. 원문 공개를 검증된 합성 protocol에 한정하는 부모 계약을 재고정했다. bash-n·정상/누락APK/실패/skip/duplicate/timeout을 구별하는 private fake-adb 검증과 fresh 독립 재검토 후 실제 양API full을 수행한다. fake-adb 통과는 실제 기기/process 검증을 대신하지 않는다.
+
+### T19 교정4 — 실제 AndroidJUnitRunner 성공 protocol
+
+1b58950 재검토에서 캐시된 runner1.6.2 InstrumentationResultPrinter의 실제 bytecode는 testStarted에 stream=\n%s:(class header), 성공 testFinished에 stream=.을 내보내지만 교정3 parser는 빈 stream만 허용함을 확인했다. root도 실제 runtimejar javap로 동일 사실을 대조했다(auto-t19-runner-result-printer-bytecode.txt). 잘못 만든 fake 성공 응답을 실제 protocol의 클래스 continuation/성공 dot까지 정확히 반영하며 기대 identity·code·count·privacy·모든 미허용 출력 차단은 보존한다. 종료검증에서 pidof의 정상 부재 exit1과 timeout/adb오류도 구별하여 종료 미확인을 성공으로 처리하지 않는다. 기존 T19 회차1~3을 유지하고 이번4를 소유자 같은V1 가역 기술 교정 위임으로 수행한다. 파일은 기존 hostscript 하나이며 새 의존성/제품동작/검증기준 변경은 없다. 실제 protocol fixture의 교정 전 실패·교정 후 통과와 기존 부정 protocol 회귀·fresh 재검토 후 양API full을 실행한다.
