@@ -49,12 +49,14 @@ internal class ManualDriveSession(
     private val newProfiling: () -> ManualSyncProfiling? = { null },
     private val onProfileStarted: (ManualSyncProfiling) -> Unit = {},
     private val onProfileFinished: (ManualSyncProfiling, ProfileOutcome) -> Unit = { _, _ -> },
+    private val onProfileInvalidated: () -> Unit = {},
 ) {
     constructor(sqliteStore: SqliteSyncStateStore, healthReader: ScopedHealthReader,
         execution: SyncExecutionSession, clock: Clock = Clock.systemUTC(),
         newProfiling: () -> ManualSyncProfiling? = { null },
         onProfileStarted: (ManualSyncProfiling) -> Unit = {},
         onProfileFinished: (ManualSyncProfiling, ProfileOutcome) -> Unit = { _, _ -> },
+        onProfileInvalidated: () -> Unit = {},
     ) : this(object : ManualDrivePorts {
         override val store: SyncStateStore = sqliteStore
         override val reader: ScopedHealthReader = healthReader
@@ -75,7 +77,7 @@ internal class ManualDriveSession(
         override fun profiledDestination(transport: DriveTransport, generation: DestinationGeneration,
             profiling: SyncProfiling?): StorageDestination =
             DriveApiDestination(PrivateDriveUploader(transport, profiling = profiling, clock = clock), generation, sqliteStore, clock)
-    }, clock, newProfiling, onProfileStarted, onProfileFinished)
+    }, clock, newProfiling, onProfileStarted, onProfileFinished, onProfileInvalidated)
 
     private val mutableState = MutableStateFlow(ManualDriveState())
     val state: StateFlow<ManualDriveState> = mutableState.asStateFlow()
@@ -112,6 +114,7 @@ internal class ManualDriveSession(
         if (state.value.privateFolderConsent != consent) epoch++
         mutableState.value = state.value.copy(privateFolderConsent = consent)
         if (!consent) {
+            observe(onProfileInvalidated)
             ownerJob?.cancel()
             picker = null
             clearAuthorization()
@@ -244,10 +247,8 @@ internal class ManualDriveSession(
             hasResolution, token, grantedScopes)
         externalRequest = null
         authorization = accepted
-        if (!hasResolution) {
-            observe { profile?.authorizationReturned(accepted != null) }
-            if (accepted == null) finishProfile(ProfileOutcome.FAILED)
-        }
+        observe { profile?.authorizationReturned(accepted != null) }
+        if (accepted == null) finishProfile(ProfileOutcome.FAILED)
         mutableState.value = state.value.copy(phase = if (accepted != null) ManualDrivePhase.READY
             else ManualDrivePhase.AUTHORIZATION_REQUIRED)
         return accepted != null
@@ -301,6 +302,7 @@ internal class ManualDriveSession(
 
     /** V1 구성·coverage만 초기화한다. foundation 이력에는 접근하지 않는다. */
     suspend fun resetConfiguration(): Boolean = safelyValue {
+        observe(onProfileInvalidated)
         val expected = state.value.generation
         epoch++
         ownerJob?.cancel()

@@ -70,7 +70,7 @@ internal fun SyncUiState.invalidateCurrentAttempt(): SyncUiState = copy(
 
 class SyncViewModel internal constructor(application: Application,
     sessionFactory: ((() -> ManualSyncProfiling?, (ManualSyncProfiling) -> Unit,
-        (ManualSyncProfiling, ProfileOutcome) -> Unit) -> ManualDriveSession)?,
+        (ManualSyncProfiling, ProfileOutcome) -> Unit, () -> Unit) -> ManualDriveSession)?,
 ) : AndroidViewModel(application) {
     constructor(application: Application) : this(application, null)
 
@@ -83,9 +83,9 @@ class SyncViewModel internal constructor(application: Application,
     private val execution = SyncExecutionSession.get(application) {
         SyncExecutionSession(syncStore, reader, null, clock, { java.util.UUID.randomUUID().toString() })
     }
-    internal val manual = sessionFactory?.invoke(::newBoundProfiling, ::boundProfileStarted, ::boundProfileFinished)
+    internal val manual = sessionFactory?.invoke(::newBoundProfiling, ::boundProfileStarted, ::boundProfileFinished, ::boundProfileInvalidated)
         ?: ManualDriveSession(syncStore, reader, execution, clock,
-            ::newBoundProfiling, ::boundProfileStarted, ::boundProfileFinished)
+            ::newBoundProfiling, ::boundProfileStarted, ::boundProfileFinished, ::boundProfileInvalidated)
     private val mutableCategories = MutableStateFlow(DataType.entries.toSet())
     private var categoriesEdited = false
     internal val manualCategories = mutableCategories.asStateFlow()
@@ -474,6 +474,11 @@ class SyncViewModel internal constructor(application: Application,
 
     private fun boundProfileStarted(profile: ManualSyncProfiling) {
         phoneProfilingSession.begin(profile)
+        mutableState.value = mutableState.value.copy(phoneProfiling = phoneProfilingSession.state)
+    }
+
+    private fun boundProfileInvalidated() {
+        phoneProfilingSession.clear()
         mutableState.value = mutableState.value.copy(phoneProfiling = phoneProfilingSession.state)
     }
 

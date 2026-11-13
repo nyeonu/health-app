@@ -414,11 +414,14 @@ class ManualDriveSessionTest {
         assertTrue(session.expectExternalResult(ticketA.id))
         session.setForeground(false)
         assertTrue(finished.isEmpty())
-        session.setForeground(true)
-        assertFalse(session.acceptAuthorization(ticketA, true, null, emptyList()))
         assertTrue(profiles.single().collector.snapshot().stages[ProfileStage.AUTHORIZATION_WAIT]!!.active)
+        session.setForeground(true)
+        assertTrue(profiles.single().collector.snapshot().stages[ProfileStage.AUTHORIZATION_WAIT]!!.active)
+        assertFalse(session.acceptAuthorization(ticketA, true, null, emptyList()))
+        assertFalse(profiles.single().collector.snapshot().stages[ProfileStage.AUTHORIZATION_WAIT]!!.active)
+        assertEquals(1L, profiles.single().collector.snapshot().stages[ProfileStage.AUTHORIZATION_WAIT]!!.failed)
         val ticketB = checkNotNull(session.beginAuthorization())
-        assertEquals(listOf(ProfileOutcome.CANCELLED), finished)
+        assertEquals(listOf(ProfileOutcome.FAILED), finished)
         assertFalse(session.acceptAuthorization(ticketA, false, "synthetic-memory-only", scopes))
         assertTrue(session.acceptAuthorization(ticketB, false, "synthetic-memory-only", scopes))
         val entered = CompletableDeferred<Unit>()
@@ -435,7 +438,7 @@ class ManualDriveSessionTest {
         release.complete(Unit)
         assertEquals(BatchStatus.COMPLETED, owner.await()!!.status)
         assertSame(profiles.last().collector, ports.destinationProfiling)
-        assertEquals(listOf(ProfileOutcome.CANCELLED, ProfileOutcome.COMPLETED), finished)
+        assertEquals(listOf(ProfileOutcome.FAILED, ProfileOutcome.COMPLETED), finished)
         val summary = profiles.last().collector.snapshot()
         assertEquals(1L, summary.stages[ProfileStage.CONTINUE_WAIT]!!.completed)
         assertEquals(1L, summary.stages[ProfileStage.EXECUTION]!!.completed)
@@ -516,7 +519,8 @@ class ManualDriveSessionTest {
         for (factory in listOf<() -> ManualSyncProfiling?>({ null }, { error("합성 factory 실패") }, { ManualSyncProfiling() })) {
             val ports = FakePorts()
             val session = ManualDriveSession(ports, clock, factory,
-                { throw kotlinx.coroutines.CancellationException("합성 관찰 실패") }, { _, _ -> error("합성 관찰 실패") })
+                { throw kotlinx.coroutines.CancellationException("합성 관찰 실패") }, { _, _ -> error("합성 관찰 실패") },
+                { throw kotlinx.coroutines.CancellationException("합성 폐기 관찰 실패") })
             session.setForeground(true)
             session.setPrivateFolderConsent(true)
             val ticket = configure(session, ports)
@@ -531,6 +535,8 @@ class ManualDriveSessionTest {
                 fail("실제 취소가 전파되어야 한다")
             } catch (_: kotlinx.coroutines.CancellationException) { }
             assertFalse(ports.running)
+            session.setPrivateFolderConsent(false)
+            assertFalse(session.state.value.privateFolderConsent)
         }
     }
 

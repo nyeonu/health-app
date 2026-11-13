@@ -277,6 +277,7 @@ class ManualDriveFlowInstrumentedTest {
             val f = ManualDriveNativeFixture()
             val models = androidx.lifecycle.ViewModelStore()
             var finishedAfterCleanup = false
+            val finished = CompletableDeferred<Unit>()
             var cleanupObserved = false
             var captured: ManualSyncProfiling? = null
             var uploaderCollector: SyncProfiling? = null
@@ -324,10 +325,14 @@ class ManualDriveFlowInstrumentedTest {
                     val factory = object : ViewModelProvider.Factory {
                         override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
                             @Suppress("UNCHECKED_CAST")
-                            return SyncViewModel(application) { create, begin, finish ->
+                            return SyncViewModel(application) { create, begin, finish, invalidate ->
                                 ManualDriveSession(ports, f.clock,
                                     { create().also { captured = it } }, begin,
-                                    { profile, outcome -> finishedAfterCleanup = cleanupObserved; finish(profile, outcome) })
+                                    { profile, outcome ->
+                                        finishedAfterCleanup = cleanupObserved
+                                        finish(profile, outcome)
+                                        finished.complete(Unit)
+                                    }, invalidate)
                             } as T
                         }
                     }
@@ -351,15 +356,26 @@ class ManualDriveFlowInstrumentedTest {
                             "reset" -> model.resetManualConfiguration()
                             "withdraw" -> model.manual.setPrivateFolderConsent(false)
                         }
+                        if (scenario in setOf("reset", "withdraw")) {
+                            assertFalse(model.state.value.phoneProfiling.collecting)
+                            assertNull(model.state.value.phoneProfiling.report)
+                        }
                     }
                 }
                 kotlinx.coroutines.withTimeout(10_000) {
-                    while (model.state.value.phoneProfiling.collecting) kotlinx.coroutines.delay(10)
+                    finished.await()
+                    if (scenario == "reset") {
+                        while (model.manual.state.value.configured) kotlinx.coroutines.delay(10)
+                    }
                 }
-                val report = checkNotNull(model.state.value.phoneProfiling.report)
+                val report = model.state.value.phoneProfiling.report
+                if (scenario in setOf("reset", "withdraw")) {
+                    assertNull(report)
+                    assertFalse(model.state.value.phoneProfiling.collecting)
+                } else assertNotNull(report)
                 val summary = checkNotNull(captured).collector.snapshot()
                 assertTrue(finishedAfterCleanup)
-                assertEquals(24, report.safeText.trim().lines().size)
+                if (report != null) assertEquals(24, report.safeText.trim().lines().size)
                 val outcome = summary.stages.getValue(ProfileStage.EXECUTION)
                 when (scenario) {
                     "empty" -> {
@@ -369,7 +385,9 @@ class ManualDriveFlowInstrumentedTest {
                         assertEquals(2L, summary.stages.getValue(ProfileStage.CSV_EXPORT).completed)
                         val durable = f.reopen().load().state!!
                         assertNotNull(durable.attempt!!.finishedAt)
-                        assertEquals(DayPhase.EMPTY, durable.days.values.single().phase)
+                        val scoped = f.reopen().loadForScope(durable.generation, f.today,
+                            syntheticReader.access(SyncTrigger.MANUAL)).state!!
+                        assertEquals(DayPhase.EMPTY, scoped.days.values.single().phase)
                     }
                     "pause", "reset", "withdraw" -> assertEquals(1L, outcome.cancelled)
                     else -> assertEquals(1L, outcome.failed)
@@ -382,15 +400,24 @@ class ManualDriveFlowInstrumentedTest {
                 } else assertTrue(summary.requests.isEmpty())
                 for (stage in listOf(ProfileStage.AUTHORIZATION_HISTORY, ProfileStage.START_HISTORY, ProfileStage.TERMINAL_HISTORY))
                     assertNull(summary.stages[stage])
-                assertFalse(report.safeText.contains("memory-only"))
-                assertFalse(report.safeText.contains(f.account.name))
+                assertFalse(report?.safeText.orEmpty().contains("memory-only"))
+                assertFalse(report?.safeText.orEmpty().contains(f.account.name))
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     var copied: String? = null
                     model.copyPhoneProfiling { copied = it }
-                    assertEquals(report.safeText, copied)
-                    assertEquals(PhoneCopyState.COPIED, model.state.value.phoneProfiling.copyState)
+                    assertEquals(report?.safeText, copied)
+                    assertEquals(if (report == null) PhoneCopyState.NONE else PhoneCopyState.COPIED,
+                        model.state.value.phoneProfiling.copyState)
+                    if (scenario == "empty") {
+                        assertTrue(model.manual.resetConfiguration())
+                        assertNull(model.state.value.phoneProfiling.report)
+                    }
+                    if (scenario == "proof") {
+                        model.manual.setPrivateFolderConsent(false)
+                        assertNull(model.state.value.phoneProfiling.report)
+                    }
                     f.grants = setOf(DataType.STEPS)
-                    if (scenario == "reset") f.configure(model.manual) else {
+                    if (scenario in setOf("reset", "empty")) f.configure(model.manual) else {
                         model.manual.setForeground(true)
                         model.manual.setPrivateFolderConsent(true)
                         assertNotNull(model.manual.beginAuthorization())
