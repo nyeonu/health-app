@@ -1,6 +1,21 @@
 package com.ny.my.health
 
+import android.app.Activity
+import android.app.Application
+import android.os.Bundle
 import android.database.sqlite.SQLiteDatabase
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import androidx.test.core.app.ActivityScenario
+import androidx.test.platform.app.InstrumentationRegistry
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
@@ -10,6 +25,10 @@ import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.withTimeout
+import org.junit.Rule
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -17,6 +36,141 @@ import org.junit.runner.RunWith
 /** 실제 엔진과 매번 재연결하는 SQLite 저장소로 원격·로컬 확인 경계를 검증한다. */
 @RunWith(AndroidJUnit4::class)
 class SafJournalInstrumentedTest {
+    @get:Rule val compose = createEmptyComposeRule()
+
+    @Test fun safExplicitRecoveryPreservesConfirmedFilesUnknownCreatesAndOldGenerationIsolationAfterReopen() {
+        val f = JournalFixture(localTree = true)
+        var activity: JournalActivityFixture? = null
+        try {
+            runBlocking {
+                f.prepare()
+                val initial = f.start()
+                assertEquals(BatchStatus.COMPLETED, f.run(initial).status)
+                val oldGeneration = f.saf.generation
+                val handle = requireNotNull(f.row(initial).datasets.getValue(Dataset.DAILY).targetHandle)
+                val initialBytes = f.bytes(handle)
+                f.steps = 2
+                f.failConfirmation = true
+                val failed = f.start()
+                assertEquals(BatchStatus.BLOCKED, f.run(failed).status)
+                assertTrue("확인 커밋 실패 후 미확인", f.row(failed).datasets.getValue(Dataset.DAILY).phase != FilePhase.CONFIRMED)
+                f.failConfirmation = false
+                f.finish(failed)
+                val pendingBytes = f.bytes(handle)
+                assertFalse("새 revision이 원격 파일을 변경", initialBytes.contentEquals(pendingBytes))
+                val beforeHealthy = f.saf.counts()
+                activity = JournalActivityFixture(f).also { it.launch(); it.consent(); it.retry() }
+                assertEquals(BatchStatus.COMPLETED, activity!!.model.saf.state.value.outcome)
+                val recovered = f.row(failed).datasets.getValue(Dataset.DAILY)
+                assertEquals(FilePhase.CONFIRMED, recovered.phase)
+                assertTrue("기존 확인 파일 identity 유지", recovered.targetHandle == handle)
+                assertTrue("재시도에서 같은 bytes 채택", f.bytes(handle).contentEquals(pendingBytes))
+                activity!!.close(); activity = null
+                val afterHealthy = f.saf.counts()
+                assertEquals("정상 재시도는 probe 외 파일 생성 없음", SyntheticDocumentsProvider.createCount(beforeHealthy) + 1,
+                    SyntheticDocumentsProvider.createCount(afterHealthy))
+                assertEquals("정상 재시도는 probe 정리", SyntheticDocumentsProvider.deleteCount(beforeHealthy) + 1,
+                    SyntheticDocumentsProvider.deleteCount(afterHealthy))
+
+                f.localCategories = setOf(DataType.STEPS, DataType.EXERCISE)
+                f.scopes = mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY, DataType.EXERCISE to ReadScope.EXPLICIT_DAY)
+                f.workouts = true
+                val configured = f.store().configure(oldGeneration, f.config(),
+                    PrivateDestinationBinding("LOCAL", treeUri = f.saf.proof.treeUri.toString()))
+                assertEquals(CommitStatus.COMMITTED, configured.status)
+                f.saf.generation = configured.generation!!
+                assertNotEquals(oldGeneration, f.saf.generation)
+                assertTrue("새 세대는 이전 확인을 상속하지 않음", f.store().loadKnownTargets(f.saf.generation, f.saf.date).isEmpty())
+                f.saf.command(SyntheticDocumentsProvider.Control.CREATE_AFTER_EFFECT_FAILURE)
+                val attempt = f.start()
+                assertEquals(BatchStatus.BLOCKED, f.run(attempt).status)
+                val blocked = f.row(attempt)
+                assertEquals(FilePhase.CONFIRMED, blocked.datasets.getValue(Dataset.DAILY).phase)
+                assertTrue("현재 일별 파일 identity 유지", blocked.datasets.getValue(Dataset.DAILY).targetHandle == handle)
+                assertEquals(FilePhase.INDETERMINATE, blocked.datasets.getValue(Dataset.WORKOUTS).phase)
+                assertNull(blocked.datasets.getValue(Dataset.WORKOUTS).targetHandle)
+                f.finish(attempt)
+                val blockedBytes = f.bytes(handle)
+                val beforeBlocked = f.saf.counts()
+                activity = JournalActivityFixture(f).also { it.launch(); it.consent() }
+                val accesses = f.accessCount
+                activity!!.retry()
+                assertTrue("실제 재시도 접근 검사 실행", f.accessCount > accesses)
+                assertEquals(ManualSafPhase.BLOCKED, activity!!.model.saf.state.value.phase)
+                val reopened = f.row(attempt)
+                assertEquals(FilePhase.CONFIRMED, reopened.datasets.getValue(Dataset.DAILY).phase)
+                assertTrue("차단 뒤 현재 파일 identity 유지", reopened.datasets.getValue(Dataset.DAILY).targetHandle == handle)
+                assertEquals(FilePhase.INDETERMINATE, reopened.datasets.getValue(Dataset.WORKOUTS).phase)
+                assertNull(reopened.datasets.getValue(Dataset.WORKOUTS).targetHandle)
+                assertEquals(f.saf.generation, f.store().load().state?.generation)
+                assertTrue("이전 세대 확인 identity 보존", f.archivedHandle(oldGeneration, initial.scopeKey) == handle)
+                assertEquals(CommitStatus.STALE, f.store().reopenManualBlockers(oldGeneration).status)
+                assertTrue("차단 뒤 실제 파일 bytes 보존", f.bytes(handle).contentEquals(blockedBytes))
+                activity!!.close(); activity = null
+                val afterBlocked = f.saf.counts()
+                assertEquals("차단 재시도에서 새 probe 생성 시도", SyntheticDocumentsProvider.createCount(beforeBlocked) + 1,
+                    SyntheticDocumentsProvider.createCount(afterBlocked))
+                assertEquals("차단 재시도는 기존 파일 쓰기 없음", SyntheticDocumentsProvider.writeCount(beforeBlocked),
+                    SyntheticDocumentsProvider.writeCount(afterBlocked))
+                assertEquals("차단 재시도는 파일 삭제 없음", SyntheticDocumentsProvider.deleteCount(beforeBlocked),
+                    SyntheticDocumentsProvider.deleteCount(afterBlocked))
+            }
+        } finally { activity?.close(); f.close() }
+    }
+
+    private inner class JournalActivityFixture(private val f: JournalFixture) {
+        private val instrumentation = InstrumentationRegistry.getInstrumentation()
+        private val application = instrumentation.targetContext.applicationContext as Application
+        lateinit var model: SyncViewModel
+        private lateinit var scenario: ActivityScenario<MainActivity>
+        private val execution = SyncExecutionSession(f.store(), f.reader, null, f.saf.clock, { UUID.randomUUID().toString() })
+        private val callbacks = object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityPreCreated(a: Activity, state: Bundle?) {
+                if (a !is MainActivity) return
+                a.viewModelFactory = object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        @Suppress("UNCHECKED_CAST")
+                        return SyncViewModel(application, SyncViewModel.ManualDestinationDependencies(f.store(), f.reader,
+                            execution, SafTreeConfiguration.forTesting(f.saf.resolver, SyntheticDocumentsProvider.AUTHORITY),
+                            f.saf.clock), null).also { model = it } as T
+                    }
+                }
+            }
+            override fun onActivityCreated(a: Activity, s: Bundle?) {}
+            override fun onActivityStarted(a: Activity) {}
+            override fun onActivityResumed(a: Activity) {}
+            override fun onActivityPaused(a: Activity) {}
+            override fun onActivityStopped(a: Activity) {}
+            override fun onActivitySaveInstanceState(a: Activity, s: Bundle) {}
+            override fun onActivityDestroyed(a: Activity) {}
+        }
+        fun launch() {
+            application.registerActivityLifecycleCallbacks(callbacks)
+            scenario = ActivityScenario.launch(MainActivity::class.java)
+            compose.waitUntil(10_000) { ::model.isInitialized && model.saf.state.value.foreground &&
+                model.saf.state.value.configured && model.committedDestination.value.kind == ManualDestination.LOCAL }
+        }
+        fun consent() {
+            compose.onNodeWithContentDescription("로컬 폴더 저장 동의").performScrollTo().performClick()
+            compose.waitUntil(10_000) { model.saf.state.value.privacyConsent }
+        }
+        fun retry() {
+            var jobs: List<Job> = emptyList()
+            compose.onNodeWithText("로컬 동기화 재시도").performScrollTo()
+                .performSemanticsAction(SemanticsActions.OnClick) { click ->
+                    val parent = model.viewModelScope.coroutineContext[Job]!!
+                    val before = parent.children.toSet()
+                    assertTrue("실제 재시도 버튼 실행", click())
+                    jobs = parent.children.filter { it !in before }.toList()
+                }
+            runBlocking { withTimeout(10_000) { jobs.joinAll() } }
+        }
+        fun close() {
+            if (::scenario.isInitialized) scenario.close()
+            application.unregisterActivityLifecycleCallbacks(callbacks)
+        }
+    }
+
     @Test fun safEncodedOpaqueDocumentUrisRetainTargetResolverIdentityAfterSQLiteReopen() = runBlocking {
         val f = JournalFixture()
         try {
@@ -139,9 +293,11 @@ class SafJournalInstrumentedTest {
     }
 }
 
-private class JournalFixture {
+private class JournalFixture(private val localTree: Boolean = false) {
     val saf = SafDestinationFixture()
     private val file = File(saf.context.noBackupFilesDir, "saf-journal-${UUID.randomUUID()}.db")
+    var localCategories = setOf(DataType.STEPS)
+    @Volatile var accessCount = 0
     var scopes = mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY)
     var steps: Long? = 1
     var workouts = false
@@ -152,7 +308,8 @@ private class JournalFixture {
     fun store() = SqliteSyncStateStore(SyncStateDatabase(file), { saf.date.plusDays(1) }, {
         if (rejectCommit) throw IllegalStateException("합成 확인 커밋 실패")
     })
-    private fun config() = SyncConfiguration("synthetic-saf", saf.date, false, setOf(DataType.STEPS, DataType.EXERCISE))
+    fun config() = SyncConfiguration(if (localTree) "local-tree" else "synthetic-saf", saf.date, false,
+        if (localTree) localCategories else setOf(DataType.STEPS, DataType.EXERCISE))
     suspend fun prepare() {
         SQLiteDatabase.deleteDatabase(file)
         saf.prepare()
@@ -177,6 +334,24 @@ private class JournalFixture {
         if (current.finishedAt == null) commit(SyncMutation(attempt.id, null, null, null, null, saf.time.plusSeconds(1)))
     }
     suspend fun row(attempt: AttemptState) = store().loadDay(saf.generation, saf.date, attempt.scopeKey)!!
+    val reader = object : ScopedHealthReader {
+        override suspend fun access(trigger: SyncTrigger): ReadAccess {
+            accessCount++
+            return ReadAccess(true, scopes.keys, scopes)
+        }
+        override suspend fun readScoped(date: java.time.LocalDate, requestedScopes: Map<DataType, ReadScope>) = snapshot(date)
+    }
+    fun bytes(handle: String): ByteArray = saf.resolver.openInputStream(Uri.parse(handle))!!.use { it.readBytes() }
+    fun archivedHandle(generation: DestinationGeneration, scope: ReadScopeKey): String? =
+        SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT target_handle FROM dataset WHERE generation=? AND date=? AND scope_key=? AND dataset=?",
+                arrayOf(generation.value, saf.date.toString(), scope.value, Dataset.DAILY.name)).use { cursor ->
+                assertTrue("이전 세대 확인 행 보존", cursor.moveToFirst())
+                val result = cursor.getString(0)
+                assertFalse("이전 세대 확인 행 유일", cursor.moveToNext())
+                result
+            }
+        }
     suspend fun run(attempt: AttemptState): BatchOutcome {
         val actual = saf.destination(store()::loadKnownTargets)
         val destination = object : StorageDestination {
@@ -192,10 +367,6 @@ private class JournalFixture {
                         saf.command(SyntheticDocumentsProvider.Control.READBACK_FAILURE)
                 }
             }
-        }
-        val reader = object : ScopedHealthReader {
-            override suspend fun access(trigger: SyncTrigger) = ReadAccess(true, scopes.keys, scopes)
-            override suspend fun readScoped(date: java.time.LocalDate, requestedScopes: Map<DataType, ReadScope>) = snapshot(date)
         }
         return DestinationSync(store(), reader, destination, saf.clock).run(SyncTrigger.MANUAL, saf.generation, attempt.id)
     }

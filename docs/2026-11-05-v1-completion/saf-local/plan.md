@@ -574,7 +574,8 @@ internal interface ManualSafPorts {
 - **인터페이스**: §2 `ManualSafState`, `SafManualActions`, `SafManualUi`, `SafKnownTargets`, `SafTargetProtocol`, `SafUiProtocol` 참조.
 - **결정 로직**: 없음; 제품 판정을 테스트 안에 복제하지 않는다.
 - **작성할 테스트**:
-  - "SAF explicit recovery preserves confirmed files unknown creates and old generation isolation after reopen"
+  - "localConfigurationFailureRestoreAndResetPreserveDriveBindingAndHistory"
+  - "safExplicitRecoveryPreservesConfirmedFilesUnknownCreatesAndOldGenerationIsolationAfterReopen"
 - **테스트 조건/층**: T9의 합성 semantics 증거는 actual Activity routing/lifecycle와 durable recovery를 대신하지 않는다. T7에서 기존 검증 명령의 세 class와 전체 affected suite를 다시 실행한다. T3/T4의 부모 이름 시나리오를 actual Activity/SQLite 경계까지 보완하고 existing history/Drive UI 회귀 재사용(①·②·③·④·⑤/Compose/Android 통합).
 - **완료 기준**: API35/36 양쪽에서 starter·grant·short overwrite·actual Activity·SQLite reopen 및 모든 affected suite 통과. 실제 TalkBack/기기/외부 provider/reboot/background는 pending이다. URI/provider 원문/CSV가 test name/assertion message/screenshot/result artifact에 나오지 않는다.
 - **검증 방법**:
@@ -837,3 +838,7 @@ run43496000449는source c134515d2266d175174e8b1de45a26e648008f6a의API35·36각�
 구성파일은실패전후Drive전체binding과성공후LOCAL전체binding을Boolean비교하고주입commit실패callbackcounter증가+정확UNAVAILABLE를단언한다. reset후binding부재도확인한다. journal은providerreset을제거한다. 먼저실제기존확인파일을수정하고SQLite확인만실패시키는기존failConfirmation을이용해정상provider에서pending을만들고,실제Activity의명시retry로같은파일을adopt/confirm하는경로를검증한다. 그뒤Activity를닫고새세대에서기존daily는남긴채EXERCISE/snapshot을추가해없는workouts경로에실제create-after-effect불명을만든다. 새localcategories옵션은새테스트에서만쓰고기존default를유지한다. 이전/현재daily확인과bytes/identity를보존하고unknown을성공으로승격하지않는실제UIretry/BLOCKED뒤재열기·oldgeneration격리를검증한다. persistentfault에서freshprobe가거부되면이를엔진reconciliation성공으로주장하지않으며앞의정상provider명시retry가실제엔진복구증거다.
 
 복원LOCAL에서는mode전환버튼을불필요하게누르지않고privacy checkbox와실제retry를선택한다. retry는Compose public OnClick semantics action callback안에서Main의job전후집합을원자적으로관측하고JUnitworker에서join한다(이미완료된job이면집합비어도정상이며outcome변화/실제admission관측을별도로단언). 단순click뒤뒤늦은child존재단언이나기존BLOCKED대기만으로완료를판정하지않는다. URI/bytes/전체binding은Boolean비교로출력금지다. 제품/fixture외파일/권한/전체최종gate는불변이다.
+
+### T7 교정 source gate 완료 — 전체 actual gate 대기
+
+최종두파일은root testAPK29초PASS와updated독립Terra source APPROVE를받았다. configuration SHA d9087d56a5a97aedd562ce811f47cc8ca5d969ab7f81ff0d0721b9185532e29d, journal SHA b449cb54023872e260239b76aa5f24b1e4a1aed866854df7bcb6165143dd9e31를root가대조해통합했다. 정상provider의실제UIretry→COMPLETED/samefile채택과persistentcreatefault의실제UIretry→freshprobe BLOCKED/unknown보존을구별한다. 후자를엔진reconciliation성공으로주장하지않는다. 기존actualreconciliation행동은그대로다. 전체API35·36/기존host/JVM/lint/APK와최종freshspec적합성·품질/보안·PR댓글·reviewedmerge 전T7/saf-local완료로표시하지않는다.
