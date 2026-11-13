@@ -18,11 +18,11 @@ tasks:
   - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: done, tier: standard}
   - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: done, tier: standard}
   - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9, T10], status: done, tier: standard}
-  - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T11], status: pending, tier: standard}
-  - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: in_progress, tier: standard}
+  - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T11], status: in_progress, tier: standard}
+  - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: done, tier: standard}
   - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: done, tier: standard}
   - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: done, tier: standard}
-  - {id: T11, title: 실제 Activity SAF 선택과 전경 수동 실행 검증, depends_on: [T6, T12], status: in_progress, tier: standard}
+  - {id: T11, title: 실제 Activity SAF 선택과 전경 수동 실행 검증, depends_on: [T6, T12], status: done, tier: standard}
   - {id: T12, title: 같은 구성의 metadata refresh 결과 보존, depends_on: [T5], status: done, tier: standard}
 ---
 
@@ -819,3 +819,7 @@ T6R4 source3파일은app96JVM/lint/APK/testAPK2분19초PASS와독립updatedTerra
 ### T11 보강 source gate 완료와 실제 양 API 실행
 
 교정6 frozen Native파일 SHA23993e7063a2bb612062d953c90746e10d0b1ebe983eeee4b3f64761ca279d8c는app97/testAPK36초PASS와updated독립Terra source APPROVE를받았다. root가원본XML97unique/실패·오류·skip0과sourceSHA를대조해통합했다. source승인을Native통과로간주하지않으며saf-flow고정두class/8methods를이source의API35·36에서실행한다. 실제원본ZIP/digest/XML까지대조한뒤에만T11/T8done과T7진입을처리한다. 기존full/host/최종freshPRreview는불변이다.
+
+### T11/T8 actual checkpoint 완료와 T7 진입
+
+run43496000449는source c134515d2266d175174e8b1de45a26e648008f6a의API35·36각각exact SafManualFlow2+ManualDriveFlow6=8unique를실제통과했다. root가두ZIP SHA256/digest와원본XML의class/method/실패·오류·skip·중복0을직접대조했다. root검증기록은saf-flow-root-verification.json이다. 전체로컬gate는동일source에서2분58초PASS(core84+app97=181/lint/APK/testAPK), root원본XML검증0fail/error/skip/dup이다. T11/T8을done으로하고T7의두기존Native파일복구회귀를시작한다. filtered8증거를전체Native/host또는실기기수용으로간주하지않는다.
