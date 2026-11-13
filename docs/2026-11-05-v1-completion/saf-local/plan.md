@@ -589,3 +589,9 @@ T3상대경로설정이cwd android와중복되어미적용된상태의build가�
 ### T8 순수 UI 고정 진단 추가 배정
 
 T9병렬분리로기존4진단완료증거를보존하고fixed saf-ui choice1개를선택목록에추가한다. 같은기존두CI파일만대상이며공통prep/defaultfull/host/API/settings/timeout/권한불변이다. T8을추가분기검증기간만in_progress로되돌리고actualUI Native양API는T9완료조건과별도로대조한다. 기존성공을다시실패로바꾸거나source없는class를PASS로표시하지않는다.
+
+### T9 환경 준비 및 T3 API 가용성 복구3
+
+T9첫bareGradle호출은read-onlyHOME lock전에실패하여기존Pythonwrapper/JDK/cache선택환경준비1로수정했다. 다음wrapper는overlay7.9GB가100%에이르러변경없는core클래스출력단계실패했다. root는완료작업의regenerableintermediates만삭제하고옛build5개를/tmp로옮겨symlink경로를유지해소스/XML/reports/APK/원본CI증거를보존했다. free1.4GB와동일출력경로writecheckPASS후T9실패core Kotlin출력만정리한disk준비1을수행했다. 그뒤T9app/APK/testAPKcompile은성공했으나lint가T3의DocumentsContract.isChildDocument API29호출/min28 NewApi를발견했다. 이는UI소스문제가아닌실제T3호환성결함이다.
+
+T3는소유자기존V1자동수정위임에따라누적3으로보정한다. app minSdk28/SDK/의존성은유지하고공개membership검증API가없는28에서는LOCAL capability를명시BLOCKED로중단한다. selected/restored URI의persist/probe전과isChildDocument사용직전에동일Build.VERSION.SDK_INT>=29 가드를적용해실제지원안되는호출/숨은fallback/파일생성을피한다. DRIVE/기존경로불변이며API28LOCAL/reboot/실기기수용을PASS로주장하지않는다. T3file1개guard·표기만교정하고wrapperlint/testAPK로검증한뒤새source양APIcomponent/UI를확인한다. 임의SuppressLint/RequiresApi로호출자책임전가/minSDK상향/새fallback금지.
