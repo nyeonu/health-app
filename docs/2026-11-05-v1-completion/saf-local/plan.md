@@ -15,7 +15,7 @@ tasks:
   - {id: T1, title: 실제 합성 DocumentsProvider와 grant starter, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 목적지 공통 known-target 조회와 재열기, depends_on: [], status: done, tier: standard}
   - {id: T3, title: 전경 local tree 동의와 실제 capability probe, depends_on: [T1], status: done, tier: standard}
-  - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: done, tier: standard}
+  - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: in_progress, tier: standard}
   - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: done, tier: standard}
   - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9, T10], status: pending, tier: standard}
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
@@ -688,3 +688,9 @@ read-only실제Activity/ViewModel/Home/기존Native호출자조사로필요한in
 ### T10 Public 전환 후 실제 실행 재개
 
 소유자가저장소를Public으로변경했으며root가GitHub에서isPrivate=false/visibility=PUBLIC을직접확인했다. latesta1598b22051066ed7066f9a78ddec76b8eb1ef3c에두고정component를새로dispatch(run43478573782/43478579503)했고네API job모두nonzero runner와실제단계실행을확인했다. 이전두run의결제한도/테스트0기록은역사로보존하되현재T10을in_progress로올린다. Native실제결과는아직pending이며완료원본대조전T6를시작하지않는다. T4네파일은cb274caf와동일하고T5두신규파일/d51fde4가추가된통합source임을고정했다. Public전환은소유자가수행했고assistant는visibility/billing설정을변경하지않았다.
+
+### T4 복구2 / T10 최초 실제 실패 — 합성 운동 fixture의 KST 날짜
+
+latest a159 source run43478573782는양API4unique중동일1failure/오류·skip·중복0이며SafJournalInstrumentedTest.kt:65 expected BLOCKED/actualCOMPLETED다. 다른세Native method와provider(run43478579503)각양API1method는성공했고root가네ZIP SHA/원본XML/실패stack을독립대조했다. 실제운동fixture가 saf.time(2026-11-05T00:00Z)-7200/-3600을써KST11월5일07~08시가되지만대상일은11월4일이다. 기존DefaultNormalizer의day-overlap필터가올바르게제외해workouts CSV가없었고,의도한두번째readback실패를실행하지못해COMPLETED가됐다.
+
+T4원래ID누적복구2/2로같은SafJournalInstrumentedTest.kt한파일만교정한다. 합성운동시간을DayWindow.start(saf.date)+3600/+7200으로대상일안에고정하고해당범위및두dataset fixture전제조건을검증한다. 승인된KST일별필터/실제provider/readback실패/기존BLOCKED·부분확인·재열기·unknowncreate·동일URI·원래취소단언은모두그대로다. 기대값을COMPLETED로바꾸거나단언을약화하지않는다. production/원래provider/다른세test·T5완료source를보존한다. 코드교정뒤동일Pythonwrapper :app:assembleDebugAndroidTest를1회실행하고새source독립delta검토및양APIcomponent를다시대조한다. 새실패시자동loop없이원본과새근거를보고한다. T4source교정동안in_progress/T6pending이며actualT10전체PASS전다음구현은시작하지않는다.
