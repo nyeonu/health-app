@@ -1,6 +1,7 @@
 package com.ny.my.health
 
 import android.database.sqlite.SQLiteDatabase
+import android.provider.DocumentsContract
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ny.my.health.core.*
@@ -17,37 +18,69 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ManualDriveStoreInstrumentedTest {
     @Test
-    fun allActiveScopeKnownAndPriorHandlesSurviveReopenAndConflictingTargetsBlock() = runBlocking {
+    fun allActiveScopeGenericUriAndPriorHandlesSurviveReopenWhileStaleCorruptAndOrphanReadsFailClosed() = runBlocking {
         val f = Fixture()
         try {
             val archived = f.configure()
-            f.insert(archived,f.day(f.explicit,"archived-target","archived-prior"))
+            f.insert(archived,f.day(f.explicit,documentHandle("archived target"),documentHandle("archived prior")))
             val active = f.configure(archived)
-            val first = f.day(f.explicit,"same-target","prior-target")
-            val second = f.day(f.summary,"same-target","prior-target")
+            val current = documentHandle("current 공백 /?#%:&=+ target")
+            val prior = documentHandle("prior 이전 /?#%:&=+ target")
+            val otherCurrent = documentHandle("summary 요약 /?#%:&=+ target")
+            val boundaryId = "boundary 경계 /?#%:&=+ "
+            val boundaryPadding = 4096 - documentHandle(boundaryId).toByteArray(Charsets.UTF_8).size
+            val boundary = documentHandle(boundaryId + "x".repeat(boundaryPadding))
+            assertEquals(4096,boundary.toByteArray(Charsets.UTF_8).size)
+            assertEquals(boundary,SyncStateCodec.decodeHandle(boundary))
+            val oversized = documentHandle(boundaryId + "x".repeat(boundaryPadding + 1))
+            assertEquals(4097,oversized.toByteArray(Charsets.UTF_8).size)
+            f.reject { SyncStateCodec.decodeHandle(oversized) }
+            val first = f.day(f.explicit,current,prior)
+            val second = f.day(f.summary,otherCurrent,boundary)
             f.insert(active,first)
             f.insert(active,second)
             f.insert(active,first.copy(date = f.date.minusDays(1),datasets = first.datasets.mapValues { (_,file) ->
-                file.copy(targetHandle = "other-date",priorConfirmation = null)
+                file.copy(targetHandle = documentHandle("other date"),priorConfirmation = null)
             }))
-            assertEquals(mapOf(Dataset.DAILY to setOf("same-target","prior-target")),
-                f.store().loadKnownDriveTargets(active,f.day))
-            assertEquals(emptyMap<Dataset,Set<String>>(),f.store().loadKnownDriveTargets(active,f.date.minusDays(3)))
+            // 쓰기 연결은 모두 닫혔으며 새 store가 DB를 다시 열어 두 범위의 문자열을 읽는다.
+            val expected = mapOf(Dataset.DAILY to setOf(current,prior,otherCurrent,boundary))
+            val reopened = f.store().loadKnownTargets(active,f.day)
+            assertEquals(expected,reopened)
+            for (handle in expected.getValue(Dataset.DAILY)) assertArrayEquals(handle.toByteArray(Charsets.UTF_8),
+                reopened.getValue(Dataset.DAILY).single { it == handle }.toByteArray(Charsets.UTF_8))
+            assertEquals(reopened,f.store().loadKnownDriveTargets(active,f.day))
+            assertEquals(emptyMap<Dataset,Set<String>>(),f.store().loadKnownTargets(active,f.date.minusDays(3)))
+            assertEquals(f.store().loadKnownTargets(active,f.date.minusDays(3)),
+                f.store().loadKnownDriveTargets(active,f.date.minusDays(3)))
+            val conflicting = documentHandle("conflicting 충돌 /?#%:&=+ target")
             f.sql("UPDATE dataset SET target_handle=? WHERE generation=? AND date=? AND scope_key=?",
-                arrayOf("conflicting-target",active.value,f.day.toString(),second.scopeKey.value))
+                arrayOf(conflicting,active.value,f.day.toString(),second.scopeKey.value))
             // 이 집합의 충돌을 uploader가 차단할 수 있도록 어느 범위의 ID도 버리지 않는다.
-            assertEquals(setOf("same-target","prior-target","conflicting-target"),
-                f.store().loadKnownDriveTargets(active,f.day).getValue(Dataset.DAILY))
+            assertEquals(setOf(current,prior,conflicting,boundary),
+                f.store().loadKnownTargets(active,f.day).getValue(Dataset.DAILY))
+            assertEquals(f.store().loadKnownTargets(active,f.day),f.store().loadKnownDriveTargets(active,f.day))
+            f.reject { f.store().loadKnownTargets(archived,f.day) }
             f.reject { f.store().loadKnownDriveTargets(archived,f.day) }
             assertEquals(CommitStatus.STALE,f.store().reopenManualBlockers(archived).status)
         } finally { f.close() }
 
-        for (kind in listOf("malformed-profile","orphan","unsupported","unavailable")) {
+        val duplicate = Fixture()
+        try {
+            val generation = duplicate.configure()
+            duplicate.insert(generation,duplicate.day(duplicate.explicit,"same-target","prior-target"))
+            duplicate.insert(generation,duplicate.day(duplicate.summary,"same-target","prior-target"))
+            val expected = mapOf(Dataset.DAILY to setOf("same-target","prior-target"))
+            assertEquals(expected,duplicate.store().loadKnownTargets(generation,duplicate.day))
+            assertEquals(expected,duplicate.store().loadKnownDriveTargets(generation,duplicate.day))
+        } finally { duplicate.close() }
+
+        for (kind in listOf("malformed-profile","orphan","unsupported","unavailable",
+            "raw-whitespace-handle","corrupt-prior")) {
             val broken = Fixture()
             try {
                 val generation = broken.configure()
-                broken.insert(generation,broken.day(broken.explicit,"safe-target",null))
-                broken.insert(generation,broken.day(broken.summary,"other-target",null))
+                broken.insert(generation,broken.day(broken.explicit,documentHandle("safe target"),null))
+                broken.insert(generation,broken.day(broken.summary,documentHandle("other target"),documentHandle("prior target")))
                 when (kind) {
                     "malformed-profile" -> broken.sql("UPDATE day SET requested_scopes_json='{}' WHERE scope_key=?",
                         arrayOf(broken.key(broken.summary).value))
@@ -70,14 +103,28 @@ class ManualDriveStoreInstrumentedTest {
                     }
                     "unsupported" -> broken.db.openForWrite().use { it.version = 2 }
                     "unavailable" -> assertTrue(broken.db.resetDirectory.mkdir())
+                    "raw-whitespace-handle" -> {
+                        val invalid = "raw opaque 공백 /?#%:&=+"
+                        broken.reject { SyncStateCodec.decodeHandle(invalid) }
+                        broken.sql("UPDATE dataset SET target_handle=? WHERE scope_key=?",
+                            arrayOf(invalid,broken.key(broken.summary).value))
+                    }
+                    "corrupt-prior" -> broken.sql("UPDATE dataset SET prior_confirmation_json=? WHERE scope_key=?",
+                        arrayOf("{}",broken.key(broken.summary).value))
                 }
                 val bytes = broken.db.databaseFile.readBytes()
+                broken.reject { broken.store().loadKnownTargets(generation,broken.day) }
                 broken.reject { broken.store().loadKnownDriveTargets(generation,broken.day) }
                 assertEquals(CommitStatus.UNAVAILABLE,broken.store().reopenManualBlockers(generation).status)
                 assertArrayEquals(bytes,broken.db.databaseFile.readBytes())
             } finally { broken.close() }
         }
     }
+
+    private fun documentHandle(opaqueId: String): String =
+        DocumentsContract.buildDocumentUriUsingTree(
+            DocumentsContract.buildTreeDocumentUri("com.ny.my.health.synthetic","tree 합성 공백 /?#%:&=+"),
+            opaqueId).toString()
 
     @Test
     fun explicitManualRecoveryReopensEligibleBlockersWithoutDeletingFileUncertaintyOrRemoteStale() = runBlocking {

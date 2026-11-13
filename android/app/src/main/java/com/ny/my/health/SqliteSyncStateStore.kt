@@ -122,8 +122,12 @@ internal class SqliteSyncStateStore internal constructor(
         }
     }
 
-    /** 현재 세대의 모든 범위에서 확인한 ID를 함께 돌려주어 충돌을 숨기지 않는다. */
+    /** 기존 Drive 호출자의 목적지 공통 조회 호환 경계다. */
     suspend fun loadKnownDriveTargets(expected: DestinationGeneration, date: LocalDate): Map<Dataset, Set<String>> =
+        loadKnownTargets(expected,date)
+
+    /** 현재 세대의 모든 범위에서 확인한 handle을 함께 돌려주어 충돌을 숨기지 않는다. */
+    suspend fun loadKnownTargets(expected: DestinationGeneration, date: LocalDate): Map<Dataset, Set<String>> =
         withContext(Dispatchers.IO) {
             val coroutine = currentCoroutineContext()
             synchronized(database.pathLock) {
