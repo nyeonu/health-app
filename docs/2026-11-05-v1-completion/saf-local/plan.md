@@ -434,3 +434,7 @@ tasks:
 ## 실행 승인 — 2026-11-13
 
 기존V1자동승인/병렬지시에따라root는실제PR17merge57da, 부모인터페이스/추적성통합ec8698, 독립fresh-context 계획검토a43788e APPROVE/차단0을대조해이구체7작업을승인했다. 부모SAF상태in_progress commit7538e87로rev를재고정했다. 계약·파일·검증기준은독립검토대상과같고frontmatter상태/승인근거만갱신했다. T1/T2는파일이달라병렬실행한다. T1의초기3파일은standalone provider 최신52f7f97를토대로재사용하되추가fixture/rawpicker경계와실제양API통과를확인전done아님. T3는T1뒤, T4는T2/T3뒤의gate를유지한다. 실제환경명령은설치된wrapper/JDK/sharedcache를사용하며로컬Gradle최대2개만동시에실행한다.
+
+## 환경 준비 기록
+
+T1첫wrapper는network-disabled sandbox에서Gradle FileLockContentionHandler wildcardIP확정전실패했다(compile0). 기존JDK/cache/버전/명령을유지하고로컬daemon socket을허용하는tool `with_additional_permissions/network.enabled=true`로실행하는환경준비1회를승인했다. source결함/Native실패가아니며T2는처음부터같은args로진행한다. T1의앞선상대경로편집은cwd android에서못찾아미적용이었고완료주장없다. 미적용된배정fixture마무리2개만절대경로로적용하는작업경로교정1회를기록하며전체파일재작성/임의재시도금지다. 실제추가검증실패시중단한다.
