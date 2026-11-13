@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 65abc087706c77d2ae7bb58fd2431627437a527c
+parent_rev: 975960ca6cf445ae296b6e5cb2cd5551bbaf8bf0
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-saf-local
@@ -164,6 +164,30 @@ unknown dispatch scope는 명시실패; diagnostic branch는 고정class connect
 기본full은현재 critical14+나머지전체+기존host2스크립트 및artifact수집 그대로. 새테스트자동포함/skip없음.
 runner script는현재 단일bashhelper호출그대로; API35/36/permissions/버전/timeout/디스크준비불변.
 ```
+
+
+### ManualSafPorts — SDK-free controller와 실제 proof 경계
+
+```kotlin
+// ManualSafPorts — A/ManualSafSession.kt 안, 신규 파일 없음
+internal interface ManualSafPorts {
+    val store: SyncStateStore
+    val reader: ScopedHealthReader
+    suspend fun binding(generation: DestinationGeneration): String?
+    suspend fun validateSelection(treeUri: String, returnedFlags: Int, privacyConsent: Boolean)
+    suspend fun configure(expected: DestinationGeneration?, configuration: SyncConfiguration, treeUri: String): SyncCommit
+    suspend fun reopen(generation: DestinationGeneration): SyncCommit
+    suspend fun runPrepared(generation: DestinationGeneration, prepare: suspend () -> DestinationSync): BatchOutcome
+    suspend fun destination(treeUri: String, generation: DestinationGeneration, privacyConsent: Boolean): StorageDestination
+}
+```
+
+- ManualSafSession의 주 생성자는 `(ports: ManualSafPorts, clock: Clock)`이며 실제 보조 생성자는 `(sqliteStore: SqliteSyncStateStore, healthReader: ScopedHealthReader, execution: SyncExecutionSession, resolver: ContentResolver, configuration: SafTreeConfiguration = SafTreeConfiguration(resolver), clock: Clock = Clock.systemUTC())`다. T6에서 기존 Drive와 같은 store/reader/execution을 전달한다. test용 configuration 주입은 기존 forTesting만 사용하며 생산 allowlist는 바꾸지 않는다.
+- ManualSafSession의 `refresh`, `beginTreeSelection`, `acceptTree`, `continueExport`, `retry`, `reset`은 ports IO가 있는 suspend 메서드다. `acceptTree(requestId, Uri?, flags)`는 내부 `acceptTreeValue(requestId, String?, flags)`로만 위임한다. JVM은 문자열 ingress와 generic fake StorageDestination을 사용하고 Uri 실행·가짜 SafTreeProof·reflection을 쓰지 않는다.
+- ManualSafPorts.binding은 LOCAL private binding의 treeUri만 반환한다. validateSelection은 실제 `configuration.select(Uri.parse(treeUri), flags, consent)` 후 proof를 보관하지 않는다. configure는 기존 `PrivateDestinationBinding("LOCAL", treeUri = treeUri)`와 전체 intended 범위를 저장한다. 같은 tree·같은 범위는 generation/enrollment/journal을 재사용하며 다른 목적지·범위만 기존 configure CAS로 바꾼다.
+- ManualSafPorts.destination은 **runPrepared의 owner prepare 안에서만** 실제 `configuration.restore(treeUri, consent)` 후 `SafDestination(resolver, proof, generation, sqliteStore::loadKnownTargets, clock)`를 만든다. 성공 proof는 이 engine 수명에만 있고 StateFlow/saved state에는 없다. fresh store/binding/scope/grants 재확인 → destination/probe → 재확인 → reopenManualBlockers → 재확인 → DestinationSync 순서다. busy MERGED는 factory/probe/reopen/read를 호출하지 않는다.
+- ManualSafSession.beginTreeSelection은 즉시 launch할 picker ticket에 **외부 왕복 한 번만** 허용한다. T6는 bridge idle 확인 뒤 begin→즉시 launch하며 launch 실패/cancel은 null로 accept한다. 첫 pause는 owner를 취소하고 실행 proof를 없애되 그 ticket만 보존하고, 두 번째 pause/입력·동의·generation·reset 변경은 ticket도 폐기한다. 결과는 session foreground+Activity RESUMED 뒤 actual flags 그대로 전달한다. stale 결과는 새 ticket을 소모하지 않는다.
+- ManualSafSession 복원 refresh는 metadata-only다. 초기 intended는 저장된 전체 범위로 복원하되 뒤늦은 metadata가 편집을 덮지 않는다. 복원된 binding에 새 privacy consent·전경·같은 intended/stored 범위·grant 교집합이 충족되면 READY는 **명시 계속을 요청할 수 있음**만 뜻한다. provider capability/이번 업로드 성공을 뜻하지 않고 실제 실행은 fresh gate-time probe 통과 전 health read/write를 하지 않는다. pause·동의 철회·입력 변경은 이 readiness를 무효화한다.
 
 ## 3. 작업
 
@@ -392,7 +416,7 @@ runner script는현재 단일bashhelper호출그대로; API35/36/permissions/버
   | `A/ManualSafSession.kt` | 신규 | generation·picker ticket·동의·명시 계속·공용 gate controller |
   | `AT/ManualSafSessionTest.kt` | 신규 | stale result·취소·double continue·gate·reset 단위 경계 |
 
-- **인터페이스**: §2 `ManualSafSession`, `ManualSafState`, `SafManualActions`, `SafManualUi`, `SyncExecutionSession`, `SafTreeConfiguration`, `SafGrantProtocol`, `SafUiProtocol` 참조. T9의 ManualSafUiState.kt state/phase/actions를 소비하며 DTO/widget 파일을 수정하거나 같은 클래스를 재선언하지 않는다. test ports는 기존 ManualDrivePorts와 같은 store/reader/configure/reopen/runPrepared 경계를 사용하며 token/auth API가 없다.
+- **인터페이스**: §2 `ManualSafSession`, `ManualSafPorts`, `ManualSafState`, `SafManualActions`, `SafManualUi`, `SyncExecutionSession`, `SafTreeConfiguration`, `SafGrantProtocol`, `SafUiProtocol` 참조. T9의 ManualSafUiState.kt state/phase/actions를 소비하며 DTO/widget 파일을 수정하거나 같은 클래스를 재선언하지 않는다. test ports는 기존 ManualDrivePorts와 같은 store/reader/configure/reopen/runPrepared 경계를 사용하며 token/auth API가 없다.
 - **결정 로직**:
 
   ```
@@ -608,3 +632,7 @@ source086b5b3의provider1/capability2/pureUI1각양API failure/error/skip/duplic
 ### T4 fixture 사용 계약 보정 — 실제 선택 target 제어
 
 T4부여파일4개는유지한다. 기존MOVE_OUTSIDE_TREE/DELETE_SEEDED/DUPLICATE control은seed에고정돼실제adapter가만든날짜CSV의변경을검증하기에부족하다. 같은기존control의private 합성target-id extra를추가할수있게하며미지정은기존seed동작을그대로유지한다. ID는provider가만든nodes map의opaque key로만조회하고실제filesystem경로로해석하거나URI/ID/body를로그·오류메시지에넣지않는다. 권한/authority/UID/원래grants·10초단언/Java-only/binding/schema불변. partial은silentPARTIAL cursor와다른고정DOCUMENT_PARTIAL enum/Column_FLAGS의명시bit로구분한다. 테스트필요한합성target에대한제어뿐이고production능력/새UI동작이아니다.
+
+### T5 실행 전 SDK-free ports 계약 구체화
+
+T4 구현과 병렬 read-only 실제 API 조사로 기존 ManualDrivePorts 관례와 sealed private SafTreeProof/JVM 경계를 대조했다. 기존 승인된 suspend test ports를 같은 T5 파일 안의 ManualSafPorts로 구체화하며 생성자·문자열 ingress·실제 proof 생성 위치·즉시 picker 왕복 한 번·복원 READY 의미를 상위/하위 §2에 고정했다. 범위/권한/의존성/schema/DTO/기존 테스트 기준을 바꾸지 않으며 T4 product 계약도 그대로다. T5는 여전히 T4 완료 후 실행한다. 같은 tree·범위 재선택은 generation을 재사용해 불명확 결과를 보존한다. 소유자의 기존 V1 자동승인으로 이 구체화를 승인했으며 새로운 기능이나 승인 질문을 추가하지 않는다.
