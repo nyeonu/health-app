@@ -231,5 +231,107 @@
       43480668622
     ],
     "next_status": "RUNNING_NOT_YET_PASS"
+  },
+  "destination_checkpoint_pass": {
+    "source": "f863887001e788a11f31bff563905751830266f7",
+    "status": "PASS_components_only",
+    "root_verified": [
+      {
+        "run": 43480662382,
+        "source": "f863887001e788a11f31bff563905751830266f7",
+        "api": 35,
+        "artifact_id": 14066015820,
+        "sha256": "33e239f6f58295c06b0007050cd5b1304c54197a4c1272c957c7d0c412ca5524",
+        "tests": 4,
+        "cases": [
+          [
+            "com.ny.my.health.SafDestinationInstrumentedTest",
+            "safReconciliationPerformsNoWritesAndReservationsRejectChangedOrReusedInputs"
+          ],
+          [
+            "com.ny.my.health.SafDestinationInstrumentedTest",
+            "safShorterOverwriteReadsBackExactBytesAndAmbiguousRevokedMovedDeletedInterruptedTargetsRequireRecovery"
+          ],
+          [
+            "com.ny.my.health.SafJournalInstrumentedTest",
+            "afterPartialFailureCancellationOrUnknownCreateReconciliationRetriesOnlyPendingFiles"
+          ],
+          [
+            "com.ny.my.health.SafJournalInstrumentedTest",
+            "safEncodedOpaqueDocumentUrisRetainTargetResolverIdentityAfterSQLiteReopen"
+          ]
+        ],
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      },
+      {
+        "run": 43480662382,
+        "source": "f863887001e788a11f31bff563905751830266f7",
+        "api": 36,
+        "artifact_id": 14064639071,
+        "sha256": "821f0f6c2865ffe5b041c5ca30064482fe429f571ae588a05886329d7d4c0222",
+        "tests": 4,
+        "cases": [
+          [
+            "com.ny.my.health.SafDestinationInstrumentedTest",
+            "safReconciliationPerformsNoWritesAndReservationsRejectChangedOrReusedInputs"
+          ],
+          [
+            "com.ny.my.health.SafDestinationInstrumentedTest",
+            "safShorterOverwriteReadsBackExactBytesAndAmbiguousRevokedMovedDeletedInterruptedTargetsRequireRecovery"
+          ],
+          [
+            "com.ny.my.health.SafJournalInstrumentedTest",
+            "afterPartialFailureCancellationOrUnknownCreateReconciliationRetriesOnlyPendingFiles"
+          ],
+          [
+            "com.ny.my.health.SafJournalInstrumentedTest",
+            "safEncodedOpaqueDocumentUrisRetainTargetResolverIdentityAfterSQLiteReopen"
+          ]
+        ],
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      },
+      {
+        "run": 43480668622,
+        "source": "f863887001e788a11f31bff563905751830266f7",
+        "api": 35,
+        "artifact_id": 14065437101,
+        "sha256": "047c2c9a73df61ca3b1ccf6d9bea3d95b58352da9537dbd99db144c1f9b54676",
+        "tests": 1,
+        "cases": [
+          [
+            "com.ny.my.health.SyntheticProviderStarterTest",
+            "syntheticProviderGrantsTargetUidTreeAccessAndResolverReadsTheSeededDocument"
+          ]
+        ],
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      },
+      {
+        "run": 43480668622,
+        "source": "f863887001e788a11f31bff563905751830266f7",
+        "api": 36,
+        "artifact_id": 14063649947,
+        "sha256": "26b1aea7910014151b88cd6e1a002792deb7579dbd51b55a5378733c039cbcbe",
+        "tests": 1,
+        "cases": [
+          [
+            "com.ny.my.health.SyntheticProviderStarterTest",
+            "syntheticProviderGrantsTargetUidTreeAccessAndResolverReadsTheSeededDocument"
+          ]
+        ],
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      }
+    ]
   }
 }

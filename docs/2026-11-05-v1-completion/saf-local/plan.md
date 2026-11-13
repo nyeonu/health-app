@@ -17,11 +17,11 @@ tasks:
   - {id: T3, title: 전경 local tree 동의와 실제 capability probe, depends_on: [T1], status: done, tier: standard}
   - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: done, tier: standard}
   - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: done, tier: standard}
-  - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9, T10], status: pending, tier: standard}
+  - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9, T10], status: in_progress, tier: standard}
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
   - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: in_progress, tier: standard}
   - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: done, tier: standard}
-  - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: in_progress, tier: standard}
+  - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: done, tier: standard}
 ---
 
 # 검증된 local tree 전경 내보내기
@@ -707,3 +707,7 @@ AndroidTest생성cache/classes두경로만제거한뒤source수정없이동일as
 ### T8 실제 flow 고정 진단의 병렬 준비
 
 T6 검증명령은새SafManualFlow2method와기존ManualDriveFlow6method의실제Activity검증이다. 전체Native/host는T7에서여전히필수이며T6마다전체120+개를중복실행하지않도록기존optionaldispatch에고정saf-flow1개를추가한다. 동일두CI파일은T6네제품/테스트파일과겹치지않아T10대기중작성/정적검증가능하다. 선택class는리터럴고정이며둘중source가없으면실패하고PR/기타event/빈값은그대로full이다. 새mode실제실행은T6source생성뒤하고최종full gate를대체하지않는다. 기존T8수정회차를리셋하지않고이는소유자기존V1자동승인·병렬지시안의진단범위추가작업이다.
+
+### T10 실제 완료와 T6 재개
+
+sourcef863887001e788a11f31bff563905751830266f7의run43480662382는양API각정확4method, run43480668622는양API각정확provider1method가성공했다. root가네ZIP SHA/원본XML/exactclass+method/실패·오류·skip·중복0을직접대조했다. T4원래fixture실패는교정후실제로통과했고T10done이다. T6의선행조건이모두충족되어실제Activity네파일연결을재개한다. 전체SAF/fullNative/host/최종freshPR검토·댓글·병합은아직미완료다.
