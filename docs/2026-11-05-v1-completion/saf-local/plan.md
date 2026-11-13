@@ -815,3 +815,7 @@ T6R4 source3파일은app96JVM/lint/APK/testAPK2분19초PASS와독립updatedTerra
 교정1의 app97/testAPK는38초PASS이며 frozen SHA d2a2bef7d48592347a23c75f731c5b21b765ddaa28f0bf8e4d52e584ef744769를독립재검토했다. 원래Important3와grant0/성공retry분기는해결됐으나새Important2가남았다. refreshPermissions의legacy refreshing=false는별도SAF metadata job완료증거가아니므로동일public Job child완료관측을refresh와실제resume주변에도적용한다. ActivityScenario lifecycle호출은JUnitworker에두고Main에서전후job집합만포착하며Compose idle/기존false상태를완료로간주하지않는다. exactCSV기대값은같은production normalizer/exporter로계산하지않고docs/data-contract.md의고정schema/합성steps=1/빈ungranted값/저장generatedAt에따른독립literal UTF-8 bytes로비교한다.
 
 기존한Native파일/두method/권한·생성·쓰기·삭제음성단언은유지한다. 소유자V1자동수정위임에따라새근거의같은범위교정6으로원래누적을이어기록하며reset하지않는다. 교정후compile/unit명령1회와updated별도재검토뒤양API실제8methods를진행한다. 새실패는숨겨재시도하지않는다.
+
+### T11 보강 source gate 완료와 실제 양 API 실행
+
+교정6 frozen Native파일 SHA23993e7063a2bb612062d953c90746e10d0b1ebe983eeee4b3f64761ca279d8c는app97/testAPK36초PASS와updated독립Terra source APPROVE를받았다. root가원본XML97unique/실패·오류·skip0과sourceSHA를대조해통합했다. source승인을Native통과로간주하지않으며saf-flow고정두class/8methods를이source의API35·36에서실행한다. 실제원본ZIP/digest/XML까지대조한뒤에만T11/T8done과T7진입을처리한다. 기존full/host/최종freshPRreview는불변이다.
