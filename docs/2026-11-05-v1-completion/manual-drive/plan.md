@@ -775,3 +775,9 @@ cfb/run43421817901/API35 job131873397235는제품테스트전 FATAL userdata 디
 ### 최종 후보 통합 전 확인
 
 T14 actualfocused24/0/0/0(ManualDriveSession9+ManualSyncProfiling6+PhoneProfilingSession9), testAPK컴파일PASS1분19초. 기존4파일만변경하며실제boundVM+realSQLite/syntheticHC/transport Native진단수명테스트를추가했다. T13/T11/T12/T14/T15를통합한현재후보에root전체검증1회와양API전체CI·4독립리뷰를병렬수행한다. rawHealth/credential/date는진단입력에추가하지않았다. Nativeactual·최신head리뷰전완료/병합주장은없다.
+
+### T14 복구1/2 — 진단 무효화·terminal callback·Native scoped 단언
+
+210ad8a 독립 적합성은 reset/동의철회 뒤 phone report 폐기/지연재게시금지(P1), 최종hasResolution=true 실패의 collecting 미종결(P2)을 발견했다. 실제 bridge는 중간resolution에는callback하지않으므로 acceptAuthorization으로전달된true는terminal실패로종결한다. 외부동의대기는expectExternalResult/pause로유지하며진단으로우회하지않는다. reset/철회는보고를즉시비우고늦은ownerfinish가다시게시하지않도록 profile identity/generation 무효화를분리한다; 필요시같은4파일내 default-noop invalidationobserver를additive로추가한다. 단순pause는취소요약허용. 신규잘못된테스트의reset/withdraw report-nonnull 기대는원래승인phone spec에따라null/latecallback무재게시로정정하고 terminal실패active0을단언한다.
+
+독립quality는신규Native테스트가unscoped store.load().days(의도적으로empty)에single()을호출하는결함도확인했다. loadForScope(currentgen,today,actualMANUALaccess)로scope를명시해실제EMPTY day를검증한다. production의rawread/쓰기정책을바꾸지않는다. 관련4파일만교정하고 focused단언·Native실제실행·최신head독립재검토까지병합보류한다. 이전24JVM통과와Nativecompile은이누락동작통과증거가아니다.
