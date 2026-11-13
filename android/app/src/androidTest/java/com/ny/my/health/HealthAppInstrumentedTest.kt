@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithTag
@@ -37,20 +38,21 @@ class HealthAppInstrumentedTest {
     @Test
     fun firstLaunchNeverStartsGoogleAuthorizationWithoutExplicitOptIn() {
         compose.onNodeWithText("Health App · 수동 동기화").assertIsDisplayed()
-        compose.onNodeWithText("Google 권한 확인").assertIsNotEnabled()
+        compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("마지막 업로드 확인", substring = true).assertExists()
     }
 
     @Test
     fun grantingDriveOptInWithoutHealthPermissionsDoesNotStartUpload() {
         // Fresh emulator install: the app has never been granted Health Connect access.
-        compose.onAllNodes(isToggleable())[0].performScrollTo().performClick()
+        compose.onNodeWithContentDescription("V1 비공개 Drive 업로드 동의").performScrollTo().performClick()
         compose.waitForIdle()
-        compose.onNodeWithText("Google 권한 확인").performScrollTo().performClick()
-        compose.onNodeWithText("PERMISSION_REQUIRED:", substring = true).assertExists()
+        compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Google 계정 선택").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("읽기 권한: 0/5개", substring = true).assertExists()
         compose.onNodeWithText("확인된 업로드 이력이 없습니다.").assertExists()
         compose.onNodeWithText("확인된 파일 수:", substring = true).assertDoesNotExist()
-        compose.onNodeWithText("업로드 계속").assertDoesNotExist()
+        compose.onNodeWithText("업로드 계속").performScrollTo().assertIsNotEnabled()
     }
 
     @Test
@@ -85,7 +87,7 @@ class HealthAppInstrumentedTest {
                 org.junit.Assert.assertEquals(PhoneCopyState.NONE, state.phoneProfiling.copyState)
             }
             compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
-            compose.onNodeWithText("업로드 계속").assertDoesNotExist()
+            compose.onNodeWithText("업로드 계속").performScrollTo().assertIsNotEnabled()
             compose.onNodeWithText("확인된 파일 수:", substring = true).assertDoesNotExist()
         }
         compose.waitUntil(10_000) {
@@ -321,7 +323,7 @@ class HealthAppInstrumentedTest {
         assertFixedContentBoundary()
         captureNativeLayout("returned-top")
         compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithText("업로드 계속").assertDoesNotExist()
+        compose.onNodeWithText("업로드 계속").performScrollTo().assertIsNotEnabled()
     }
 
     @Test
@@ -345,7 +347,7 @@ class HealthAppInstrumentedTest {
         assertFixedContentBoundary()
         captureNativeLayout("recreated-top")
         compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithText("업로드 계속").assertDoesNotExist()
+        compose.onNodeWithText("업로드 계속").performScrollTo().assertIsNotEnabled()
     }
 
     private fun scrollToSettingsBottom() {
@@ -395,13 +397,14 @@ class DurableHistoryActivityInstrumentedTest {
     private fun assertManualState() {
         val state = model.state.value
         org.junit.Assert.assertFalse(state.uploadOptIn)
+        org.junit.Assert.assertFalse(model.manual.state.value.privateFolderConsent)
         org.junit.Assert.assertFalse(state.readyToUpload)
         org.junit.Assert.assertFalse(state.pendingConsent)
         org.junit.Assert.assertFalse(state.syncing)
         org.junit.Assert.assertNull(model.authorizationTicket)
         org.junit.Assert.assertNull(state.transientRemoteStatus)
         compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithText("업로드 계속").assertDoesNotExist()
+        compose.onNodeWithText("업로드 계속").performScrollTo().assertIsNotEnabled()
     }
 
     @org.junit.After fun removeOnlyOwnedSyntheticFixture() {
@@ -419,8 +422,8 @@ class DurableHistoryActivityInstrumentedTest {
         launchFresh()
         val previousModel = model
         compose.onNodeWithText("업로드 시작 전 종료됨 · 다시 인증해 주세요.").performScrollTo().assertIsDisplayed()
-        compose.onAllNodes(isToggleable())[0].performScrollTo().performClick()
-        org.junit.Assert.assertTrue(model.state.value.uploadOptIn)
+        compose.onNodeWithContentDescription("V1 비공개 Drive 업로드 동의").performScrollTo().performClick()
+        org.junit.Assert.assertTrue(model.manual.state.value.privateFolderConsent)
         scenario!!.close()
         launchFresh()
         org.junit.Assert.assertNotSame(previousModel, model)
@@ -454,11 +457,11 @@ class DurableHistoryActivityInstrumentedTest {
     @Test fun actualUiCancelPreservesHistoryAndConfirmedLocalDeletionReopensDurablyEmpty() {
         seed(com.ny.my.health.core.HistoryPhase.AUTHORIZING)
         launchFresh()
-        compose.onAllNodes(isToggleable())[0].performScrollTo().performClick()
+        compose.onNodeWithContentDescription("V1 비공개 Drive 업로드 동의").performScrollTo().performClick()
         compose.onNodeWithText("상세·설정 펼치기").performScrollTo().performClick()
         compose.onNodeWithText("로컬 이력 삭제").performScrollTo().performClick()
         compose.onNodeWithText("취소").performClick()
-        org.junit.Assert.assertTrue(model.state.value.uploadOptIn)
+        org.junit.Assert.assertTrue(model.manual.state.value.privateFolderConsent)
         org.junit.Assert.assertEquals(success, kotlinx.coroutines.runBlocking { SqliteHistoryStore(context).load() }.history!!.success)
         compose.onNodeWithText("로컬 이력 삭제").performScrollTo().performClick()
         compose.onNodeWithText("이력 삭제").performClick()
