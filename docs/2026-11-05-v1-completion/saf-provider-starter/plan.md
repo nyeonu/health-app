@@ -122,3 +122,7 @@ SAF production local authority allowlist/background disabled/privacy/probe 계�
 ### T1 복구1 및 T2 승인
 
 독립fixture review261faa1는정적Critical/Important0,cleanup에서REVOKE실패시RESET생략/원래오류가림 Suggestion1을발견했다. T1의finally를두cleanup모두시도/원래실패보존/별도고정cleanup실패보고로보정하며기존테스트단언은유지한다. 실제runtime전판정을보류한다. 소유자의병렬화/속도지시에따라신규기반starter만빠르게실행하는수동CI모드를T2로승인한다. PR/default전체gate는기존명령그대로이며focused증거를full통과로과장하지않는다.
+
+### T2 복구1 — 실제 runner 줄별 shell 실행
+
+run43428796098 API35 job131896773570은 Native 시작 전 shell end-of-file/expecting fi 오류로 중단됐다. script를 줄마다 별도 shell로 실행하는 runner 계약을 최초 bash-n 검증이 모델링하지 못했다. 단일 bash helper 호출로 교정하고 실제 action 한 줄을 stub 실행해 dispatch starter/full/PR guard/없는 변수/실패 즉시 종료를 확인했다. 변경 workflow+helper2파일만이며 기기/권한/의존성/성공기준은 불변이다. 기존 run43427341555/API35는 UTP Maven dependency resolve 실패로 Native0이며 provider assertion 실패가 아니다. 실제 API35/36 starter는 재실행 전 pending이다.
