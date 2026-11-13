@@ -10,8 +10,8 @@ spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feat/v1-workmanager-starter
 baseline: b35c11c8b4651cf9b12b004a7fc4ae3d52a4d3ee
 tasks:
-  - {id: T1, title: WorkManager 의존성 초기 감사, depends_on: [], status: in_progress, tier: standard}
-  - {id: T2, title: 실제 test WorkManager 합성 starter, depends_on: [T1], status: pending, tier: standard}
+  - {id: T1, title: WorkManager 의존성 초기 감사, depends_on: [], status: done, tier: standard}
+  - {id: T2, title: 실제 test WorkManager 합성 starter, depends_on: [T1], status: in_progress, tier: standard}
 ---
 
 # 독립 WorkManager 기반 준비
@@ -38,7 +38,7 @@ tasks:
 | `android/ci/run-emulator-validation.sh` | critical 4개 class 뒤 나머지 normal discovery와 history/sync-state host 검증. 새 starter는 notClass 제외 목록에 없으므로 normal discovery 대상 |
 | 상위 계획/ADR-008 | 공식 2.11.0 POM/AAR 조사상 minSdk23/minCompileSdk35/minAGP8.6.0/Kotlin2.1.20/coroutines1.9.0. 이는 실제 앱 resolved graph 검증을 대신하지 않음 |
 
-이번 로컬 조사에서 2.11.0 runtime/testing AAR·source가 캐시에 없어 `WorkManagerTestInitHelper`/`TestDriver`의 정확한 overload와 executor/초기화 동작은 직접 확인하지 못했다. 아래 계약은 실행 시 공식 2.11.0 source 또는 resolved JAR의 javap로 먼저 확인할 **추정**이다. 함수 signature를 임의로 만들어 구현하지 않는다. 현재 SDK 하한과 library 선언 하한의 비교는 가능하나 실제 기동 PASS는 아직 없다.
+T1 실제 공식2.11.0 source/resolvedAAR javap로 아래helper/driver/executor/cleanup계약을확인했다. raw inventory는 dependency-audit.json 및 tooling/wm-starter-t1/javap.txt에있다. actualstarter 기동은T2 API35/36에서확인하며아직pending이다.
 
 ### EarlyStarterContracts
 
@@ -56,6 +56,14 @@ WorkManagerTestInitHelper.getTestDriver로 실제 TestDriver를 얻고 null이�
 CoroutineWorker에는 지원되는 비동기 executor 배선을 사용하며 SynchronousExecutor와
 runBlocking의 main-thread 교착을 피한다. 정확한 배선은 실제 source 확인 후 선택·기록.
 test helper DB 종료/worker cancel/executor 종료는 지원 API로 finally에서 모두 시도.
+확인된 실제 API: Configuration.Builder.setWorkerFactory(factory).setExecutor(workerExecutor).setTaskExecutor(taskExecutor).
+initializeTestWorkManager(context, configuration, WorkManagerTestInitHelper.ExecutorsMode.PRESERVE_EXECUTORS).
+getTestDriver(context)는 nullable이므로 non-null 단언; driver.setInitialDelayMet(request.id).
+서로다른worker/task ExecutorService를쓰며task는Roomqueryexecutor이기도하므로2threads이상pool필수.
+Instrumentation thread의 runBlocking/withTimeout에서getWorkInfoByIdFlow(id).first{terminal}로관찰하며mainthread차단금지.
+finally는cancelAllWork().result boundedawait→closeWorkDatabase()→두executor shutdown 모두시도/원래실패보존.
+closeWorkDatabase는testscope/DB를닫지만defaultdelegate를복원하지않는다. 다음testhelper초기화가delegate교체하며현재production에는WM호출이없다.
+생산Application/manifest초기화코드변경없이test-only WorkerFactory가합성worker만생성한다.
 테스트 전체에 timeout; arbitrary sleep/polling 성공 판정, skip, mock TestDriver 금지.
 ```
 
@@ -171,3 +179,7 @@ Galaxy/실계정/실제 HC background grant/Doze/reboot/network/battery/TalkBack
 ### 계획 표기 복구1/2
 
 assemble_brief의명시참조 EarlyStarterContracts가heading만으로는해소되지않았다. 실제존재하는동일코드블록에조립기지원header주석만추가했다. 계약/API/파일/검증내용불변. 재조립에서해소실패0및Shared design원문포함확인후T1배정한다.
+
+### T1 실제 완료와 검증기 보정1
+
+root는4실제graph/155OSV응답/0vulnerability·error와13Gradle rawlog SHA256을직접대조했다. baseline19초/integration3분8초119tasks PASS, 실제AAR source/javap21 signatures확인. 기본initializer/component/normalpermissions 및DUMP-protected DiagnosticsReceiver의privileged enqueue부수효과를감사JSON에기록했고backup/process변경없다. OSV초기자동검토거부는공개Maven좌표만전송한다는allowlist증거로한정한후승인된조회로완료됐다. 읽기전용마지막검증기의임의commands길이16예상이실제15(13Gradle+OSV+javap)와달랐다. 임의길이대신필수명령집합/성공증거검증으로교정1회했으며source/build재시도없다. T1done, T2actualNative완료전전체done아님.
