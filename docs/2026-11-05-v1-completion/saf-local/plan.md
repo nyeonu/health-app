@@ -739,3 +739,7 @@ sourcef863887001e788a11f31bff563905751830266f7의run43480662382는양API각정�
 ### T6 작업 크기 보정1 — Terra 제품 배선과 실제 flow 시험 분리
 
 첫Terra 실행자는네파일전체의배선과새Native2개를한세션에완료할수없다고보고했고파일변경/빌드/테스트는0이었다. 작업실패를성공으로세지않고원래T6를제품배선3파일source gate와의존T11 actualflow1파일로나눈다. 기존두행동·실제SQLite/provider·양API8methods gate를T11에원문유지하고T7선행을T11로옮겼다. T6는기존180 JVM/빌드/lint/testAPK·독립source검토까지이며실제E2E통과라고하지않는다. 원래T6기술보정1/2를기록하며모델교체로횟수를초기화하지않는다. 소유자의Terra작업별새세션·자동승인·병렬지시에따른작업크기보정이고scope/성공기준/권한/데이터/의존성/schema/최종full gate는불변이다.
+
+### T8 saf-flow source 정적 검증 완료
+
+기존부분편집13줄을Terra가보존한채정적/stub검증했고root도같은검증/bashedsyntax/diffcheck를직접실행했다. 별도Terra세션source APPROVE와두SHA를root가복사전대조했다. 선택목록1줄과고정case12줄만추가됐고기존full본문/host/설정은byte동일하다. staticAST의127은Starter이름누락이있어최종Nativecount로쓰지않는다. 실제saf-flow 양API실행은T11신규source뒤이며T8은그때까지in_progress다.

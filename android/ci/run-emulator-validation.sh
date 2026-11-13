@@ -53,6 +53,18 @@ if [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ]; then
       (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SafManualUiInstrumentedTest')
       exit 0
       ;;
+    saf-flow)
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/SafManualFlowInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: SafManualFlowInstrumentedTest' >&2
+        exit 1
+      fi
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/ManualDriveFlowInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: ManualDriveFlowInstrumentedTest' >&2
+        exit 1
+      fi
+      (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SafManualFlowInstrumentedTest,com.ny.my.health.ManualDriveFlowInstrumentedTest')
+      exit 0
+      ;;
     *)
       echo '알 수 없는 수동 진단 범위입니다.' >&2
       exit 1

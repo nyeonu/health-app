@@ -18,6 +18,7 @@ on:
           - saf-capability
           - saf-destination
           - saf-ui
+          - saf-flow
 
 permissions:
   contents: read
