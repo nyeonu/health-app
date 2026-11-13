@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 975960ca6cf445ae296b6e5cb2cd5551bbaf8bf0
+parent_rev: 8260ecd9dd1e4f65edfd2da0cb5d51917061e5a9
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-saf-local
@@ -17,10 +17,11 @@ tasks:
   - {id: T3, title: 전경 local tree 동의와 실제 capability probe, depends_on: [T1], status: done, tier: standard}
   - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: in_progress, tier: standard}
   - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: pending, tier: standard}
-  - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9], status: pending, tier: standard}
+  - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9, T10], status: pending, tier: standard}
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
   - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: done, tier: standard}
   - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: done, tier: standard}
+  - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: pending, tier: standard}
 ---
 
 # 검증된 local tree 전경 내보내기
@@ -182,11 +183,11 @@ internal interface ManualSafPorts {
 }
 ```
 
-- ManualSafSession의 주 생성자는 `(ports: ManualSafPorts, clock: Clock)`이며 실제 보조 생성자는 `(sqliteStore: SqliteSyncStateStore, healthReader: ScopedHealthReader, execution: SyncExecutionSession, resolver: ContentResolver, configuration: SafTreeConfiguration = SafTreeConfiguration(resolver), clock: Clock = Clock.systemUTC())`다. T6에서 기존 Drive와 같은 store/reader/execution을 전달한다. test용 configuration 주입은 기존 forTesting만 사용하며 생산 allowlist는 바꾸지 않는다.
-- ManualSafSession의 `refresh`, `beginTreeSelection`, `acceptTree`, `continueExport`, `retry`, `reset`은 ports IO가 있는 suspend 메서드다. `acceptTree(requestId, Uri?, flags)`는 내부 `acceptTreeValue(requestId, String?, flags)`로만 위임한다. JVM은 문자열 ingress와 generic fake StorageDestination을 사용하고 Uri 실행·가짜 SafTreeProof·reflection을 쓰지 않는다.
-- ManualSafPorts.binding은 LOCAL private binding의 treeUri만 반환한다. validateSelection은 실제 `configuration.select(Uri.parse(treeUri), flags, consent)` 후 proof를 보관하지 않는다. configure는 기존 `PrivateDestinationBinding("LOCAL", treeUri = treeUri)`와 전체 intended 범위를 저장한다. 같은 tree·같은 범위는 generation/enrollment/journal을 재사용하며 다른 목적지·범위만 기존 configure CAS로 바꾼다.
-- ManualSafPorts.destination은 **runPrepared의 owner prepare 안에서만** 실제 `configuration.restore(treeUri, consent)` 후 `SafDestination(resolver, proof, generation, sqliteStore::loadKnownTargets, clock)`를 만든다. 성공 proof는 이 engine 수명에만 있고 StateFlow/saved state에는 없다. fresh store/binding/scope/grants 재확인 → destination/probe → 재확인 → reopenManualBlockers → 재확인 → DestinationSync 순서다. busy MERGED는 factory/probe/reopen/read를 호출하지 않는다.
-- ManualSafSession.beginTreeSelection은 즉시 launch할 picker ticket에 **외부 왕복 한 번만** 허용한다. T6는 bridge idle 확인 뒤 begin→즉시 launch하며 launch 실패/cancel은 null로 accept한다. 첫 pause는 owner를 취소하고 실행 proof를 없애되 그 ticket만 보존하고, 두 번째 pause/입력·동의·generation·reset 변경은 ticket도 폐기한다. 결과는 session foreground+Activity RESUMED 뒤 actual flags 그대로 전달한다. stale 결과는 새 ticket을 소모하지 않는다.
+- `ManualSafSession`의 주 생성자는 `(ports: ManualSafPorts, clock: Clock)`이며 실제 보조 생성자는 `(sqliteStore: SqliteSyncStateStore, healthReader: ScopedHealthReader, execution: SyncExecutionSession, resolver: ContentResolver, configuration: SafTreeConfiguration = SafTreeConfiguration(resolver), clock: Clock = Clock.systemUTC())`다. T6에서 기존 Drive와 같은 store/reader/execution을 전달한다. test용 configuration 주입은 기존 forTesting만 사용하며 생산 allowlist는 바꾸지 않는다.
+- `ManualSafSession`의 `refresh`, `beginTreeSelection`, `acceptTree`, `continueExport`, `retry`, `reset`은 ports IO가 있는 suspend 메서드다. `acceptTree(requestId, Uri?, flags)`는 내부 `acceptTreeValue(requestId, String?, flags)`로만 위임한다. JVM은 문자열 ingress와 generic fake StorageDestination을 사용하고 Uri 실행·가짜 SafTreeProof·reflection을 쓰지 않는다.
+- `ManualSafPorts`.binding은 LOCAL private binding의 treeUri만 반환한다. validateSelection은 실제 `configuration.select(Uri.parse(treeUri), flags, consent)` 후 proof를 보관하지 않는다. configure는 기존 `PrivateDestinationBinding("LOCAL", treeUri = treeUri)`와 전체 intended 범위를 저장한다. 같은 tree·같은 범위는 generation/enrollment/journal을 재사용하며 다른 목적지·범위만 기존 configure CAS로 바꾼다.
+- `ManualSafPorts`.destination은 **runPrepared의 owner prepare 안에서만** 실제 `configuration.restore(treeUri, consent)` 후 `SafDestination(resolver, proof, generation, sqliteStore::loadKnownTargets, clock)`를 만든다. 성공 proof는 이 engine 수명에만 있고 StateFlow/saved state에는 없다. fresh store/binding/scope/grants 재확인 → destination/probe → 재확인 → reopenManualBlockers → 재확인 → DestinationSync 순서다. busy MERGED는 factory/probe/reopen/read를 호출하지 않는다.
+- `ManualSafSession`.beginTreeSelection은 즉시 launch할 picker ticket에 **외부 왕복 한 번만** 허용한다. T6는 bridge idle 확인 뒤 begin→즉시 launch하며 launch 실패/cancel은 null로 accept한다. 첫 pause는 owner를 취소하고 실행 proof를 없애되 그 ticket만 보존하고, 두 번째 pause/입력·동의·generation·reset 변경은 ticket도 폐기한다. 결과는 session foreground+Activity RESUMED 뒤 actual flags 그대로 전달한다. stale 결과는 새 ticket을 소모하지 않는다.
 - ManualSafSession 복원 refresh는 metadata-only다. 초기 intended는 저장된 전체 범위로 복원하되 뒤늦은 metadata가 편집을 덮지 않는다. 복원된 binding에 새 privacy consent·전경·같은 intended/stored 범위·grant 교집합이 충족되면 READY는 **명시 계속을 요청할 수 있음**만 뜻한다. provider capability/이번 업로드 성공을 뜻하지 않고 실제 실행은 fresh gate-time probe 통과 전 health read/write를 하지 않는다. pause·동의 철회·입력 변경은 이 readiness를 무효화한다.
 
 ## 3. 작업
@@ -384,6 +385,9 @@ internal interface ManualSafPorts {
 
 체크포인트 2(T3·T4 뒤): 실제 grant/probe와 shorter overwrite/readback·journal reopen·unknown absent create0을 합성 provider 양API 통합으로 확인한다. scope별 prior/unknown/REMOTE_STALE 보존 및 encoded URI resolver identity가 통과한 뒤 controller 통합으로 진행한다.
 
+
+- **병렬 checkpoint 분리**: T4의 완료는 교정 source의 lint/APK/testAPK·독립 소스 재검토·기존 JVM XML 대조까지다. 아래 actual provider/destination 연결 실행은 동일 source를 고정한 T10에서 빠짐없이 수행한다. T5는 이 안정 API source를 기반으로 별도 두 파일만 구현할 수 있고 T6는 T10 실제 양API PASS 전 시작하지 않는다. component 실패 시 T4 원래 ID/복구 회차를 유지하며 T5의 영향 없는 코드와 증거를 보존한다.
+
 ### T9: URI 없는 SAF 상태와 pure 화면 semantics
 
 - depends_on: []; root가 2026-11-13 exact state/actions 계약과 pure UI enablement를 기존 V1 자동승인 범위로 승인했다. 부모/child 문서 고정 뒤 시작. T3/T4 소유 source 파일을 읽기만 하며 수정하지 않는다.
@@ -557,6 +561,17 @@ internal interface ManualSafPorts {
 
 새 설정을 중지하고 기존 generation admission을 무효화한 뒤 PR을 되돌린다. 사용자 export나 기존 health target을 삭제하지 않는다. 새 LOCAL binding/generic URI를 모르는 구버전은 자동 DB 초기화/Drive fallback 대신 명시적 unsupported/reset 경계를 사용한다. 기존 LOCAL uncertainty/journal을 자동 지우지 않는다. 사용자 확인 reset은 기존 app-private 설정/coverage 범위만 다루고 foundation history/원격 파일을 보존한다. provider proof 실패는 비활성화이며 capability를 낙관적으로 복원하지 않는다.
 
+### T10: 동일 source provider와 destination 실제 checkpoint
+
+- **depends_on**: T4; **tier**: standard; **status**: pending.
+- **변경 파일**: `docs/2026-11-05-v1-completion/saf-local/checkpoint-native.json` — root가 실제 run/head/artifact digest/XML class+method/count와 한계를 기록한다. 제품·테스트 코드 수정 작업이 아니다.
+- **인터페이스**: §2 `SafCiProtocol` 참조.
+- **작성할 테스트**: T1 starter와 T4의 기존 네 Native 행동을 재사용한다. 새 동작이나 테스트 삭제/skip이 없다.
+- **호출 순서**: T4 source를 한 SHA로 고정 → saf-destination 및 provider fixture 재검증 saf-provider-starter를 API35/36에 독립 dispatch → ZIP hash/원본 XML/expected class+method/failure·error·skip·duplicate0을 root 대조한다.
+- **완료 기준**: 두 mode 각각 양API 실제 PASS이며 진단 component 결과를 full gate라고 부르지 않는다. 실패 시 T4 원래 교정 회차로 귀속하고 T6를 시작하지 않는다.
+- **검증 방법**: 고정 진단 saf-destination은 `SafDestinationInstrumentedTest,SafJournalInstrumentedTest`, saf-provider-starter는 `SyntheticProviderStarterTest`다. 기존 최종 전체 Native/host는 T7에서 별도로 그대로 수행한다.
+- **주의사항**: T5의 두 신규 파일과 소유가 겹치지 않아 actual CI 대기와 controller 구현만 병렬화한다. 실제 기기/계정/외부 provider/TalkBack 수용은 미확인이다.
+
 ## 복구 기록
 
 | 작업 | 회차/2 | 실패 증거·원인 | 새 근거·수정 가설 | 계획 보정 전→후·유지 기준 | 수정 파일·보존 대상 | 검증 명령·결과 | 실행자·다음 조치 |
@@ -646,3 +661,7 @@ T4 구현과 병렬 read-only 실제 API 조사로 기존 ManualDrivePorts 관�
 - 같은 기존 Java fixture에 고정 `SECURITY_FAILURE`, `SAME_TARGET_ACROSS_DATASETS`, `OVERSIZED_TARGET_ID` 제어를 추가할 수 있다. synthetic target만 대상으로 실제 query SecurityException·두 dataset의 동일 node/정확 membership·encoded URI 길이 4096/4097 경계를 검증한다. private 숫자 byte-size extra는 이 마지막 고정 제어에만 제한하고 범위를 검증한다. 임의 path/URI/명령 실행·로그는 추가하지 않는다.
 - Native 회귀는 실제 SecurityException의 정확한 BLOCKED/cause·suppressed 없음, alias의 mutation/callback0, handle 4096 허용/4097 차단 및 새 oversized create 후 health write/callback0을 검증한다. 기존 blocked-create 취소 테스트를 Main dispatcher에서 호출하고 실제 Binder 진입 뒤 main heartbeat가 기존10초 내 전달되는지도 검증하여 화면 스레드 점유를 구별한다. 실패해도 finally에서 provider를 release한다. 기존 네 행동을 삭제/skip하거나 단언을 완화하지 않는다.
 - 교정 후 `:app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest`를 exact Python wrapper로 한 번 실행한다. JVM production logic 미변경/기존176 성공 XML은 대조하고 중복 full JVM을 돌리지 않는다. source freeze·absolute paths·edit/build 분리·free500MB를 유지한다. 새 실패는 수정 loop 없이 보고한다. 이후 updated source 독립 재검토와 실제 양API component 및 최종 full gate는 여전히 필수다.
+
+### 실제 component 대기와 T5 작성의 병렬 승인
+
+소유자의 재개·병렬 지시에 따라 root는 T4의 안정 source/lint/APK/testAPK/독립 검토와 actual component 대기를 T4/T10으로 분리한다. T10은 원래 T4의 provider/destination 양API 시험을 그대로 소유하고 T6의 추가 선행조건이다. T5는 T4와T9 source 계약 뒤 충돌 없는 두 파일을 작성하므로 CI 대기와 겹칠 수 있다. scope/성공 기준/최종 full gate/원래 복구 ID/실패 중단 규칙은 유지한다. T5 brief의 소유 타입 불렛에 backtick을 넣어 assembler가 원문 전체 계약을 수집하도록 표기만 정정했다.
