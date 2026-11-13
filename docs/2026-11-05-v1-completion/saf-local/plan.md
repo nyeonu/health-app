@@ -743,3 +743,5 @@ sourcef863887001e788a11f31bff563905751830266f7의run43480662382는양API각정�
 ### T8 saf-flow source 정적 검증 완료
 
 기존부분편집13줄을Terra가보존한채정적/stub검증했고root도같은검증/bashedsyntax/diffcheck를직접실행했다. 별도Terra세션source APPROVE와두SHA를root가복사전대조했다. 선택목록1줄과고정case12줄만추가됐고기존full본문/host/설정은byte동일하다. staticAST의127은Starter이름누락이있어최종Nativecount로쓰지않는다. 실제saf-flow 양API실행은T11신규source뒤이며T8은그때까지in_progress다.
+
+T11은원래T6의Native부분을분리한것이므로T6기술보정1/2이력과잔여복구예산을승계한다. 작업ID분리·Terra새세션으로원래회차를초기화하지않고실제실패의원인제품/테스트작업에귀속한다.
