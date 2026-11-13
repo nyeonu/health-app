@@ -55,6 +55,11 @@ tasks:
     depends_on: [T8]
     status: in_progress
     tier: standard
+  - id: T10
+    title: 기존 강제종료 host 검증의 bound UI 호환
+    depends_on: [T9]
+    status: pending
+    tier: light
 ---
 
 # 계정에 연결된 전경 수동 복구
@@ -470,6 +475,21 @@ ManualDriveSession은 작은 app controller이며 credential은 UiState 밖에 �
   ```
 - **주의사항**: T8 완료 후 시작. Activity SDK Account 생성/authorize request bridge는 production에 두고 test는 injectable plain-value bridge로 통제한다. 기존 unbound Drive authorization/upload route를 실제 UI에서 남기지 않는다. 오래된 unbound-action 단언만 승인 spec 근거를 명시하여 바꾸고 레이아웃/history/zero-grant 단언을 약화하지 않는다. root 검토 뒤 세부 보정은 실행 보고에 기록한다. 추정이 틀리거나 인터페이스가 충돌하면 우회/skip/단언 완화하지 말고 blocked와 증거를 root에 보고한다.
 
+### T10: 기존 강제종료 host 검증의 bound UI 호환
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `android/app/src/androidTest/java/com/ny/my/health/HistoryProcessRecoveryInstrumentedTest.kt` | 수정 | 기존 assertManual의 명시 consent 및 disabled bound continue 검사 |
+
+- **인터페이스**: 2절 `ManualDriveContracts` 참조.
+- **결정 로직**: assertManual에서 첫 toggle 위치 대신 `V1 비공개 Drive 업로드 동의` semantics의 off를 검사한다. 항상 렌더되는 `업로드 계속`은 부재 대신 disabled를 검사한다. model.manual.state의 consent=false 및 phase가 READY/RUNNING이 아님을 검사한다. 기존 legacy opt-in/token/ticket/status와 복구/시스템 설정/cleanup 모든 단언은 유지한다.
+- **작성할 테스트**: 기존 `reopenedActivityRestoresOnlyCommittedMetadata`, `liveSystemThemeAndFontChangeReachActivityAndControls` 및 host20을 재사용한다(출처: 기존 프로세스 복구·동의 비자동 실행 회귀, 실제 Android/host 층). 신규 동작이나 테스트 삭제·skip·허용적 assertion은 없다.
+- **완료 기준**: testAPK compile와 최종 API35/36 기존 host20 및 killed hold PASS0을 유지한다. 컴파일만으로 actual 실행 성공을 주장하지 않는다.
+- **검증 방법**: android에서 `./gradlew :app:assembleDebugAndroidTest`; 최종 CI의 `bash android/ci/verify-history-process-recovery.sh` 실제 결과 대조.
+- **주의사항**: T9의 다섯 파일 제한을 보존하려고 누락된 host compatibility 한 파일만 별도 분리한다. 외부 grant/login/health 값/원격 쓰기는 없다. root가 T9 source를 통합한 뒤 compile하며 source authoring은 서로 다른 파일로 병렬 가능하다.
+
 ## 4. 검증
 
 최종 체크포인트(T9 이후): source 동결 head에서 root가 다음 순서로 실행하고 실제 XML/CI 원본 결과와 source head를 실행 보고에 기록한다. 계획 문서 작성 중 테스트/로그인/원격 쓰기는 실행하지 않았다.
@@ -605,3 +625,11 @@ root는 bound mode의 이전 이력 카드가 현재 상태로 보이는 혼동�
 installed JDK javap이 PATH에 없어 첫 읽기 전용 조회가 실패했다. 기존 /workspace/tooling/jdk-21.0.13+9/bin/javap 절대 경로로 조회하도록 승인했으며 도구/버전/설정 변경은 없다. product 복구 회차와 별도 환경 준비1회다.
 
 최초 Activity source 검토에서 단일 queued closure 및 pickerResult/authorizationResult 슬롯이 overlap된 이전 Android result/늦은 SDK callback으로 새 요청 값을 덮을 수 있는 경계를 발견했다. 각 launch는 정확한 request identity와 대응시키고 pending launcher의 callback을 새 launch로 대체하지 않는다. 실제foreground/현재ticket·generation·expected external 상태에 해당하는 결과만 private transient queue에 두고 stale/reset/unexpected pause는 token을 폐기한다. 기존 controller 최종 거부만으로 queue overwrite를 허용하지 않는다. 배정5파일 범위에서 launcher/request correlation·resume 이전 결과·겹침/늦은응답 회귀를 검증한다. 아직 최초 Gradle 전이며 authsetAccount/minimumscope/explicitcontinue 및 token 비영속 조건은 보존한다.
+
+### 재개 시 병렬 실행 보정 및 T9 복구2/2
+
+소유자가 진행속도 개선과 가능한 병렬 실행을 명시했다. 동일 source의 author/root 중복 전체 실행은 줄이고 author 실제 XML/log를 대조한 root 최종 통합 한 번을 gate로 사용한다. 파일이 다른 T9 제한 수정·T10 host 호환·후속 SAF read-only 계획 조사를 병렬로 진행한다. 로컬 Gradle은 메모리/잠금 충돌을 피하도록 한 번씩만 실행한다.
+
+T9 최초 전체 실행166/0/0/0+APK/lint/testAPK2분58초 성공 후 정적 조사에서 stale SDK success가 owner slot을 미정리하는 경로와 초기 metadata 복원으로 사용자의 새 draft를 덮는 경로를 확인했다. stale owner를 finish하고 사용자가 수정한 draft를 늦은 복원이 덮지 않도록 private flag/restore helper를 적용한다. 기존 배정5파일만 수정하며 가능한 기존 Native 테스트의 sequencing 단언으로 확인한다. scope 확대나 fake metrics는 없다.
+
+PLAN 복구3은 기존 host test의 첫 toggle/continue 부재 단언이 새 bound UI에 맞지 않는 누락 보정이다. 원래 동의 off/no credential/no automatic execution 의미를 보존한 T10 한 파일 작업으로 분리했다. 새 제품 범위가 아니며 기존 소유자의 V1 자동승인 및 병렬 실행 지시에 따라 승인한다. 최종 CI의 기존20host를 실제 실행한다.
