@@ -93,7 +93,8 @@ SAF 부모 계약·7T 초안·ADR-011 Proposed 통합은 기존 V1 자동승인 
 | A/SyncCoverageUi.kt, AT/SyncCoverageUiTest.kt | 신규 | IO 없는 화면 상태 projection·의미 검사 | automation-ui |
 | AI/V1CompletionScreenInstrumentedTest.kt | 신규 | theme·large text·semantics·모든 복구 동작 | automation-ui |
 | AI/HealthHomeScreenInstrumentedTest.kt | 수정 | 기존 foundation/상단 layout 회귀 유지 | automation-ui |
-| .github/workflows/android-emulator-tests.yml | 수정 | 신규 host-only hold 테스트 일반 discovery 제외·host 실행 | core-store; automation-ui |
+| .github/workflows/android-emulator-tests.yml | 수정 | full host gate와 명시 dispatch-only SAF 고정 class 진단 | core-store; saf-local; automation-ui |
+| android/ci/run-emulator-validation.sh | 수정 | 기본 full/host 보존, 고정 허용목록의 component 진단만 분리 | manual-drive; saf-local |
 | docs/2026-11-05-v1-completion/execution-report.md | 신규 | PR별 실제 명령·head·독립 검토·한계 | 각 PR 순차 |
 | docs/2026-11-05-v1-completion/dependency-audit.json | 신규 | 실제 resolved 좌표·OSV 결과와 한계 | automation-ui |
 | docs/2026-11-05-v1-completion/completion-roadmap.md, docs/implementation-plan.md, docs/architecture.md, README.md | 수정 | 검증된 개발 상태만 반영 | automation-ui |
