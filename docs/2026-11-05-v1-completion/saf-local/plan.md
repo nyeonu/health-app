@@ -523,7 +523,7 @@ internal interface ManualSafPorts {
 - **작성할 테스트**:
   - "SAF actual activity selection configures without exporting and explicit continue confirms only selected local target"
   - "SAF actual activity rejects stale tree results and paused revoked grants without Drive fallback"
-- **테스트 조건/층**: UI categories 실제 setter, picker 도중 입력 변경, partial grant 전체 intended 유지, grant0 configure/read/write0, read-only 결과flags, 일반pause/secondpause/stale ticket/revoke 후 health read0를 검증한다. selected local generation과 실제SQLite reopen/targetresolver readback을 대조한다. 실제 계정/HealthConnect provider는 열지 않고 합성 ScopedHealthReader·기존 test-only authority constructor를 주입한다. Drive bridge는 counting/throwing sentinel이며 fallback0이다. 허용된 synthetic capability probe쓰기를 health export0과 혼동하지 않는다. URI/body/credentials를 assertion message/log/screenshot에 노출하지 않는다.
+- **테스트 조건/층**: UI categories 실제 setter, picker 도중 입력 변경, partial grant 전체 intended 유지, grant0 configure/read/write0, read-only 결과flags, 일반pause/secondpause/stale ticket/revoke 후 health read0를 검증한다. 실제ViewModel continue/retry 직후 COMPLETED 결과와 grant/probe BLOCKED 오류가refresh에의해즉시지워지지않는지, 이전성공이현재차단을가리지않는지, LOCAL→Drive 구성/reset 뒤LOCALconfigured·coverage가현재활성으로남지않는지도같은두groupedtests에서검증한다. selected local generation과 실제SQLite reopen/targetresolver readback을 대조한다. 실제 계정/HealthConnect provider는 열지 않고 합성 ScopedHealthReader·기존 test-only authority constructor를 주입한다. Drive bridge는 counting/throwing sentinel이며 fallback0이다. 허용된 synthetic capability probe쓰기를 health export0과 혼동하지 않는다. URI/body/credentials를 assertion message/log/screenshot에 노출하지 않는다.
 - **완료 기준**: 새2methods와 기존ManualDriveFlow6methods가 saf-flow 양API에서 실패·오류·skip·중복0이며 root가 원본 XML/정확class+method/SHA를 대조한다. 실제기기/계정/TalkBack 수용은 pending이다.
 - **검증 방법**:
 
@@ -745,3 +745,9 @@ sourcef863887001e788a11f31bff563905751830266f7의run43480662382는양API각정�
 기존부분편집13줄을Terra가보존한채정적/stub검증했고root도같은검증/bashedsyntax/diffcheck를직접실행했다. 별도Terra세션source APPROVE와두SHA를root가복사전대조했다. 선택목록1줄과고정case12줄만추가됐고기존full본문/host/설정은byte동일하다. staticAST의127은Starter이름누락이있어최종Nativecount로쓰지않는다. 실제saf-flow 양API실행은T11신규source뒤이며T8은그때까지in_progress다.
 
 T11은원래T6의Native부분을분리한것이므로T6기술보정1/2이력과잔여복구예산을승계한다. 작업ID분리·Terra새세션으로원래회차를초기화하지않고실제실패의원인제품/테스트작업에귀속한다.
+
+### T6 복구2 — source 검토의 결과 보존·다른 목적지 projection 무효화
+
+제품3파일첫gate는3분6초/exit0이고root가core84/app96 합180unique/실패·오류·skip0의원본XML을대조했다. 별도Terra source review는Important2를발견했다: SyncViewModel continueSaf/retrySaf 직후refreshDestinations→saf.refresh가새outcome/BLOCKED를즉시지우고, Drive selectAccount configure/reset 뒤SAFprojection을갱신하지않아oldLOCALcoverage가활성으로보인다. T6원래크기보정1뒤누적2/2로SyncViewModel.kt한파일의통합callback/metadata 갱신순서만교정한다. SAF실행직후는새결과·phase를보존하면서필요한다른projection만갱신하고Drive구성/reset 뒤는fresh양projection/strictkind로generation변경을반영한다. AuthorizationTicket/새동의/foreground/입력스냅샷/이전완료이력/데이터·schema·권한은유지한다. MainActivity/Home/controller파일은동일하게보존한다.
+
+T11의기존두행동에실제VM액션직후COMPLETED·BLOCKED결과보존과priorSuccess분리, LOCAL→Drive/reset generation뒤LOCAL표시무효화를기대결과명확한회귀로추가했다. 새testfile은여전히T11한개이며T6실행자가작성하지않는다. 교정뒤app96 JVM/APK/lint/testAPK만1회검증하고변경없는core84는중복하지않는다. updatedsource독립재검토와실제T11양API8methodgate·최종full검증은필수다. 원래T6/T11분리예산은공유하며새실패는원본/새근거를보고하고숨은fixloop를하지않는다.
