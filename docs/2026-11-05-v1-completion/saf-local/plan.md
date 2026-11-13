@@ -213,6 +213,7 @@ runner script는현재 단일bashhelper호출그대로; API35/36/permissions/버
   |---|---|---|
   | `A/SafTreeConfiguration.kt` | 신규 | actual flags·persisted grants·local allowlist·synthetic probe와 메모리 proof |
   | `AI/SafTreeConfigurationInstrumentedTest.kt` | 신규 | real resolver grant/짧은 overwrite probe·restore 실패 검증 |
+  | `AI/SyntheticDocumentsProvider.java` | 수정 | BLOCK_BEFORE_EFFECT 진입을 private ResultReceiver로 관측하여 실제 mid-probe 취소를 결정적으로 검증 |
 
 - **인터페이스**: §2 `SafTreeConfiguration`, `SafTreeProof`, `SafGrantProtocol` 참조.
 - **결정 로직**:
@@ -498,3 +499,9 @@ source4c7ed4392ce800c0c81615113e93f78640bbe226/run43439218159 양API각Synthetic
 ### 체크포인트1 실제 완료
 
 같은source4c7ed43에서T1/run43439218159 양API1/0/0/0 및T2/run43439224531 양API2/0/0/0을ZIP해시/원본XML/정확class·method대조했다. genericURI actualtree/current/prior/dedup/4096·4097/오류경계·Drive호환과실제grant/query/read를각각증명해T1/T2done이다. T8의static실제singleline/stub·fullbody동등성과실제두dispatch모드양API기동을확인해done으로표시하며최종전체Native/host검증은전체계획gate로여전히필수다. sourcecheckpoint rawID/digest는checkpoint-native.json에보존했다. T3만실행중이며T4는T3실제capability양API통과뒤시작한다.
+
+### T3 경로 준비 및 미확인 실패 경계 보정2
+
+T3상대경로설정이cwd android와중복되어미적용된상태의build가시작됐다. 실행중source수정도뒤늦게확인되어그성공log를gate에서제외했다. source동결뒤별도절대경로편집/빌드로meaningful35초PASS를얻었고그원본만사용한다. Source실제기능실패로과장하거나미구현test없는compile을PASS로세지않는다.
+
+실행자uncovered인mid-probe취소와create-after-effect 오류는기존취소재전파/ownedprobe-onlycleanup기준에기대결과가명확하다. T3테스트에실제Binder checkpoint진입을관측한뒤cancel→RELEASE_BLOCK→종결/반환proof없음을검증한다(청소성공및청소실패에서도원래CancellationException보존). CREATE_AFTER_EFFECT_FAILURE는BLOCKED/반환proof없음·미반환URI추측삭제0을단언한다. arbitrary sleep/timeout증가/mockgrant를쓰지않도록provider의기존BLOCK_BEFORE_EFFECT에private ResultReceiver 진입알림만추가한다. T3파일소유3개로제한하며T1기존grant/UUID/Java-only/enum관측/10초단언불변, T4는뒤에있어충돌없다. 실제Native는startup1class와capabilityclass를같은source의두진단mode로병렬확인한다. 기존문장추출보정1과누적2번째기술보정이며추가실제실패시원본보존/새근거후제한복구한다.
