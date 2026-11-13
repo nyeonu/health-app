@@ -12,7 +12,8 @@ import kotlinx.coroutines.withContext
 
 /** 승인된 시도의 날짜와 범위를 고정하고 파일별 영속 확인만 집계한다. */
 class DestinationSync(private val store: SyncStateStore, private val reader: ScopedHealthReader,
-    private val destination: StorageDestination, private val clock: Clock) {
+    private val destination: StorageDestination, private val clock: Clock,
+    private val profiling: SyncProfiling? = null) {
     private class Halt(val status: BatchStatus) : RuntimeException()
     private class DestinationFailed(val reason: BlockReason) : RuntimeException()
 
@@ -115,14 +116,17 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                 }
                 val unresolved = store.loadUnresolvedCreates(generation, date) ?: throw Halt(BatchStatus.STALE)
                 current()
-                val snapshot = try { reader.readScoped(date, attempt.requestedScopes) }
+                val snapshot = try {
+                    profiling?.measure(ProfileStage.HEALTH_READ) { reader.readScoped(date, attempt.requestedScopes) }
+                        ?: reader.readScoped(date, attempt.requestedScopes)
+                }
                 catch (cancel: CancellationException) { throw cancel }
                 catch (error: Exception) {
                     commit(mutation(day = previous.copy(phase = DayPhase.BLOCKED, checkedAt = null,
                         blocker = (error as? SourceReadException)?.reason ?: BlockReason.SOURCE_READ_FAILED)))
                     continue
                 }
-                val revision = SyncRevision.identify(snapshot, previous, clock.instant())
+                val revision = SyncRevision.identify(snapshot, previous, clock.instant(), profiling)
                 if (snapshot.blockedTypes.isNotEmpty()) {
                     commit(mutation(day = previous.copy(phase = DayPhase.BLOCKED, scopes = revision.scopes,
                         checkedAt = null, blocker = BlockReason.SOURCE_ACCESS_REQUIRED)))
@@ -166,7 +170,10 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                     if (planned.isNotEmpty()) {
                         current()
                         val intended = planned.associateBy { it.key }
-                        val reconciled = try { destination.reconcile(planned) }
+                        val reconciled = try {
+                            profiling?.measure(ProfileStage.DRIVE_TOTAL) { destination.reconcile(planned) }
+                                ?: destination.reconcile(planned)
+                        }
                         catch (cancel: CancellationException) { throw cancel }
                         catch (error: Exception) { throw destinationFailure(error) }
                         val returned = reconciled.confirmed.map { it.key } + reconciled.pending.map { it.key } + reconciled.blocked
@@ -200,10 +207,14 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                             current()
                             var callbackFailure: Exception? = null
                             try {
-                                destination.writePending(reconciled.pending) {
-                                    try { acknowledge(it, reconciled.pending.associateBy { f -> f.key }) }
-                                    catch (error: Exception) { callbackFailure = error; throw error }
+                                suspend fun write() {
+                                    destination.writePending(reconciled.pending) {
+                                        try { acknowledge(it, reconciled.pending.associateBy { f -> f.key }) }
+                                        catch (error: Exception) { callbackFailure = error; throw error }
+                                    }
                                 }
+                                if (profiling == null) write()
+                                else profiling.measure(ProfileStage.DRIVE_TOTAL) { write() }
                             } catch (cancel: CancellationException) { throw cancel }
                             catch (error: Exception) {
                                 // 콜백의 저장소·세대 오류는 목적지 transient로 분류하지 않는다.

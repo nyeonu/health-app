@@ -118,7 +118,7 @@ class DestinationSyncTest {
             return SyncCommit(CommitStatus.COMMITTED, state.generation)
         }
     }
-    private inner class Fixture(scopes: Map<DataType, ReadScope> = all) {
+    private inner class Fixture(scopes: Map<DataType, ReadScope> = all, profiling: SyncProfiling? = null) {
         val store = Store(scopes)
         var observedAt = now
         var access = ReadAccess(true, scopes.keys, scopes)
@@ -206,10 +206,127 @@ class DestinationSyncTest {
                 if (cancel) throw CancellationException("합성 취소")
             }
         }
-        val engine by lazy { DestinationSync(store, reader, destination, MovingClock({ observedAt })) }
+        val engine by lazy { DestinationSync(store, reader, destination, MovingClock({ observedAt }), profiling) }
         suspend fun run(trigger: SyncTrigger = SyncTrigger.MANUAL) = engine
             .run(trigger, store.state.generation, store.state.attempt!!.id)
         fun day() = store.rows.getValue(date to store.state.scopeKey!!)
+    }
+
+    private fun profiling(): SyncProfiling {
+        var nanos = 0L
+        return SyncProfiling(ProfilingClock { ++nanos })
+    }
+
+    private fun assertInactive(profile: SyncProfiling) {
+        val summary = profile.snapshot()
+        assertTrue(summary.stages.values.none { it.active })
+        assertTrue(summary.operations.values.none { it.active })
+        assertTrue(summary.requests.values.none { it.active })
+    }
+
+    @Test
+    fun `정상 처리의 실제 읽기와 두 투영 및 개별 원격 호출을 계측하고 null과 결과 바이트 이력이 같다`() = runBlocking {
+        val profile = profiling()
+        val measured = Fixture(profiling = profile)
+        val plain = Fixture()
+        measured.beforeRead = { assertTrue(profile.snapshot().stages.getValue(ProfileStage.HEALTH_READ).active) }
+        measured.beforeReconcile = { assertTrue(profile.snapshot().stages.getValue(ProfileStage.DRIVE_TOTAL).active) }
+        measured.beforeWrite = { assertTrue(profile.snapshot().stages.getValue(ProfileStage.DRIVE_TOTAL).active) }
+        assertEquals(plain.run(), measured.run())
+        assertEquals(plain.store.rows, measured.store.rows)
+        assertEquals(plain.store.state, measured.store.state)
+        assertEquals(plain.store.events, measured.store.events)
+        assertEquals(plain.remote, measured.remote)
+        assertEquals(plain.written, measured.written)
+        val expected = mapOf(ProfileStage.HEALTH_READ to 1L, ProfileStage.NORMALIZE to 2L,
+            ProfileStage.CSV_EXPORT to 2L, ProfileStage.DRIVE_TOTAL to 2L)
+        val summary = profile.snapshot()
+        assertEquals(expected.keys, summary.stages.keys)
+        for ((stage, count) in expected) {
+            val stats = summary.stages.getValue(stage)
+            assertEquals(count, stats.started)
+            assertEquals(count, stats.completed)
+            assertEquals(0L, stats.failed)
+            assertEquals(0L, stats.cancelled)
+            assertTrue(stats.elapsedNanos > 0)
+        }
+        assertTrue(summary.operations.isEmpty())
+        assertTrue(summary.requests.isEmpty())
+        assertInactive(profile)
+    }
+
+    @Test
+    fun `빈 날짜는 읽기와 두 투영만 계측하고 원격 호출 없이 EMPTY를 기록한다`() = runBlocking {
+        val profile = profiling()
+        val f = Fixture(mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY), profile)
+        f.steps = null
+        assertEquals(BatchStatus.COMPLETED, f.run().status)
+        assertEquals(DayPhase.EMPTY, f.day().phase)
+        assertTrue(f.day().datasets.isEmpty())
+        assertTrue(f.reconciledDatasets.isEmpty())
+        assertTrue(f.written.isEmpty())
+        val stages = profile.snapshot().stages
+        assertEquals(setOf(ProfileStage.HEALTH_READ, ProfileStage.NORMALIZE, ProfileStage.CSV_EXPORT), stages.keys)
+        assertEquals(1L, stages.getValue(ProfileStage.HEALTH_READ).completed)
+        assertEquals(2L, stages.getValue(ProfileStage.NORMALIZE).completed)
+        assertEquals(2L, stages.getValue(ProfileStage.CSV_EXPORT).completed)
+        assertInactive(profile)
+    }
+
+    @Test
+    fun `읽기 실패와 취소는 원래 차단 결과 또는 취소를 보존하고 활성 계측을 닫는다`() = runBlocking {
+        for (cancel in listOf(false, true)) {
+            val profile = profiling()
+            val f = Fixture(profiling = profile)
+            val error = if (cancel) CancellationException("합성 읽기 취소") else IllegalStateException("합성 읽기 실패")
+            f.readFailure = error
+            if (cancel) {
+                try { f.run(); fail("취소가 전파되어야 한다") }
+                catch (actual: CancellationException) { assertSame(error, actual) }
+                assertNull(f.store.state.attempt!!.finishedAt)
+            } else {
+                assertEquals(BatchStatus.BLOCKED, f.run().status)
+                assertEquals(BlockReason.SOURCE_READ_FAILED, f.day().blocker)
+                assertNotNull(f.store.state.attempt!!.finishedAt)
+            }
+            val stages = profile.snapshot().stages
+            assertEquals(setOf(ProfileStage.HEALTH_READ), stages.keys)
+            val stats = stages.getValue(ProfileStage.HEALTH_READ)
+            assertEquals(1L, stats.started)
+            assertEquals(0L, stats.completed)
+            assertEquals(if (cancel) 0L else 1L, stats.failed)
+            assertEquals(if (cancel) 1L else 0L, stats.cancelled)
+            assertTrue(f.reconciledDatasets.isEmpty())
+            assertInactive(profile)
+        }
+    }
+
+    @Test
+    fun `재확인과 쓰기의 실패 또는 취소는 개별 원격 계측과 기존 저널 의미를 보존하고 활성 계측을 닫는다`() = runBlocking {
+        for (write in listOf(false, true)) for (cancel in listOf(false, true)) {
+            val profile = profiling()
+            val f = Fixture(profiling = profile)
+            val error = if (cancel) CancellationException("합성 목적지 취소")
+                else DestinationException(BlockReason.DESTINATION_TRANSIENT_FAILURE)
+            if (write) f.beforeWrite = { throw error } else f.reconcileError = error
+            if (cancel) {
+                try { f.run(); fail("취소가 전파되어야 한다") }
+                catch (actual: CancellationException) { assertSame(error, actual) }
+                assertNull(f.store.state.attempt!!.finishedAt)
+            } else {
+                assertEquals(BatchStatus.RETRYABLE, f.run().status)
+                assertEquals(BlockReason.DESTINATION_TRANSIENT_FAILURE, f.day().blocker)
+                assertNotNull(f.store.state.attempt!!.finishedAt)
+            }
+            val stats = profile.snapshot().stages.getValue(ProfileStage.DRIVE_TOTAL)
+            assertEquals(if (write) 2L else 1L, stats.started)
+            assertEquals(if (write) 1L else 0L, stats.completed)
+            assertEquals(if (cancel) 0L else 1L, stats.failed)
+            assertEquals(if (cancel) 1L else 0L, stats.cancelled)
+            assertTrue(f.written.isEmpty())
+            if (write) assertTrue(f.day().datasets.values.all { it.phase == FilePhase.INDETERMINATE })
+            assertInactive(profile)
+        }
     }
 
     @Test
