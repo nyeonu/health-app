@@ -24,6 +24,7 @@ class DestinationConfigurationInstrumentedTest {
         try {
             val drive = f.session()
             val driveTicket = f.configure(drive)
+            assertTrue("현재 Drive 인증 수락", drive.acceptAuthorization(driveTicket, false, "synthetic-memory-only", f.scopes))
             val history = SyncHistory(1, null, HistorySuccess(f.today.minusDays(2), f.clock.instant(), setOf(DataType.STEPS), 1))
             val historyStore = SqliteHistoryStore(HistoryDatabase(f.historyFile))
             historyStore.replace(history)
@@ -61,7 +62,17 @@ class DestinationConfigurationInstrumentedTest {
             assertTrue("초기화 뒤 새 세대와 빈 구성", reset.generation != localGeneration && reset.configuration == null)
             assertTrue("초기화 뒤 binding 없음", f.reopen().readBinding(reset.generation) == null)
             assertTrue("초기화 뒤 이력 보존", historyStore.load().history == history)
-            assertFalse("이전 Drive 인증 거부", drive.acceptAuthorization(driveTicket, false, "synthetic-memory-only", f.scopes))
+            val proofsBefore = f.proofs
+            val readsBefore = f.rawReads
+            val writesBefore = f.writes
+            val historyBefore = historyStore.load().history
+            assertEquals(BatchStatus.BLOCKED, drive.continueManual()?.status)
+            assertTrue("이전 세대 실행은 proof·읽기·쓰기 없음", f.proofs == proofsBefore &&
+                f.rawReads == readsBefore && f.writes == writesBefore)
+            assertTrue("이전 세대 실행 뒤 초기화 상태 보존", f.reopen().load().state == reset)
+            assertTrue("이전 세대 실행 뒤 이력 보존", historyStore.load().history == historyBefore)
+            drive.refresh()
+            assertFalse("복원 뒤 이전 Drive 인증 거부", drive.acceptAuthorization(driveTicket, false, "synthetic-memory-only", f.scopes))
         } finally { provider.close(); f.close() }
     }
 
