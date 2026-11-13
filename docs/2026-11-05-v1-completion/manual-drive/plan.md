@@ -738,3 +738,7 @@ PLAN 복구3은 기존 host test의 첫 toggle/continue 부재 단언이 새 bou
 ### 독립 적합성 F1/F2/F3 제한 복구 승인 (소유자 자동승인·병렬 실행)
 
 독립 검증 cfb5009는 기존phoneprofiling 상실(P1), 실제 권한scope의 metadata coverage 복원 누락(P1), 마지막 upload·최근 대상 날짜 표시 누락(P2)를 확인했다. T11은 T7의 누락 보정(기존3회와 별도 누적4), T12는 T8의 누락 보정(누적2)이며 원래 scope를 새 task로 숨겨 회차를 초기화하지 않는다. 기존 profiling 복원은 performance reviewer가 실제API로 작성한2개 제한작업을 T13/T14로 승인해 부모 내에 고정했다. 새요구/미측정 성능 주장/스키마·의존성은 없다. T11/T12/T13은 파일이 달라 병렬 authoring하고 T14는 T11/T13 뒤 시작한다. 최종 exact-head 검증과 독립 재검토·PR댓글 없이는 병합하지 않는다.
+
+### 병렬 검증 자원 확인 및 T11 환경 준비
+
+소유자의 병렬화 지시로 환경을 재측정했다: CPU3, 메모리 약10GB/가용약9GB, 각Gradle heap2GB이다. 분리worktree의 읽기전용공유cache/SDK를 쓰는 로컬빌드를 최대2개로 제한해 병렬 진행하고 각source는검증중동결한다. 메모리/잠금 오류 증거가 나오면 해당 검증만 직렬로 복귀하며 기능/검증기준은 바꾸지 않는다. CI/코드/리뷰/계획준비는 계속병렬이다. T11 최초 bare wrapper실행은 /home/agent/.gradle lock 부모생성 전에 실패해 테스트0이다. 기존 run-health-command.py로 installedJDK/sharedcache를선택하는 환경준비1회를 승인했고 소스/설정변경은없다. 기존 metadata access 기대0→1은 승인된 refresh의 실제MANUALpermission조회에 맞춘 교정이며 raw/Drive0단언은보존한다.
