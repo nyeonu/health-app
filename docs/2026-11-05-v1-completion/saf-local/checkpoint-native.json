@@ -49,5 +49,89 @@
     "Synthetic target UID ContentResolver proof is not actual Galaxy/localprovider capability",
     "Raw ActivityResult delivered via actual launcher remains T6 pending",
     "T3 capability, T4 destination, controller/UI and final acceptance pending"
-  ]
+  ],
+  "capability_ui_checkpoint": {
+    "source": "086b5b35148a6cf946e71917c66e5377e821494f",
+    "status": "PASS_components_not_final_SAF_acceptance",
+    "checks": [
+      {
+        "run": 43453399119,
+        "api": 35,
+        "artifact": 14053237165,
+        "sha256": "80883948b58a85f4be4a3722a4aeac7cc9cfe6452daf964961bb4a31279b62d0",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0,
+        "test_class": "SafManualUiInstrumentedTest"
+      },
+      {
+        "run": 43453399119,
+        "api": 36,
+        "artifact": 14052972358,
+        "sha256": "96f688e47fe80b56c6810a7838407f7a1fbd7a66342ff5b5b622e4860fe11ca8",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0,
+        "test_class": "SafManualUiInstrumentedTest"
+      },
+      {
+        "run": 43453406485,
+        "api": 35,
+        "artifact": 14051789861,
+        "sha256": "b88980df1c4958154c328823bcf40ee84bd7d70d2ac847af31a99155953d29bd",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0,
+        "test_class": "SafTreeConfigurationInstrumentedTest"
+      },
+      {
+        "run": 43453406485,
+        "api": 36,
+        "artifact": 14053697261,
+        "sha256": "bc17ebe34911cdac0718b2a816c9029a4d0778e62ee33b1470632126b8b8c438",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0,
+        "test_class": "SafTreeConfigurationInstrumentedTest"
+      },
+      {
+        "run": 43453413298,
+        "api": 35,
+        "artifact": 14052597338,
+        "sha256": "736c67324e93b45041a33383b6c783605c0b6d8c0cafa711ac403fab4ef5579a",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0,
+        "test_class": "SyntheticProviderStarterTest"
+      },
+      {
+        "run": 43453413298,
+        "api": 36,
+        "artifact": 14053547722,
+        "sha256": "a186e699ccaa65d90945af81dd1ddb6063b4db05f0416af7b47a3095c342b5a1",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0,
+        "test_class": "SyntheticProviderStarterTest"
+      }
+    ],
+    "combined_local": "lintDebug+assembleDebug+assembleDebugAndroidTest PASS2m52",
+    "limits": [
+      "SDK28 LOCAL blocks before persistence/probe; appmin28 unchanged",
+      "PureCompose is notactualActivity/TalkBack acceptance",
+      "Final bothAPIfullNative+host remainsmandatory"
+    ]
+  }
 }

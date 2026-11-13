@@ -14,13 +14,13 @@ execution_gate: PR17-merged-and-parent-integration-repinned
 tasks:
   - {id: T1, title: 실제 합성 DocumentsProvider와 grant starter, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 목적지 공통 known-target 조회와 재열기, depends_on: [], status: done, tier: standard}
-  - {id: T3, title: 전경 local tree 동의와 실제 capability probe, depends_on: [T1], status: in_progress, tier: standard}
-  - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: pending, tier: standard}
+  - {id: T3, title: 전경 local tree 동의와 실제 capability probe, depends_on: [T1], status: done, tier: standard}
+  - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: in_progress, tier: standard}
   - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: pending, tier: standard}
   - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9], status: pending, tier: standard}
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
-  - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: in_progress, tier: standard}
-  - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: in_progress, tier: standard}
+  - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: done, tier: standard}
+  - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: done, tier: standard}
 ---
 
 # 검증된 local tree 전경 내보내기
@@ -599,3 +599,7 @@ T3는소유자기존V1자동수정위임에따라누적3으로보정한다. app 
 ### T9 리뷰 제안 보정1 — retry guard를 독립 검증
 
 독립UI소스리뷰86270e5는차단0·APPROVE와Suggestion1을기록했다. disabled guard matrix가needsRetry=false인ready를기반으로해retry guard조건을독립검증하지못했다. 같은8개행의UI상태를PENDING outcome으로만강화해needsRetry=true에서도각foreground/consent/grants/scope/config/generation/RUNNING guard가버튼을막는지검증한다. 기존단언/제품소스/기타테스트는불변이며test한줄보정만한다. 이미존재하는enum/사용형태라중복localGradle없이정적diff후최종UI Native실행에서확인한다.
+
+### T3/T9/T8 actual source 체크포인트 완료
+
+source086b5b3의provider1/capability2/pureUI1각양API failure/error/skip/duplicate0을root가6ZIPsha/원본XML exactclass+method로독립대조했다. combinedlint/APK/testAPK2분52초PASS와UI소스리뷰086 APPROVE/제안해결및capability source차단0을대조했다. 이전eac provider36의UTP해석실패(테스트0)는새source 양API실제PASS로해소했다. T3실제Binder취소/cleanupfail suppressed/unknowncreate삭제0과11분기, T9 light/dark/font1/1.8·capturedgen reset/retryguards가실제실행됐다. T3/T9/T8done이며T2와함께T4착수gate충족이다. 전체SAF/실제Activity/실기기/TalkBack/background수용은미완료다. 원본ZIP는watcher추출dir/artifact.zip이며root첫경로오인읽기실패는검증성공으로세지않고정정후실제대조했다.
