@@ -1,0 +1,35 @@
+{
+  "status": "component_checkpoint_not_final_SAF_acceptance",
+  "source": "4c7ed4392ce800c0c81615113e93f78640bbe226",
+  "provider": {
+    "run": 43439218159,
+    "apis": {
+      "35": {
+        "artifact": 14044508628,
+        "sha256": "88cd6884944f09c732b5271ef94c303dffc9424722b7363fbd1ff86d0f55a062",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "36": {
+        "artifact": 14045022951,
+        "sha256": "fd374dbf40ce7c7500e497fb73bb86da6407927d80a88f5bb8e00d83f6188b43",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    }
+  },
+  "store": {
+    "run": 43439224531,
+    "status": "pending_final_raw_results"
+  },
+  "limits": [
+    "Component diagnostic omits full/host gate by explicit dispatch; final both-API full Native and host mandatory",
+    "Synthetic target UID ContentResolver proof is not actual Galaxy/localprovider capability",
+    "Raw ActivityResult delivered via actual launcher remains T6 pending",
+    "T3 capability, T4 destination, controller/UI and final acceptance pending"
+  ]
+}

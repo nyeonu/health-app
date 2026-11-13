@@ -12,9 +12,9 @@ branch: feature/v1-saf-local
 source_base: 57da82514e8483f5f32f2ad34ae0111c7f1dc431
 execution_gate: PR17-merged-and-parent-integration-repinned
 tasks:
-  - {id: T1, title: 실제 합성 DocumentsProvider와 grant starter, depends_on: [], status: in_progress, tier: standard}
+  - {id: T1, title: 실제 합성 DocumentsProvider와 grant starter, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 목적지 공통 known-target 조회와 재열기, depends_on: [], status: in_progress, tier: standard}
-  - {id: T3, title: 전경 local tree 동의와 실제 capability probe, depends_on: [T1], status: pending, tier: standard}
+  - {id: T3, title: 전경 local tree 동의와 실제 capability probe, depends_on: [T1], status: in_progress, tier: standard}
   - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: pending, tier: standard}
   - {id: T5, title: 명시적 전경 SAF controller와 화면 조각, depends_on: [T4], status: pending, tier: standard}
   - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5], status: pending, tier: standard}
@@ -257,6 +257,7 @@ runner script는현재 단일bashhelper호출그대로; API35/36/permissions/버
   | `A/SafDestination.kt` | 신규 | read-only exact-target reconcile와 one-batch wt/readback confirmation |
   | `AI/SafDestinationInstrumentedTest.kt` | 신규 | target identity/짧은 write/불완전 조회/중단/오류 통합 |
   | `AI/SafJournalInstrumentedTest.kt` | 신규 | 실제 DestinationSync+SQLite 재열기·다른 scope unknown create·callback failure |
+  | `AI/SyntheticDocumentsProvider.java` | 수정 | explicit Document.FLAG_PARTIAL fixture enum과 열만 추가하여 실제 partial-document 차단 검증 |
 
 - **인터페이스**: §2 `StorageDestination`, `SafDestination`, `SafKnownTargets`, `SafTargetProtocol` 참조.
 - **결정 로직**:
@@ -483,3 +484,9 @@ T2첫build176JVM/0fail·error·skip와testAPKcompile은성공했다. rootdiff대
 ### T8 검토 보정1 — 진단도 기존 공통 AVD 준비 유지
 
 정적/stub은모든full명령동등성을통과했지만root통합검토에서새diagnostic분기가기존SDKsetup/launcher1회종료앞에서return하여공통계정없는AVD준비를건너뛰는것을확인했다. 기본full본문의동등성과함께진단도같은기존준비를적용하도록scope분기를공통준비뒤/critical앞으로옮긴다. 권한/버전/기존prep명령/호스트/필터불변. helper1파일만교정하고stub은모든diagnostic에서prep1회뒤고정class명령만실행·실패전파를확인한다. 실제componentNative는원본증거확인전pending이다.
+
+### T1 실제 완료 / T4 fixture 검토 제안 반영
+
+source4c7ed4392ce800c0c81615113e93f78640bbe226/run43439218159 양API각SyntheticProviderStarterTest1/0fail·error·skip을root가ZIPsha/XML대조했다. 실제targetUID·persistedRW/RO·revoke거부·exactbytes·private rawresultdata/flags단언을통과했다. actualActivityResultlauncher delivery는T6에서검증하며이를대체했다고주장하지않는다. testAPKJava-only/productionAPK부재와initialbuild1분20초확인후T1done이다. 이증거는최종SAFfull gate가아니다.
+
+독립체크포인트리뷰4c7ed43은차단0·APPROVE와향후Document.FLAG_PARTIAL fixture추가Suggestion1을기록했다. 현재PARTIAL은silentcursortruncation이고INCOMPLETE는loading/error이므로leafpartialflag검증으로과장하지않는다. 기존SafTargetProtocol의partial-document차단기준을완전히검증하도록T4의파일소유에providerJava1개를추가(총4파일)하고고정enum/Column_FLAGS에명시FLAG_PARTIAL을추가하는제한범위를승인한다. T3는이파일을안쓰고T4는T3뒤라충돌없으며기존전체grant/source프로토콜/Java-only조건불변이다. T4직전브리프에는이추가계약을포함하고실제Native/full에증거를남긴다.
