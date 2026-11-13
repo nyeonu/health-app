@@ -124,16 +124,19 @@ class SyntheticProviderStarterTest {
         var issuerUid = -1
         val receiver = object : ResultReceiver(Handler(Looper.getMainLooper())) {
             override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
+                SyntheticDocumentsProvider.safeLog(control, SyntheticDocumentsProvider.Stage.RECEIVE)
                 result = resultCode
                 issuerUid = resultData?.getInt(SyntheticDocumentsProvider.EXTRA_UID, -1) ?: -1
                 complete.countDown()
             }
         }
         try {
+            SyntheticDocumentsProvider.safeLog(control, SyntheticDocumentsProvider.Stage.DISPATCH)
             instrumentation.targetContext.startActivity(Intent().apply {
                 component = ComponentName(instrumentation.context.packageName,
                     SyntheticDocumentsProvider.GrantActivity::class.java.name)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
+                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
                 putExtra(SyntheticDocumentsProvider.EXTRA_CONTROL, control.name)
                 putExtra(SyntheticDocumentsProvider.EXTRA_RECEIVER, receiver)
             })

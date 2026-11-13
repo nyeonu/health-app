@@ -10,10 +10,12 @@ import android.os.CancellationSignal;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.ResultReceiver;
+import android.os.SystemClock;
 import android.provider.DocumentsContract;
 import android.provider.DocumentsContract.Document;
 import android.provider.DocumentsContract.Root;
 import android.provider.DocumentsProvider;
+import android.util.Log;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -39,6 +41,14 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
         PARTIAL, LOADING, NULL_QUERY, NO_TRUNCATE, WRONG_RETURN_IDENTITY,
         CREATE_AFTER_EFFECT_FAILURE, WRITE_INTERRUPTION, CLOSE_INTERRUPTION,
         BLOCK_BEFORE_EFFECT, RELEASE_BLOCK
+    }
+
+    public enum Stage { DISPATCH, CREATE, NEW_INTENT, EFFECT, SEND, RECEIVE, FINISH }
+
+    /** 로그 입력은 합성 enum과 단조 시간뿐이다. 외부 문자열·결과·식별자는 받지 않는다. */
+    public static void safeLog(Control command, Stage stage) {
+        Log.i("SyntheticSafControl", (command == null ? "INVALID" : command.name())
+                + " " + stage.name() + " " + SystemClock.elapsedRealtime());
     }
 
     private static final class Node {
@@ -246,17 +256,30 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
     /** 외부 입력은 고정 enum뿐이며 grant 수신자와 tree도 고정한다. */
     public static final class GrantActivity extends Activity {
         @Override
-        @SuppressWarnings("deprecation")
         protected void onCreate(Bundle savedInstanceState) {
             super.onCreate(savedInstanceState);
-            ResultReceiver receiver = getIntent().getParcelableExtra(EXTRA_RECEIVER);
+            handleIntent(getIntent(), Stage.CREATE);
+        }
+
+        @Override
+        protected void onNewIntent(Intent intent) {
+            super.onNewIntent(intent);
+            setIntent(intent);
+            handleIntent(intent, Stage.NEW_INTENT);
+        }
+
+        @SuppressWarnings("deprecation")
+        private void handleIntent(Intent intent, Stage stage) {
+            ResultReceiver receiver = null;
+            Control command = null;
             boolean success = false;
             try {
-                Control command = null;
-                String requested = getIntent().getStringExtra(EXTRA_CONTROL);
+                receiver = intent.getParcelableExtra(EXTRA_RECEIVER);
+                String requested = intent.getStringExtra(EXTRA_CONTROL);
                 for (Control candidate : Control.values()) {
                     if (candidate.name().equals(requested)) command = candidate;
                 }
+                safeLog(command, stage);
                 if (command == null) throw new IllegalArgumentException("합성 제어 거부");
                 Uri tree = DocumentsContract.buildTreeDocumentUri(AUTHORITY, TREE_ID);
                 if (command == Control.GRANT_READ_WRITE || command == Control.GRANT_READ_ONLY) {
@@ -270,15 +293,21 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
                     control(command);
                 }
                 success = true;
+                safeLog(command, Stage.EFFECT);
             } catch (Exception ignored) {
                 // 원시 provider 예외와 URI는 callback·공개 로그로 전달하지 않는다.
             } finally {
-                if (receiver != null) {
-                    Bundle result = new Bundle();
-                    result.putInt(EXTRA_UID, Process.myUid());
-                    receiver.send(success ? Activity.RESULT_OK : Activity.RESULT_CANCELED, result);
+                try {
+                    if (receiver != null) {
+                        Bundle result = new Bundle();
+                        result.putInt(EXTRA_UID, Process.myUid());
+                        safeLog(command, Stage.SEND);
+                        receiver.send(success ? Activity.RESULT_OK : Activity.RESULT_CANCELED, result);
+                    }
+                } finally {
+                    safeLog(command, Stage.FINISH);
+                    finish();
                 }
-                finish();
             }
         }
     }
