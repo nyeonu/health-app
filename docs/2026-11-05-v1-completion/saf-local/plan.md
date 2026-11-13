@@ -694,3 +694,7 @@ read-only실제Activity/ViewModel/Home/기존Native호출자조사로필요한in
 latest a159 source run43478573782는양API4unique중동일1failure/오류·skip·중복0이며SafJournalInstrumentedTest.kt:65 expected BLOCKED/actualCOMPLETED다. 다른세Native method와provider(run43478579503)각양API1method는성공했고root가네ZIP SHA/원본XML/실패stack을독립대조했다. 실제운동fixture가 saf.time(2026-11-05T00:00Z)-7200/-3600을써KST11월5일07~08시가되지만대상일은11월4일이다. 기존DefaultNormalizer의day-overlap필터가올바르게제외해workouts CSV가없었고,의도한두번째readback실패를실행하지못해COMPLETED가됐다.
 
 T4원래ID누적복구2/2로같은SafJournalInstrumentedTest.kt한파일만교정한다. 합성운동시간을DayWindow.start(saf.date)+3600/+7200으로대상일안에고정하고해당범위및두dataset fixture전제조건을검증한다. 승인된KST일별필터/실제provider/readback실패/기존BLOCKED·부분확인·재열기·unknowncreate·동일URI·원래취소단언은모두그대로다. 기대값을COMPLETED로바꾸거나단언을약화하지않는다. production/원래provider/다른세test·T5완료source를보존한다. 코드교정뒤동일Pythonwrapper :app:assembleDebugAndroidTest를1회실행하고새source독립delta검토및양APIcomponent를다시대조한다. 새실패시자동loop없이원본과새근거를보고한다. T4source교정동안in_progress/T6pending이며actualT10전체PASS전다음구현은시작하지않는다.
+
+### T4 복구2 환경 확인 — AndroidTest incremental visibility
+
+R2첫packaging은20초에기존cross-file internal SafDestinationFixture접근을모두거부했다. 기존선언은internal이며R1에서동일선언이실제컴파일/Native3method에사용됐다. 수정한운동시간/사전조건의syntax오류는아니다. 직전에root가완료build를/tmp로이동하고같은경로symlink를만들었으므로기존AndroidTest incremental metadata가남아있다는환경가설을한정한다(원인으로단정하지않음). source변경없이지정한두생성출력build/kotlin/compileDebugAndroidTestKotlin 및build/tmp/kotlin-classes/debugAndroidTest만제거하고동일assembleDebugAndroidTest를한번재검증한다. test-results/reports/APK/source·sharedGradlecache는보존한다. 환경준비1/확인1이며실패시추가삭제/재시도없이보고한다. 소스변경회차T4 2/2는그대로이고기대값/테스트판정/visibility modifier를바꾸지않는다.
