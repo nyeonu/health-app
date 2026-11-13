@@ -2,11 +2,13 @@
 
 이 문서는 진행 증거이며 V1 수용 완료나 출시 승인이 아니다. 소유자의 자동승인 범위에서 구현·독립 검토·개발 병합을 진행한다. 실제 Galaxy/Google/SAF provider/Doze·재부팅·TalkBack의 미실행 항목은 pending이다.
 
-## 현재 상태 (2026-11-12)
+## 현재 상태 (2026-11-13)
 
-core-store의 소프트웨어 구현·검증은 완료했고 PR #16의 최종 문서 head 대조/개발 병합 단계다. 검증한 코드 source는 `764cc6916c4c6231beb9c9a13b6ab152f33159ac`이며 root 전체 JVM145(core71/app74)/실패0·오류0·skip0, APK/lint/testAPK와 CI43158298603이 통과했다. Native43158298634는 API35·36 각각106/0/0/0, 기존 host20 및 새 복구17/정리17·죽인 hold PASS0, 같은72관측/API다. 별도 스펙 검증은 **core-store 배정 기준 PASS**, 품질 APPROVE, 보안·성능 차단 지적 없음이며 원본 XML/정형 host/metrics를 독립 대조했다. Q1 실제 spill 복구와 Q3/Q4 미확인 create의 동일/교차 scope·SQLite 재열기 회귀가 포함된다.
+core-store PR16과 수동 Drive PR17의 소프트웨어 구현·검증·독립 검토·개발 병합을 완료했다. PR17 merge는 `57da82514e8483f5f32f2ad34ae0111c7f1dc431`, 검증 source는 `b35c11c8b4651cf9b12b004a7fc4ae3d52a4d3ee`다. JVM176/실패·오류·skip0 및 APK/lint, API35/36 각각 Native120/실패·오류·skip·중복0, 각 history host20과 SyncState verifier17+cleanup17/killed holds PASS0을 원본으로 대조했다. 별도 수동 slice 스펙 PASS·품질 APPROVE·보안/성능 추가 차단0과 수정/재검토는 [최종 검증](manual-drive/final-verification.md) 및 PR17 한글 댓글에 있다.
 
-수정 전후 실패·fixture/환경 문제·추가 복구 회차는 아래 시점별 기록으로 보존한다. `plan.md` frontmatter와 위 현재 상태가 이전 진행 중 문구보다 우선한다. Drive 계정 연결·SAF·WorkManager·통합 UI는 후속이며 전체 V1는 진행 중이다. P0/Galaxy/실계정/provider/Doze/TalkBack·물리 ENOSPC/EIO 주입·생성 거부 환경의 실제 hardlinked admission은 완료 처리하지 않는다. 성능72관측은 새 engine uncertainty query의 독립 비용이나 실기기 전체 업로드 효과를 측정하지 않는다.
+현재 SAF 로컬 목적지 계획을 실제 merge head에 통합하고 있다. 독립 합성 provider는 별도 test APK UID/실제 target resolver grant를 사용하며 API36 starter는 PASS, API35의 두 번째 철회 command 응답 timeout은 조사 중이다. 전체 SAF capability나 실제 provider 수용을 완료 처리하지 않는다. 병렬 WorkManager 기반은 초기 네 graph/155공개Maven좌표 OSV0취약점·오류, 실제 debug/release metadata/manifest/API/build 감사를 마쳤다. 실제 starter와 최종 통합·회귀/PR 검토는 별도 단계다.
+
+전체 V1 SAF·자동화·최종 UI는 진행 중이다. 실제 Galaxy/Google/provider/Doze·재부팅·TalkBack, 남은 P0 및 복구 가능한 개인 서명키 백업 확인은 pending이다. 성능72관측과 이전 Drive benchmark를 새 reconciliation·전체 admission 비용이나 실기기 개선율의 증거로 사용하지 않는다. 아래 기록은 시점별 이력을 보존하며 이 현재 상태와 계획 frontmatter가 우선한다.
 
 ## 선행 작업
 

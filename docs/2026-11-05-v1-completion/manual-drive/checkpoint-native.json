@@ -130,5 +130,105 @@
         }
       }
     }
+  },
+  "final_manual_drive": {
+    "status": "PASS_manual_slice_only",
+    "source": "b35c11c8b4651cf9b12b004a7fc4ae3d52a4d3ee",
+    "merge": "57da82514e8483f5f32f2ad34ae0111c7f1dc431",
+    "pr": 17,
+    "run": 43431523876,
+    "jvm": {
+      "run": 43431524846,
+      "artifact": 14039594259,
+      "sha256": "c75099d55288ec8c197e7b389b7ab6244cc7e5d2efbe2895c547025942565403",
+      "tests": 176,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "apis": {
+      "35": {
+        "artifact": 14043500300,
+        "artifact_sha256": "33a844b71498fc8e25a3c06d9f70dbd504a5c9ebb94aa29c8efa67caf09f6068",
+        "native": {
+          "tests": 120,
+          "failure": 0,
+          "error": 0,
+          "skipped": 0
+        },
+        "duplicates": [],
+        "classes": {
+          "com.ny.my.health.DestinationConfigurationInstrumentedTest": 1,
+          "com.ny.my.health.DurableHistoryActivityInstrumentedTest": 3,
+          "com.ny.my.health.HealthAppInstrumentedTest": 6,
+          "com.ny.my.health.HealthHomeScreenInstrumentedTest": 21,
+          "com.ny.my.health.HistoryDatabaseInstrumentedTest": 3,
+          "com.ny.my.health.ManualDriveFlowInstrumentedTest": 6,
+          "com.ny.my.health.ManualDriveStoreInstrumentedTest": 2,
+          "com.ny.my.health.ManualDriveUiInstrumentedTest": 1,
+          "com.ny.my.health.PhoneProfilingClipboardInstrumentedTest": 1,
+          "com.ny.my.health.PhoneProfilingScreenInstrumentedTest": 5,
+          "com.ny.my.health.SqliteHistoryStoreInstrumentedTest": 19,
+          "com.ny.my.health.SqliteSyncStateStoreInstrumentedTest": 36,
+          "com.ny.my.health.SyncExecutionSessionInstrumentedTest": 15,
+          "com.ny.my.health.SyncStateStorePerformanceInstrumentedTest": 1
+        },
+        "foundation_host": {
+          "verifier": 8,
+          "settings": 4,
+          "cleanup": 8,
+          "killed_holds_counted_as_pass": 0
+        },
+        "sync_state_host": {
+          "verifier": 17,
+          "cleanup": 17,
+          "killed_holds_counted_as_pass": 0
+        }
+      },
+      "36": {
+        "artifact": 14042891486,
+        "artifact_sha256": "85367a682293460c9491a365acc9312404fd392f56b44a56e668e32984ce2472",
+        "native": {
+          "tests": 120,
+          "failure": 0,
+          "error": 0,
+          "skipped": 0
+        },
+        "duplicates": [],
+        "classes": {
+          "com.ny.my.health.DestinationConfigurationInstrumentedTest": 1,
+          "com.ny.my.health.DurableHistoryActivityInstrumentedTest": 3,
+          "com.ny.my.health.HealthAppInstrumentedTest": 6,
+          "com.ny.my.health.HealthHomeScreenInstrumentedTest": 21,
+          "com.ny.my.health.HistoryDatabaseInstrumentedTest": 3,
+          "com.ny.my.health.ManualDriveFlowInstrumentedTest": 6,
+          "com.ny.my.health.ManualDriveStoreInstrumentedTest": 2,
+          "com.ny.my.health.ManualDriveUiInstrumentedTest": 1,
+          "com.ny.my.health.PhoneProfilingClipboardInstrumentedTest": 1,
+          "com.ny.my.health.PhoneProfilingScreenInstrumentedTest": 5,
+          "com.ny.my.health.SqliteHistoryStoreInstrumentedTest": 19,
+          "com.ny.my.health.SqliteSyncStateStoreInstrumentedTest": 36,
+          "com.ny.my.health.SyncExecutionSessionInstrumentedTest": 15,
+          "com.ny.my.health.SyncStateStorePerformanceInstrumentedTest": 1
+        },
+        "foundation_host": {
+          "verifier": 8,
+          "settings": 4,
+          "cleanup": 8,
+          "killed_holds_counted_as_pass": 0
+        },
+        "sync_state_host": {
+          "verifier": 17,
+          "cleanup": 17,
+          "killed_holds_counted_as_pass": 0
+        }
+      }
+    },
+    "limits": [
+      "Synthetic emulator evidence is not actual Google/Galaxy/provider/TalkBack acceptance",
+      "Full V1 SAF and automation remain in progress",
+      "New remote path latency and whole-admission cost remain unmeasured",
+      "Existing P0 unknowns and recoverable private signing backup remain pending"
+    ]
   }
 }

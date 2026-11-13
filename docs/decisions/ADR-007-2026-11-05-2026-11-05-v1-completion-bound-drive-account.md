@@ -48,3 +48,7 @@ credential은 controller의 private 메모리에만 두고 StateFlow/SavedState/
 선택 이유는 기존 drive.file과 승인 account binding을 유지하면서 raw read 이전 현재 Drive principal을 확인하기 위해서다. 추가 identity scope/새 로그인/backend/offline token 또는 cached SDK account를 신원으로 사용하는 대안은 승인 범위·최소 권한/증거 조건에 맞지 않아 채택하지 않는다. 실제 계정의 about population, 계정 제거/별칭/consent와 Galaxy lifecycle 수용은 pending이다. 구현·독립 적합성 검증 전이므로 Accepted가 아니다.
 
 공식 근거: [about.get scopes/fields](https://developers.google.com/workspace/drive/api/reference/rest/v3/about/get), [About.user](https://developers.google.com/workspace/drive/api/reference/rest/v3/about), [User.emailAddress/me](https://developers.google.com/workspace/drive/api/reference/rest/v3/User), [authorization 사용자 정보 제한](https://developer.android.com/identity/authorization).
+
+## 검증 진행 — 2026-11-13
+
+PR17의선택계정전경수동slice는검토head b35c11c의독립적합성PASS와양API120/0/0/0·JVM176/0/0/0후57da825로개발병합됐다. 이ADR결정은worker의실행별fresh/silent인증도포함하므로그자동단계의적합성검증전에는Proposed를유지한다. 수동milestone을전체인증/실계정수용완료로확대하지않는다.
