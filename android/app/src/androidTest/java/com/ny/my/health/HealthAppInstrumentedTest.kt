@@ -39,7 +39,7 @@ class HealthAppInstrumentedTest {
     fun firstLaunchNeverStartsGoogleAuthorizationWithoutExplicitOptIn() {
         compose.onNodeWithText("Health App · 수동 동기화").assertIsDisplayed()
         compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithText("마지막 업로드 확인", substring = true).assertExists()
+        compose.onNodeWithText("마지막 업로드 확인").assertExists()
     }
 
     @Test
@@ -61,7 +61,7 @@ class HealthAppInstrumentedTest {
         compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
         compose.waitForIdle()
         compose.onNodeWithText("Health App · 수동 동기화").assertExists()
-        compose.onNodeWithText("마지막 업로드 확인", substring = true).assertExists()
+        compose.onNodeWithText("마지막 업로드 확인").assertExists()
         compose.onNodeWithText("확인된 업로드 이력이 없습니다.").assertExists()
         compose.onNodeWithText("확인된 파일 수:", substring = true).assertDoesNotExist()
     }
