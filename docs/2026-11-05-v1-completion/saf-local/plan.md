@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 8c2d4ec92a07041c529cb9dba6aafd99a2e8ad4a
+parent_rev: a43e03749231fcfab123549e7bd776e8704ea757
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-saf-local
@@ -22,7 +22,8 @@ tasks:
   - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: in_progress, tier: standard}
   - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: done, tier: standard}
   - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: done, tier: standard}
-  - {id: T11, title: 실제 Activity SAF 선택과 전경 수동 실행 검증, depends_on: [T6], status: pending, tier: standard}
+  - {id: T11, title: 실제 Activity SAF 선택과 전경 수동 실행 검증, depends_on: [T6, T12], status: pending, tier: standard}
+  - {id: T12, title: 같은 구성의 metadata refresh 결과 보존, depends_on: [T5], status: in_progress, tier: standard}
 ---
 
 # 검증된 local tree 전경 내보내기
@@ -510,7 +511,7 @@ internal interface ManualSafPorts {
 
 ### T11: 실제 Activity SAF 선택과 전경 수동 실행 검증
 
-- T6 제품 배선 source gate 완료 후 시작한다. CI saf-flow는 T8 고정 source 후보를 사용하며 전체 gate를 대체하지 않는다.
+- T6 제품 배선과 T12 controller source gate 완료 후 시작한다. CI saf-flow는 T8 고정 source 후보를 사용하며 전체 gate를 대체하지 않는다.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -523,7 +524,7 @@ internal interface ManualSafPorts {
 - **작성할 테스트**:
   - "SAF actual activity selection configures without exporting and explicit continue confirms only selected local target"
   - "SAF actual activity rejects stale tree results and paused revoked grants without Drive fallback"
-- **테스트 조건/층**: UI categories 실제 setter, picker 도중 입력 변경, partial grant 전체 intended 유지, grant0 configure/read/write0, read-only 결과flags, 일반pause/secondpause/stale ticket/revoke 후 health read0를 검증한다. 실제ViewModel continue/retry 직후 COMPLETED 결과와 grant/probe BLOCKED 오류가refresh에의해즉시지워지지않는지, 이전성공이현재차단을가리지않는지, LOCAL→Drive 구성/reset 뒤LOCALconfigured·coverage가현재활성으로남지않는지도같은두groupedtests에서검증한다. selected local generation과 실제SQLite reopen/targetresolver readback을 대조한다. 실제 계정/HealthConnect provider는 열지 않고 합성 ScopedHealthReader·기존 test-only authority constructor를 주입한다. Drive bridge는 counting/throwing sentinel이며 fallback0이다. 허용된 synthetic capability probe쓰기를 health export0과 혼동하지 않는다. URI/body/credentials를 assertion message/log/screenshot에 노출하지 않는다.
+- **테스트 조건/층**: UI categories 실제 setter, picker 도중 입력 변경, partial grant 전체 intended 유지, grant0 configure/read/write0, read-only 결과flags, 일반pause/secondpause/stale ticket/revoke 후 health read0를 검증한다. 실제ViewModel continue/retry 직후와pause/resume·권한refresh 뒤 COMPLETED 결과와 grant/probe BLOCKED 오류가즉시지워지지않는지, 이전성공이현재차단을가리지않는지, LOCAL→Drive 구성/reset 뒤LOCALconfigured·coverage가현재활성으로남지않는지도같은두groupedtests에서검증한다. selected local generation과 실제SQLite reopen/targetresolver readback을 대조한다. 실제 계정/HealthConnect provider는 열지 않고 합성 ScopedHealthReader·기존 test-only authority constructor를 주입한다. Drive bridge는 counting/throwing sentinel이며 fallback0이다. 허용된 synthetic capability probe쓰기를 health export0과 혼동하지 않는다. URI/body/credentials를 assertion message/log/screenshot에 노출하지 않는다.
 - **완료 기준**: 새2methods와 기존ManualDriveFlow6methods가 saf-flow 양API에서 실패·오류·skip·중복0이며 root가 원본 XML/정확class+method/SHA를 대조한다. 실제기기/계정/TalkBack 수용은 pending이다.
 - **검증 방법**:
 
@@ -534,6 +535,31 @@ internal interface ManualSafPorts {
   ```
 
 - **주의사항**: 기존 fixture의 target UID/grant/ResultReceiver를 재사용하고 actual launcher는 NEW_TASK/MULTIPLE_TASK 없이 launch한다. 임의sleep/timeout증가/단언완화/skip/production allowlist확장 금지. 필요하면 미커버를 보고하고 제품코드를 임의수정하지 않는다.
+
+### T12: 같은 구성의 metadata refresh 결과 보존
+
+- T5 완료 후 독립 controller 두 파일만 교정한다. T6 UI 세 파일과 겹치지 않아 병렬 가능하다. 원래 T6 통합에서 발견한 상태 보존 결함이며 작업 분리로 원래 복구 회차를 초기화하지 않는다.
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `A/ManualSafSession.kt` | 수정 | 같은 generation·유효 범위의 metadata/foreground 왕복에서 현재 결과·실패 보존 |
+  | `AT/ManualSafSessionTest.kt` | 수정 | 같은 구성 refresh·foreground·범위/세대 변경의 결과 보존 회귀 |
+
+- **인터페이스**: §2 `ManualSafSession`, `ManualSafPorts`, `ManualSafState`, `SafUiProtocol` 참조. 공개 API·DTO·proof·schema·권한은 그대로다.
+- **결정 로직**: 같은 구성/실효읽기범위의 metadata-only refresh·foreground 왕복은 현재 outcome 및 BLOCKED를 지우지 않는다. 명시적 새 선택/실행/동의·입력 변경과 실제 generation/configuration 변경에서는 기존 무효화 규칙을 유지한다. 실효 grant scope가 바뀌면 이전 COMPLETED를 새 범위의 완료로 승격하지 않고 명시 새 확인이 필요함을 표시한다. 새 generation/다른 binding의 과거 outcome을 현재로 복사하지 않는다.
+- **작성할 테스트**:
+  - "Metadata and foreground refresh preserve current SAF result and blocker but never promote changed scope or generation as completed" (①·③·④·⑤/JVM ports).
+- **호출 순서**: 실제 기존 session API로 성공/차단 결과 생성 → 같은 generation refresh/pause/resume/refresh → 결과와 현재 blocker 보존 및 record/probe/write0 확인 → 실효 grant/scope 및 generation 변경 → 새 구성 완료로 복사하지 않음 확인.
+- **완료 기준**: 기존4행동을 그대로 유지하고 위5번째 회귀가 통과한다. 테스트에서 Uri 실행/가짜 private proof/Android 런타임을 쓰지 않는다. 실제VM/Activity는T11양API에서 검증한다.
+- **검증 방법**:
+
+  ```bash
+  cd android
+  ./gradlew :app:testDebugUnitTest --tests com.ny.my.health.ManualSafSessionTest :app:assembleDebug
+  ```
+
+- **주의사항**: setForeground의 projectPhase도 기존BLOCKED를지울수있어refresh만고치고끝내지않는다. consent철회/reset/명시selection/configure CAS/unknowncreate·REMOTE_STALE/freshownerprobe·sharedgate·동일tree/scope generation재사용은보존한다. 실패후숨은수정loop없이보고한다.
 
 ### T7: 실패 복구와 최종 통합 회귀
 
@@ -751,3 +777,11 @@ T11은원래T6의Native부분을분리한것이므로T6기술보정1/2이력과�
 제품3파일첫gate는3분6초/exit0이고root가core84/app96 합180unique/실패·오류·skip0의원본XML을대조했다. 별도Terra source review는Important2를발견했다: SyncViewModel continueSaf/retrySaf 직후refreshDestinations→saf.refresh가새outcome/BLOCKED를즉시지우고, Drive selectAccount configure/reset 뒤SAFprojection을갱신하지않아oldLOCALcoverage가활성으로보인다. T6원래크기보정1뒤누적2/2로SyncViewModel.kt한파일의통합callback/metadata 갱신순서만교정한다. SAF실행직후는새결과·phase를보존하면서필요한다른projection만갱신하고Drive구성/reset 뒤는fresh양projection/strictkind로generation변경을반영한다. AuthorizationTicket/새동의/foreground/입력스냅샷/이전완료이력/데이터·schema·권한은유지한다. MainActivity/Home/controller파일은동일하게보존한다.
 
 T11의기존두행동에실제VM액션직후COMPLETED·BLOCKED결과보존과priorSuccess분리, LOCAL→Drive/reset generation뒤LOCAL표시무효화를기대결과명확한회귀로추가했다. 새testfile은여전히T11한개이며T6실행자가작성하지않는다. 교정뒤app96 JVM/APK/lint/testAPK만1회검증하고변경없는core84는중복하지않는다. updatedsource독립재검토와실제T11양API8methodgate·최종full검증은필수다. 원래T6/T11분리예산은공유하며새실패는원본/새근거를보고하고숨은fixloop를하지않는다.
+
+### T6 추가 정합성 교정3 / T12 분리 — 실제 binding·foreground 결과 보존
+
+R2는app96/lint/APK/testAPK 2분8초PASS이고root가app XML96을대조했다. updated독립Terra는확정Important2를추가로한정했다: 기존ManualDriveSession.refresh는LOCAL도Driveconfigured로투영하므로strictreadBinding 없이양방향draft가coverage를오표시하며, resume/권한refresh 및setForeground.projectPhase가samegeneration결과/BLOCKED를지운다. 이전수정소스를보존하고소유자의기존V1전체자동수정승인에따라새근거의추가교정을수행한다. 원래T6회차는누적3으로정직하게유지하며작업ID/세션으로리셋하지않는다. 새범위/성공기준/권한/schema/외부서비스도입이나실계정행동은없다.
+
+T6제품3파일은generation과맞는실제privatebinding의kind를내부state로읽고unknown/invalid는failclosed, draft와별개로양UI의configured/coverage/outcome 및허용행동을현재kind에맞게투영한다. rawbinding/URI는UI에내보내지않는다. 실제모드변경은durableconfigure/reset/export없이두session의지연ticket/실행을메모리동의·입력경계로무효화하고기존generation/coverage를보존한다. 기존profiling sessionFactory생성자·legacy테스트호출이별도주입store를쓰므로defaultstore의새UIprojection을그기존실행API의잘못된guard로쓰지않는다. Home은CoverageSummary.toString을제품문구로내보내지않고사람이읽을날짜/건수만표시한다.
+
+결과보존은T12의기존controller/JVM2파일로분리해T6UI3파일과병렬교정하며T11은둘다완료뒤실제두행동/8method를검증한다. 기존R2의즉시결과보존·Drive변경후양projectionrefresh수정은보존한다. T12도원래T6통합교정의회차를승계한다. 각부분은1회교정/검증후새실패를보고하며동일가설무한재시도하지않는다.
