@@ -14,7 +14,7 @@ verify_workmanager_isolation() (
   mkdir -p "$evidence"
   rm -f "$evidence"/*.raw.txt "$evidence"/*.json "$evidence"/*.failure.txt "$evidence"/source-inventory.txt
   cleanup() {
-    local original=$? cleanup_failed=0 n
+    local original=$? cleanup_failed=0 n pid_status=0
     trap - EXIT
     timeout 5s adb shell am force-stop "$app" >"$scratch/cleanup" 2>&1 || cleanup_failed=1
     if [[ -n "$job" ]]; then
@@ -31,7 +31,8 @@ verify_workmanager_isolation() (
       wait "$job" 2>/dev/null || true
     fi
     timeout 5s adb shell true >"$scratch/alive" 2>&1 || cleanup_failed=1
-    if timeout 5s adb shell pidof "$app" >"$scratch/remaining" 2>&1; then cleanup_failed=1; fi
+    timeout 5s adb shell pidof "$app" >"$scratch/remaining" 2>"$scratch/pid-error" || pid_status=$?
+    if [[ "$pid_status" != 1 || -s "$scratch/remaining" || -s "$scratch/pid-error" ]]; then cleanup_failed=1; fi
     if (( cleanup_failed )); then
       printf 'stage=%s count=0 pass=false failure=cleanup\n' "$stage" >&2
       (( original != 0 )) || original=1
@@ -133,7 +134,14 @@ assert expected and len(expected) == len(set(expected))
 classes = {x.split('#')[0] for x in expected}
 methods = {x.split('#')[1] for x in expected}
 started, passed, bundle, terminal, ok = [], [], {}, 0, 0
+previous_class = None
+continuation = False
 for line in text.splitlines():
+    if continuation:
+        continuation = False
+        if line in {name + ":" for name in classes}:
+            bundle["header"] = line[:-1]
+            continue
     if line == '': continue
     if line.startswith('INSTRUMENTATION_STATUS: '):
         item = line.removeprefix('INSTRUMENTATION_STATUS: ')
@@ -142,13 +150,21 @@ for line in text.splitlines():
                  (key == 'id' and value == 'AndroidJUnitRunner') or
                  (key == 'current' and value.isdigit() and 1 <= int(value) <= len(expected)) or
                  (key == 'numtests' and value == str(len(expected))) or
-                 (key == 'stream' and value == ''))
+                 (key == 'stream' and value in ('', '.')))
         assert valid
         bundle[key] = value
+        continuation = key == 'stream' and value == ''
     elif line in ('INSTRUMENTATION_STATUS_CODE: 1', 'INSTRUMENTATION_STATUS_CODE: 0'):
         identity = bundle.get('class', '') + '#' + bundle.get('test', '')
         assert identity in expected
-        (started if line.endswith('1') else passed).append(identity)
+        if line.endswith('1'):
+            assert bundle.get('stream') == ''
+            assert bundle.get('header') == (bundle['class'] if bundle['class'] != previous_class else None)
+            previous_class = bundle['class']
+            started.append(identity)
+        else:
+            assert bundle.get('stream') == '.' and 'header' not in bundle
+            passed.append(identity)
         bundle = {}
     elif line == 'INSTRUMENTATION_RESULT: stream=':
         assert not bundle
