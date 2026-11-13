@@ -17,6 +17,7 @@ on:
           - saf-store
           - saf-capability
           - saf-destination
+          - saf-ui
 
 permissions:
   contents: read
