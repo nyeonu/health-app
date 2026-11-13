@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: eed71c940e1e7e0df3b2e7896b9543f49ab8193d
+parent_rev: 288d8d0e8f84545e996b0f45805a0d41616c7b99
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-saf-local
@@ -19,7 +19,7 @@ tasks:
   - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: done, tier: standard}
   - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9, T10], status: pending, tier: standard}
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
-  - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: done, tier: standard}
+  - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: in_progress, tier: standard}
   - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: done, tier: standard}
   - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: in_progress, tier: standard}
 ---
@@ -156,13 +156,14 @@ internal fun SafManualUi(state: ManualSafState, actions: SafManualActions)
 
 ```text
 // SafCiProtocol — 고정 class 진단과 기존 전체 gate 보존
-workflow_dispatch.test_scope choice default full; choices full,saf-provider-starter,saf-store,saf-capability,saf-destination,saf-ui.
+workflow_dispatch.test_scope choice default full; choices full,saf-provider-starter,saf-store,saf-capability,saf-destination,saf-ui,saf-flow.
 GITHUB_EVENT_NAME=workflow_dispatch일 때만 TEST_SCOPE 선택을 적용; PR/기타/변수없음은 기존 full.
 saf-provider-starter → com.ny.my.health.SyntheticProviderStarterTest
 saf-store → com.ny.my.health.ManualDriveStoreInstrumentedTest
 saf-capability → com.ny.my.health.SafTreeConfigurationInstrumentedTest
 saf-destination → com.ny.my.health.SafDestinationInstrumentedTest,com.ny.my.health.SafJournalInstrumentedTest
 saf-ui → com.ny.my.health.SafManualUiInstrumentedTest (T9 고정 source가 존재한 뒤 실제 실행)
+saf-flow → com.ny.my.health.SafManualFlowInstrumentedTest,com.ny.my.health.ManualDriveFlowInstrumentedTest (T6고정source생성뒤만실제실행)
 선택 class는 위 리터럴만허용하고 해당고정 testsource가없으면명시실패. 임의 class 문자열/eval/쉘명령입력금지.
 unknown dispatch scope는 명시실패; diagnostic branch는 고정class connected만실행하고host를full통과로표시하지않음.
 기본full은현재 critical14+나머지전체+기존host2스크립트 및artifact수집 그대로. 새테스트자동포함/skip없음.
@@ -544,7 +545,7 @@ internal interface ManualSafPorts {
   | `.github/workflows/android-emulator-tests.yml` | 수정 | dispatch choice와 TEST_SCOPE env만 추가 |
   | `android/ci/run-emulator-validation.sh` | 수정 | 고정 허용목록 diagnostic 분기, 기존 full 본문 보존 |
 
-- **인터페이스**: §2 `SafCiProtocol` 참조. 2026-11-13 root 승인 보정은 saf-ui 한 fixed choice→com.ny.my.health.SafManualUiInstrumentedTest만 추가한다. 기존 T8 done 증거는 기존 선택에 대한 것이며 saf-ui 실제 source/Native 실행은 T9 이후 root 별도 실행으로 검증한다. 이 계획 보정에서 workflow/source는 수정하지 않는다.
+- **인터페이스**: §2 `SafCiProtocol` 참조. 현재 추가 배정은 고정 saf-flow choice→com.ny.my.health.SafManualFlowInstrumentedTest,com.ny.my.health.ManualDriveFlowInstrumentedTest 두 class뿐이다. T6 source생성 전 class존재guard로실패해야하며실제flow8method는T6 source통합뒤양API에서실행한다. 기존6choice/UI/공통prep/defaultfull/host/API/timeout/권한은불변이다. 동일기존CI두파일만수정하고source없는가짜test를레포에추가하지않는다. 기존6mode실제성공증거는보존한다.
 - **결정 로직**: fixed scope→fixed class, dispatch guard; 실제 app/provider 정책 변경 없음.
 - **작성할 테스트**: CI-only static/stub. YAML matrix/settings/artifact/host/fullcommands byte parity; PR에scope주입·빈변수·full→full, explicit각진단→고정class만, unknown/missingclass→실패, connected실패→즉시전파. runner처럼script줄별shell실행. Native0개/다른class는root원본XML검증에서PASS아님.
 - **완료 기준**: 기본 PR/full은 모든 Native·host를보존한다. 진단결과는해당component에만사용하고최종현재Androidsource의양API전체회귀는별도필수다.
@@ -702,3 +703,7 @@ R2첫packaging은20초에기존cross-file internal SafDestinationFixture접근�
 ### T4 복구2 소스·환경 검증 완료와 실제 재실행 준비
 
 AndroidTest생성cache/classes두경로만제거한뒤source수정없이동일assembleDebugAndroidTest가41초/exit0으로통과했다. 따라서이전internalvisibility오류는cache환경준비로해소됐고visibility modifier를바꾸지않았다. 실제이동과오류사이정확한compiler원인까지증명한것은아니다. 독립R2delta APPROVE와새fileSHA40960015aac4ed43db809a7129284cc8839dec0c1173ba71f5899ed1f7914c9a를root가대조해현재source에통합했다. 다른세T4파일/T5완료source는불변이다. T4sourcegate done, T10의두고정mode는이새source에서양API재실행한다. 기존Native3PASS와provider1PASS는증거로보존하지만새composite전체통과를대체하지않는다. T4원래복구2/2·T6실제gate는유지한다.
+
+### T8 실제 flow 고정 진단의 병렬 준비
+
+T6 검증명령은새SafManualFlow2method와기존ManualDriveFlow6method의실제Activity검증이다. 전체Native/host는T7에서여전히필수이며T6마다전체120+개를중복실행하지않도록기존optionaldispatch에고정saf-flow1개를추가한다. 동일두CI파일은T6네제품/테스트파일과겹치지않아T10대기중작성/정적검증가능하다. 선택class는리터럴고정이며둘중source가없으면실패하고PR/기타event/빈값은그대로full이다. 새mode실제실행은T6source생성뒤하고최종full gate를대체하지않는다. 기존T8수정회차를리셋하지않고이는소유자기존V1자동승인·병렬지시안의진단범위추가작업이다.

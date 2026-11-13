@@ -173,5 +173,63 @@
       "JVM ports do not prove actual SQLite, provider, canonical gate or Activity integration.",
       "T10 actual component blocked before tests; T6 remains pending."
     ]
+  },
+  "latest_pending_source": "f863887001e788a11f31bff563905751830266f7",
+  "first_destination_runtime_attempt": {
+    "source": "a1598b22051066ed7066f9a78ddec76b8eb1ef3c",
+    "root_verified": [
+      {
+        "run": 43478573782,
+        "api": 35,
+        "artifact": 14064586718,
+        "sha256": "6bc35a0bcd96a89e1a4e4e3d5db834c1c4cf5bc9bda4abc3f63b01ffb789f12b",
+        "tests": 4,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      },
+      {
+        "run": 43478573782,
+        "api": 36,
+        "artifact": 14064477269,
+        "sha256": "13be3fb319f3332df3b97240fd0b28dd13bf7bcb8a49b836d349082f5dc0f7e9",
+        "tests": 4,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      },
+      {
+        "run": 43478579503,
+        "api": 35,
+        "artifact": 14063978181,
+        "sha256": "f30ad86b6831b93d1e4b37ff85074c6b12229a428e43cea061b4939d547898e3",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      },
+      {
+        "run": 43478579503,
+        "api": 36,
+        "artifact": 14063284923,
+        "sha256": "427ecad614ee47c7629433dd27365ee1131cf40429908bb6d598df0674dfb773",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      }
+    ],
+    "result": "Destination3PASS1FAIL eachAPI; provider1PASS eachAPI",
+    "failure": "SafJournalInstrumentedTest.kt65 expectedBLOCKED actualCOMPLETED",
+    "cause": "Synthetic workout outside KST target day; input fixed inR2, originalassertionsunchanged",
+    "next_runs": [
+      43480662382,
+      43480668622
+    ],
+    "next_status": "RUNNING_NOT_YET_PASS"
   }
 }
