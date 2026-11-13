@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # 전체 에뮬레이터 검증을 한 셸에서 순서대로 실행하고 첫 실패 시 중단한다.
 set -e
+# 계정 없는 테스트에서 사용하지 않는 SDK 설정 패키지가 있으면 한 번 종료한다.
+if adb shell pm list packages com.google.android.googlesdksetup | tr -d '\r' | grep -Fxq 'package:com.google.android.googlesdksetup'; then adb shell am force-stop com.google.android.googlesdksetup; fi
+# 테스트 전 기존 launcher 종료를 유지하며 ANR 대화상자 해소는 보장하지 않는다.
+adb shell am force-stop com.google.android.apps.nexuslauncher
 # 수동 dispatch에서만 고정 진단 범위를 적용하며 나머지 이벤트는 전체 gate를 유지한다.
 if [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ]; then
   case "${TEST_SCOPE:-full}" in
@@ -47,10 +51,6 @@ if [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ]; then
       ;;
   esac
 fi
-# 계정 없는 테스트에서 사용하지 않는 SDK 설정 패키지가 있으면 한 번 종료한다.
-if adb shell pm list packages com.google.android.googlesdksetup | tr -d '\r' | grep -Fxq 'package:com.google.android.googlesdksetup'; then adb shell am force-stop com.google.android.googlesdksetup; fi
-# 테스트 전 기존 launcher 종료를 유지하며 ANR 대화상자 해소는 보장하지 않는다.
-adb shell am force-stop com.google.android.apps.nexuslauncher
 # 핵심 화면 4개 클래스를 먼저 실행하고 실패하면 이후 검증을 중단한다.
 (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.HealthAppInstrumentedTest,com.ny.my.health.ManualDriveFlowInstrumentedTest,com.ny.my.health.ManualDriveUiInstrumentedTest,com.ny.my.health.DestinationConfigurationInstrumentedTest)
 # 다음 connected 실행이 덮어쓰기 전에 핵심 XML·보고서·추가 출력을 보존한다.
