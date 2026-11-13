@@ -22,7 +22,7 @@ tasks:
   - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: done, tier: standard}
   - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: done, tier: standard}
   - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: done, tier: standard}
-  - {id: T11, title: 실제 Activity SAF 선택과 전경 수동 실행 검증, depends_on: [T6, T12], status: done, tier: standard}
+  - {id: T11, title: 실제 Activity SAF 선택과 전경 수동 실행 검증, depends_on: [T6, T12], status: in_progress, tier: standard}
   - {id: T12, title: 같은 구성의 metadata refresh 결과 보존, depends_on: [T5], status: done, tier: standard}
 ---
 
@@ -874,3 +874,11 @@ head527cad5/fullrun43503457186에서API35는critical15PASS/remaining117중T11pos
 원래T6/T11누적7로같은SafManualFlowNative한파일/두method만교정한다. positive observer호출전publiclifecycle/jobbaseline을잡고실제Main의새pause/resume를testfixturecallbacks로관측하며foreground/RESUMED와resume의새metadatajobs완료를기존10초내기다린다. 선택한LOCALgeneration/READY와실제continuecontrol enabled를명시확인한뒤Compose public OnClicksemantics callback에서동일Main의job전후집합을포착해실제UI작업완료를JUnitworker에서join한다. VM직접호출로대체하지않는다. 기존COMPLETED/실제SQLite/독립CSVbytes/권한0/negative두method단언은보존한다. 실패진단은고정enum/boolean/합성읽기횟수만허용하고URI/CSV/token을출력하지않는다. timeout증가/sleep/skip/제품수정없이sourcefreezecompile1회·updated별도source검토뒤currenthead전체양API/host와freshspec적합성을재검증한다. 기존correctioncounts/실패이력은reset하지않는다.
 
 T11교정7 sourceSHA53e88311c100ce481387952e08f9eecaaba76dda54d10b28d6236eabfde3f9cd는app97/testAPK39초PASS와updated별도Terra sourceAPPROVE를받았다. root가원본XML97unique/실패·오류·skip·중복0및sourceSHA를대조해통합했다. 검토자는설치Compose bytecode의performSemanticsAction→runOnUiThread도확인했다. 실제pause/resume+새metadatajob완료/READY·LOCALgeneration/controlenabled/실제OnClickjob관측이추가됐으며원래두method/독립CSV/SQLite/음성단언은보존한다. API35timeout원인은아직가설이며currenthead양API전체/host·freshconformancePASS까지완료처리하지않는다.
+
+### T11 추가 교정8 — 음성 시나리오의 겹친 observer 왕복
+
+head73f8705/fullrun43507441190는API35전체132+host20/17recovery/17cleanup·killedholds0PASS이나API36전체132중negative flow192행권한철회반영assertion1FAIL이다. positive flow는양API모두통과했고오류·skip·중복0/JVM181PASS다. API36host는미실행이다. root는두ZIP digest/실제class·method집합132와API35host완료값을직접검증했다. 감시세션이중단돼완료알림이지연된것을root가직접GH상태조회로발견했다. 이후긴대기agent에의존하지않고root가현재CI상태를주기적으로직접조회한다.
+
+별도Terra읽기전용진단에서negative의OBSERVE두번이21:13:48.069/48.099에끝나고단한번의Mainresume48.110보다앞서겹쳤음을확인했다. 마지막OBSERVE응답/finish49.496→Mainresume49.531→실패cleanup49.610이다. grant변경/refresh시각은없어직접원인은확정하지않는다. 코드상뒤늦은resume가새metadataSequence로명시refresh를supersede해join한요청이결과를게시하지않을수있다.
+
+같은원래T6/T11누적8로한Native파일의기존왕복helper를operation인자로일반화하고Main이살아있는모든standaloneOBSERVE/REVOKE에적용한다(assertNoProviderMutation포함). 실제picker/heldcallback/release/명시secondpause는수정하지않고baseline관측은picker전·post관측은callback처리후를유지한다. 마지막observer왕복의실제새pause/resume·metadatajobs완료뒤grants를변경하고명시refresh작업을join한뒤exactemptygrants·create/write/delete불변·healthread0·fallback0을검증한다. positive의실제UIOnClick/独立CSV/SQLite단언도그대로다. timeout증가/sleep/skip/제품변경없이freezecompile1회·updated별도source검토·currenthead양API전체/host·freshspec-only검증을이어간다. 소유자기존V1자동수정위임안의새실제근거한정이며회차를reset하지않는다.
