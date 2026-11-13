@@ -1,6 +1,52 @@
 #!/usr/bin/env bash
 # 전체 에뮬레이터 검증을 한 셸에서 순서대로 실행하고 첫 실패 시 중단한다.
 set -e
+# 수동 dispatch에서만 고정 진단 범위를 적용하며 나머지 이벤트는 전체 gate를 유지한다.
+if [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ]; then
+  case "${TEST_SCOPE:-full}" in
+    full) ;;
+    saf-provider-starter)
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/SyntheticProviderStarterTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: SyntheticProviderStarterTest' >&2
+        exit 1
+      fi
+      (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SyntheticProviderStarterTest')
+      exit 0
+      ;;
+    saf-store)
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/ManualDriveStoreInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: ManualDriveStoreInstrumentedTest' >&2
+        exit 1
+      fi
+      (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.ManualDriveStoreInstrumentedTest')
+      exit 0
+      ;;
+    saf-capability)
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/SafTreeConfigurationInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: SafTreeConfigurationInstrumentedTest' >&2
+        exit 1
+      fi
+      (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SafTreeConfigurationInstrumentedTest')
+      exit 0
+      ;;
+    saf-destination)
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/SafDestinationInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: SafDestinationInstrumentedTest' >&2
+        exit 1
+      fi
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/SafJournalInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: SafJournalInstrumentedTest' >&2
+        exit 1
+      fi
+      (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SafDestinationInstrumentedTest,com.ny.my.health.SafJournalInstrumentedTest')
+      exit 0
+      ;;
+    *)
+      echo '알 수 없는 수동 진단 범위입니다.' >&2
+      exit 1
+      ;;
+  esac
+fi
 # 계정 없는 테스트에서 사용하지 않는 SDK 설정 패키지가 있으면 한 번 종료한다.
 if adb shell pm list packages com.google.android.googlesdksetup | tr -d '\r' | grep -Fxq 'package:com.google.android.googlesdksetup'; then adb shell am force-stop com.google.android.googlesdksetup; fi
 # 테스트 전 기존 launcher 종료를 유지하며 ANR 대화상자 해소는 보장하지 않는다.
