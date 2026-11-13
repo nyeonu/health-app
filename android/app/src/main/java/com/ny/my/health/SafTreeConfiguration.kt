@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
@@ -52,6 +53,7 @@ internal class SafTreeConfiguration private constructor(
     }
 
     private fun validateSelection(uri: Uri?, consent: Boolean) {
+        if (Build.VERSION.SDK_INT < 29) blocked()
         if (!consent || !isAllowedTree(uri, allowedAuthority)) blocked()
     }
 
@@ -97,7 +99,7 @@ internal class SafTreeConfiguration private constructor(
                 DocumentsContract.getTreeDocumentId(created) != DocumentsContract.getTreeDocumentId(tree) ||
                 DocumentsContract.getDocumentId(created) in existing ||
                 DocumentsContract.getDocumentId(created) == DocumentsContract.getTreeDocumentId(tree) ||
-                !DocumentsContract.isChildDocument(resolver, root, created)) blocked()
+                Build.VERSION.SDK_INT < 29 || !DocumentsContract.isChildDocument(resolver, root, created)) blocked()
             resolver.query(created, arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME,
                 Document.COLUMN_MIME_TYPE), null, null, null).use { cursor ->
                 if (cursor == null || !isComplete(cursor) || !cursor.moveToFirst() ||
