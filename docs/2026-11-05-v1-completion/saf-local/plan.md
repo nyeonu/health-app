@@ -15,13 +15,13 @@ tasks:
   - {id: T1, title: 실제 합성 DocumentsProvider와 grant starter, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 목적지 공통 known-target 조회와 재열기, depends_on: [], status: done, tier: standard}
   - {id: T3, title: 전경 local tree 동의와 실제 capability probe, depends_on: [T1], status: done, tier: standard}
-  - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: in_progress, tier: standard}
+  - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: done, tier: standard}
   - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: pending, tier: standard}
   - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9, T10], status: pending, tier: standard}
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
   - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: done, tier: standard}
   - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: done, tier: standard}
-  - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: pending, tier: standard}
+  - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: in_progress, tier: standard}
 ---
 
 # 검증된 local tree 전경 내보내기
@@ -33,8 +33,8 @@ tasks:
 | 스펙 기준 | 테스트 이름 (출처/층) | 충족 위치 |
 |---|---|---|
 | SAF local 구성은 별도 privacy/tree 동의·실제 granted flags·persisted permission·합성 probe가 확인된 capability만 활성화하고 미검증 provider/background capability는 disabled 또는 BLOCKED로 유지한다. | `SAF configuration enables only consented persisted granted and successfully probed local capabilities` (①·②·③/합성 DocumentsProvider 통합 및 Compose E2E) | T1·T3·T9·T5·T6·T7 |
-| SAF 동일 날짜의 더 짧은 재내보내기는 같은 대상에 정확히 truncation/readback되고 duplicate·moved/deleted·grant 철회·write interruption은 suffix 재생성이나 false success 없이 reconciliation/명시적 복구로 연결된다. | `SAF shorter overwrite reads back exact bytes and ambiguous revoked moved deleted interrupted targets require recovery` (①·②·③·④/합성 DocumentsProvider 통합) | T2·T4·T7 |
-| 부분 실패·취소·결과불명 후 대상 reconciliation을 거쳐 pending 파일만 다시 처리하고 이미 확인된 동일 revision의 건강한 파일을 중복 create하거나 prior success를 지우지 않는다. | `After partial failure cancellation or unknown create reconciliation retries only pending files` (①·③·④/유닛 및 local TLS·provider 통합) | T2·T4·T7; 기존 DestinationSyncTest·Drive 회귀 재사용 |
+| SAF 동일 날짜의 더 짧은 재내보내기는 같은 대상에 정확히 truncation/readback되고 duplicate·moved/deleted·grant 철회·write interruption은 suffix 재생성이나 false success 없이 reconciliation/명시적 복구로 연결된다. | `safShorterOverwriteReadsBackExactBytesAndAmbiguousRevokedMovedDeletedInterruptedTargetsRequireRecovery` (①·②·③·④/합성 DocumentsProvider 통합) | T2·T4·T7 |
+| 부분 실패·취소·결과불명 후 대상 reconciliation을 거쳐 pending 파일만 다시 처리하고 이미 확인된 동일 revision의 건강한 파일을 중복 create하거나 prior success를 지우지 않는다. | `afterPartialFailureCancellationOrUnknownCreateReconciliationRetriesOnlyPendingFiles` (①·③·④/유닛 및 local TLS·provider 통합) | T2·T4·T7; 기존 DestinationSyncTest·Drive 회귀 재사용 |
 
 보완 테스트는 아래 T의 명확한 동작 이름을 그대로 사용한다. 아래 표가 추가 기준선 ↔ 테스트 ↔ 작업의 대응을 고정한다. 부모의 보안·접근성·개발 증거 전체 행은 §4에서 검증하며 이를 SAF 단독 소유 행으로 바꾸지 않는다.
 
@@ -42,7 +42,7 @@ tasks:
 |---|---|---|
 | SAF local 구성은 별도 privacy/tree 동의·실제 granted flags·persisted permission·합성 probe가 확인된 capability만 활성화하고 미검증 provider/background capability는 disabled 또는 BLOCKED로 유지한다. | `Synthetic provider grants target UID tree access and resolver reads the seeded document`; `SAF selection and restore never export without explicit foreground continue`; `SAF intended category snapshots reject edited picker or stored scope mismatches and zero grants without shrinking partial grants`; `SAF actual activity selection configures without exporting and explicit continue confirms only selected local target`; `SAF actual activity rejects stale tree results and paused revoked grants without Drive fallback` | T1·T5·T6·T7 |
 | SAF local 구성은 별도 privacy/tree 동의·실제 granted flags·persisted permission·합성 probe가 확인된 capability만 활성화하고 미검증 provider/background capability는 disabled 또는 BLOCKED로 유지한다. | `SAF privacy tree continue retry and reset remain reachable in light dark and large text without URI disclosure` (①·②·③·④·⑤/Compose 합성 UI 통합) | T9; T7 재실행 |
-| SAF 동일 날짜의 더 짧은 재내보내기는 같은 대상에 정확히 truncation/readback되고 duplicate·moved/deleted·grant 철회·write interruption은 suffix 재생성이나 false success 없이 reconciliation/명시적 복구로 연결된다. | `SAF reconciliation performs no writes and reservations reject changed or reused inputs`; `SAF encoded opaque document URIs retain target resolver identity after SQLite reopen` | T4 |
+| SAF 동일 날짜의 더 짧은 재내보내기는 같은 대상에 정확히 truncation/readback되고 duplicate·moved/deleted·grant 철회·write interruption은 suffix 재생성이나 false success 없이 reconciliation/명시적 복구로 연결된다. | `safReconciliationPerformsNoWritesAndReservationsRejectChangedOrReusedInputs`; `safEncodedOpaqueDocumentUrisRetainTargetResolverIdentityAfterSQLiteReopen` | T4 |
 | 부분 실패·취소·결과불명 후 대상 reconciliation을 거쳐 pending 파일만 다시 처리하고 이미 확인된 동일 revision의 건강한 파일을 중복 create하거나 prior success를 지우지 않는다. | `All active scope generic URI and prior handles survive reopen while stale corrupt and orphan reads fail closed`; `SAF pause reset stale picker and double continue preserve journal and reject delayed results`; `SAF recovery reopens blockers without clearing unknown creation or remote stale`; `SAF explicit recovery preserves confirmed files unknown creates and old generation isolation after reopen` | T2·T5·T7 |
 
 ## 2. 실행에 필요한 현재 상태
@@ -367,10 +367,10 @@ internal interface ManualSafPorts {
   ```
 
 - **작성할 테스트**:
-  - "SAF shorter overwrite reads back exact bytes and ambiguous revoked moved deleted interrupted targets require recovery"
-  - "SAF reconciliation performs no writes and reservations reject changed or reused inputs"
-  - "SAF encoded opaque document URIs retain target resolver identity after SQLite reopen"
-  - "After partial failure cancellation or unknown create reconciliation retries only pending files"
+  - "safShorterOverwriteReadsBackExactBytesAndAmbiguousRevokedMovedDeletedInterruptedTargetsRequireRecovery"
+  - "safReconciliationPerformsNoWritesAndReservationsRejectChangedOrReusedInputs"
+  - "safEncodedOpaqueDocumentUrisRetainTargetResolverIdentityAfterSQLiteReopen"
+  - "afterPartialFailureCancellationOrUnknownCreateReconciliationRetriesOnlyPendingFiles"
 - **테스트 조건/층**: T1의 실제 target UID grant/provider를 사용하여 공백·Unicode·reserved opaque ID로 DocumentsContract가 만든 encoded URI를 SQLite에 저장·재열기하고, 같은 URI의 실제 target resolver 접근/정확한 document identity·bytes를 확인한다. 이어 실제 SQLite+provider로 create-after-effect 응답불명, directory create interruption, readback interruption, local confirmation commit 실패, source revision 변경·EMPTY 왕복·scope 축소/다른 scope null handle, 재열기와 두 번째 취소를 검증한다. safe known target adoption과 unknown+없음 no-create를 구분한다. 다른 날짜/generation 오염은 T2 재사용(①·②·③·④/Android 통합).
 - **완료 기준**: same document identity/count·short exact bytes·healthy file write0·unknown absent create0·reconcile create/write/delete0을 실제 provider 관찰과 journal 행으로 단언한다. provider close/readback와 durable confirmation 둘 다 있어야 성공이다.
 - **검증 방법**:
@@ -665,3 +665,7 @@ T4 구현과 병렬 read-only 실제 API 조사로 기존 ManualDrivePorts 관�
 ### 실제 component 대기와 T5 작성의 병렬 승인
 
 소유자의 재개·병렬 지시에 따라 root는 T4의 안정 source/lint/APK/testAPK/독립 검토와 actual component 대기를 T4/T10으로 분리한다. T10은 원래 T4의 provider/destination 양API 시험을 그대로 소유하고 T6의 추가 선행조건이다. T5는 T4와T9 source 계약 뒤 충돌 없는 두 파일을 작성하므로 CI 대기와 겹칠 수 있다. scope/성공 기준/최종 full gate/원래 복구 ID/실패 중단 규칙은 유지한다. T5 brief의 소유 타입 불렛에 backtick을 넣어 assembler가 원문 전체 계약을 수집하도록 표기만 정정했다.
+
+### T4 안정 source 완료 / actual checkpoint T10 시작
+
+복구1 source의 lintDebug+assembleDebug+assembleDebugAndroidTest가2분1초/exit0으로통과했다. root는이전동일기존JVM core84/app92/합176/실패·오류·skip·중복0의원본XML을직접대조했다. 독립updatedsource APPROVE와네파일SHA-256을복사전후직접대조했으며이름/권한오류분류/canonical충돌/handle4096·4097/mainIO교정을확인했다. Native 실제실행을로컬build로대신하지않고T10에서동일source 양API destination4methods/providerstarter1method를검증한다. T4done은병렬분리한sourcegate만의완료이며T5두파일은동시에작성가능하고T6는actualT10PASS전차단한다. 원래T4복구1/2회차는유지한다. 새create4096성공 직접검증제안은비차단이며동일validator의existing4096채택/overwrite와new4097실패를현재검증한다. opaque ID의canonicalCSVadoption은fixture미지원한계로남기고실제SQLiteURI재열기/resolver동일성/잘못된경로차단을증거로사용한다.

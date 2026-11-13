@@ -44,7 +44,7 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
     public enum Control {
         RESET, GRANT_READ_WRITE, GRANT_READ_ONLY, REVOKE,
         DUPLICATE, MOVE_OUTSIDE_TREE, DELETE_SEEDED,
-        PARTIAL, LOADING, NULL_QUERY, NO_TRUNCATE, WRONG_RETURN_IDENTITY,
+        PARTIAL, DOCUMENT_PARTIAL, SECURITY_FAILURE, SAME_TARGET_ACROSS_DATASETS, OVERSIZED_TARGET_ID, LOADING, NULL_QUERY, NO_TRUNCATE, WRONG_RETURN_IDENTITY,
         CREATE_AFTER_EFFECT_FAILURE, WRITE_INTERRUPTION, CLOSE_INTERRUPTION,
         BLOCK_BEFORE_EFFECT, RELEASE_BLOCK, OBSERVE, OPAQUE_IDS,
         INCOMPLETE, NULL_DESCRIPTOR, SHORT_WRITE, CLEANUP_FAILURE, READBACK_FAILURE
@@ -80,6 +80,8 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
     public static final String SEEDED_ID = "opaque-document-b";
     private static final String OUTSIDE_ID = "opaque-directory-c";
     private static final String NESTED_ID = "opaque-directory-d";
+    public static final String EXTRA_TARGET_URI_BYTES = "synthetic_target_uri_bytes";
+    public static final String EXTRA_TARGET_ID = "synthetic_target_id";
     public static final String EXTRA_CONTROL = "synthetic_control";
     public static final String EXTRA_RECEIVER = "synthetic_receiver";
     public static final String EXTRA_UID = "synthetic_uid";
@@ -105,6 +107,7 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
     private static final Map<String, Node> nodes = new LinkedHashMap<>();
     private static File storage;
     private static Control outcome;
+    private static int targetUriBytes = 4097;
     private static final Bundle counts = new Bundle();
     private static HandlerThread descriptorThread;
 
@@ -164,6 +167,7 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
     @Override
     public Cursor queryDocument(String documentId, String[] projection) throws FileNotFoundException {
         synchronized (lock) {
+            if (outcome == Control.SECURITY_FAILURE) throw new SecurityException("합성 접근 거부");
             count(COUNT_QUERY);
             return cursor(Collections.singletonList(node(documentId)), projection);
         }
@@ -174,6 +178,7 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
             throws FileNotFoundException {
         synchronized (lock) {
             node(parentDocumentId);
+            if (outcome == Control.SECURITY_FAILURE) throw new SecurityException("합성 접근 거부");
             count(COUNT_CHILDREN);
             if (outcome == Control.NULL_QUERY) return null;
             List<Node> children = new ArrayList<>();
@@ -182,6 +187,12 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
                     children.add(child);
                     if (outcome == Control.PARTIAL || outcome == Control.INCOMPLETE) break;
                 }
+            }
+            if (outcome == Control.SAME_TARGET_ACROSS_DATASETS && "workouts".equals(node(parentDocumentId).name)) {
+                Node alias = canonicalDaily();
+                if (alias == null) throw syntheticFailure();
+                children.clear();
+                children.add(alias);
             }
             MatrixCursor cursor = cursor(children, projection);
             if (outcome == Control.LOADING || outcome == Control.INCOMPLETE) {
@@ -199,6 +210,8 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
     public boolean isChildDocument(String parentDocumentId, String documentId) {
         synchronized (lock) {
             if (!nodes.containsKey(parentDocumentId)) return false;
+            if (outcome == Control.SAME_TARGET_ACROSS_DATASETS && "workouts".equals(nodes.get(parentDocumentId).name)
+                    && canonicalDaily() != null && canonicalDaily().id.equals(documentId)) return true;
             Node child = nodes.get(documentId);
             String current = child == null ? null : child.parent;
             Set<String> seen = new HashSet<>();
@@ -309,6 +322,8 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
                 else if (Document.COLUMN_FLAGS.equals(column))
                     row[i] = Document.MIME_TYPE_DIR.equals(entry.mime) ? Document.FLAG_DIR_SUPPORTS_CREATE
                             : Document.FLAG_SUPPORTS_WRITE | Document.FLAG_SUPPORTS_DELETE | Document.FLAG_SUPPORTS_MOVE;
+                if (Document.COLUMN_FLAGS.equals(column) && outcome == Control.DOCUMENT_PARTIAL)
+                    row[i] = ((Integer) row[i]) | Document.FLAG_PARTIAL;
             }
             cursor.addRow(row);
         }
@@ -344,6 +359,8 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
                 }
                 safeLog(command, stage);
                 if (command == null) throw new IllegalArgumentException("합성 제어 거부");
+                if (command != Control.OVERSIZED_TARGET_ID && intent.hasExtra(EXTRA_TARGET_URI_BYTES))
+                    throw new IllegalArgumentException("합성 길이 제어 거부");
                 Uri tree = DocumentsContract.buildTreeDocumentUri(AUTHORITY, TREE_ID);
                 if (command == Control.GRANT_READ_WRITE || command == Control.GRANT_READ_ONLY) {
                     int access = Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -357,7 +374,12 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
                 } else {
                     if (command == Control.BLOCK_BEFORE_EFFECT)
                         blockReceiver = intent.getParcelableExtra(EXTRA_BLOCK_RECEIVER);
-                    control(command);
+                    int size = 4097;
+                    if (command == Control.OVERSIZED_TARGET_ID) {
+                        size = intent.getIntExtra(EXTRA_TARGET_URI_BYTES, 4097);
+                        if (size < 4096 || size > 4097) throw new IllegalArgumentException("합성 길이 거부");
+                    } else if (intent.hasExtra(EXTRA_TARGET_URI_BYTES)) throw new IllegalArgumentException("합성 길이 제어 거부");
+                    control(command, intent.getStringExtra(EXTRA_TARGET_ID), size);
                 }
                 success = true;
                 safeLog(command, Stage.EFFECT);
@@ -431,7 +453,8 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
 
     private static Node addNode(String parent, String mime, String name) throws FileNotFoundException {
         // 표시 이름·document ID를 파일 경로로 해석하지 않는다.
-        String id = UUID.randomUUID().toString();
+        String id = outcome == Control.OVERSIZED_TARGET_ID && "text/csv".equals(mime)
+                ? sizedId(targetUriBytes) : UUID.randomUUID().toString();
         File file = Document.MIME_TYPE_DIR.equals(mime) ? null : new File(storage, UUID.randomUUID().toString());
         if (file != null) writeBytes(file, new byte[0]);
         Node added = new Node(id, parent, mime, name, file);
@@ -482,13 +505,23 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
         }
     }
 
-    private static void control(Control command) throws FileNotFoundException {
+    private static void control(Control command, String targetId, int size) throws FileNotFoundException {
         if (command == Control.RESET) {
             reset();
             return;
         }
         synchronized (lock) {
             if (command == Control.OBSERVE) { /* 결과는 고정 횟수만 반환한다. */ }
+            else if (command == Control.OVERSIZED_TARGET_ID) {
+                targetUriBytes = size;
+                Node selected = canonicalDaily();
+                if (selected != null) {
+                    nodes.remove(selected.id);
+                    String id = sizedId(size);
+                    nodes.put(id, new Node(id, selected.parent, selected.mime, selected.name, selected.file));
+                }
+                outcome = command;
+            }
             else if (command == Control.OPAQUE_IDS) {
                 String[] ids = { OPAQUE_SPACE_ID, OPAQUE_UNICODE_ID, OPAQUE_RESERVED_ID };
                 for (int i = 0; i < ids.length; i++) {
@@ -497,11 +530,14 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
                     nodes.put(ids[i], new Node(ids[i], NESTED_ID, "text/plain", "opaque-" + i, file));
                 }
             }
-            else if (command == Control.DUPLICATE)
-                writeBytes(addNode(NESTED_ID, "text/plain", "seed.txt").file, seededBytes());
-            else if (command == Control.MOVE_OUTSIDE_TREE) node(SEEDED_ID).parent = OUTSIDE_ID;
+            else if (command == Control.DUPLICATE) {
+                Node selected = node(targetId == null ? SEEDED_ID : targetId);
+                Node duplicate = addNode(selected.parent, selected.mime, selected.name);
+                if (duplicate.file != null) writeBytes(duplicate.file, seededBytes());
+            }
+            else if (command == Control.MOVE_OUTSIDE_TREE) node(targetId == null ? SEEDED_ID : targetId).parent = OUTSIDE_ID;
             else if (command == Control.DELETE_SEEDED) {
-                Node removed = nodes.remove(SEEDED_ID);
+                Node removed = nodes.remove(targetId == null ? SEEDED_ID : targetId);
                 if (removed != null && removed.file != null) removed.file.delete();
             } else if (command == Control.BLOCK_BEFORE_EFFECT) barrier = new CountDownLatch(1);
             else if (command == Control.RELEASE_BLOCK) {
@@ -510,6 +546,24 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
                 blockReceiver = null;
             } else outcome = command;
         }
+    }
+
+    /** 고정 daily 합성 CSV만 선택한다. 외부 경로나 식별자를 해석하지 않는다. */
+    private static Node canonicalDaily() {
+        for (Node value : nodes.values()) {
+            Node parent = nodes.get(value.parent);
+            if (parent != null && "daily".equals(parent.name) && "text/csv".equals(value.mime)) return value;
+        }
+        return null;
+    }
+
+    private static String sizedId(int bytes) {
+        Uri tree = DocumentsContract.buildTreeDocumentUri(AUTHORITY, TREE_ID);
+        int overhead = DocumentsContract.buildDocumentUriUsingTree(tree, "a").toString()
+                .getBytes(StandardCharsets.UTF_8).length - 1;
+        StringBuilder value = new StringBuilder();
+        for (int i = overhead; i < bytes; i++) value.append('a');
+        return value.toString();
     }
 
     private static void checkpoint() throws FileNotFoundException {
