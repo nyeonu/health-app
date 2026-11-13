@@ -80,6 +80,11 @@ tasks:
     depends_on: [T11, T13]
     status: pending
     tier: standard
+  - id: T15
+    title: 양 API 에뮬레이터 userdata 디스크 확보
+    depends_on: []
+    status: pending
+    tier: light
 ---
 
 # 계정에 연결된 전경 수동 복구
@@ -591,6 +596,20 @@ COMPLETED→측정성공, BLOCKED/STALE/RETRYABLE/PENDING/null/실패→실패, 
 - **검증 방법**: android/에서 `./gradlew :app:testDebugUnitTest --tests com.ny.my.health.ManualDriveSessionTest --tests com.ny.my.health.ManualSyncProfilingTest --tests com.ny.my.health.PhoneProfilingSessionTest :app:assembleDebugAndroidTest`.
 - **주의사항**: T11/T13 통합 후 시작. 기존 VM Application constructor와productionfactory 유지; 필요시 같은4파일내 actualsession factory seam만 추가하며 새로운 raw state/실계정/디스크metric은 금지. 기존 단언·CSV·취소·journal·credential 경계를 약화하지 않는다.
 
+### T15: 양 API 에뮬레이터 userdata 디스크 확보
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `.github/workflows/android-emulator-tests.yml` | 수정 | 기존 unused toolchain cleanup을 API35/36 모두 적용 |
+
+- **결정 로직**: 기존 Reserve disk step의 API36 if 조건만 제거하고 이름을 두 API 대상으로 변경한다. 기존 Kotlin build에 쓰지 않는 dotnet/NDK 제거 경로·안전한 ANDROID_HOME 검증·df는 보존한다. 테스트/버전/권한/timeout/host 단언을 바꾸지 않는다.
+- **작성할 테스트**: 추가 제품 테스트 없음(CI-only). 실제원인 job131873397235의userdata avail7074.67MB<need7372.80MB와 10분 boot timeout을 근거로 기존 성공한API36 환경준비를 API35에도 적용한다.
+- **완료 기준**: YAML/static diff 확인, 최종API35/36 CI의부팅및원래전체Native/host성공. 부팅전실패를제품assertion실패로세지않는다.
+- **검증 방법**: 기존 YAML파서 또는 정적검사; GitHub최종head의기존전체CI.
+- **주의사항**: 한 파일만 수정하며 새 cleanup대상/permission/skip/externalgrant를도입하지않는다. 다른codeauthoring과파일겹침없어병렬가능.
+
 ## 4. 검증
 
 최종 체크포인트(T9 이후): source 동결 head에서 root가 다음 순서로 실행하고 실제 XML/CI 원본 결과와 source head를 실행 보고에 기록한다. 계획 문서 작성 중 테스트/로그인/원격 쓰기는 실행하지 않았다.
@@ -748,3 +767,7 @@ PLAN 복구3은 기존 host test의 첫 toggle/continue 부재 단언이 새 bou
 첫 실제 focused5개 중1개 실패/0error/0skip. 새 복원 테스트가 기본foreground=false/consent=false인 controller에서 사용자 설정을 호출해 beginAccountSelection=null로 정상 거부됐다. 해당 configure 직전에 setForeground(true), setPrivateFolderConsent(true)를 명시하여 실제 사용자 준비를 재현한다. production·assertion·권한게이트는 바꾸지 않는다. 원본실패XML/log 보존 뒤 동일5개unit을 재검증하고 Native APK는최종통합에서확인한다. 기존3grouped+새지연메타데이터group은첫실행PASS였다.
 
 T13 actual focused31/0/0/0, T11 actualfocused5/0/0/0(환경준비1·testfixture복구1 별도원본보존), T12testAPK컴파일PASS. 기존source의중복focused전체실행은생략하고root가XML/log·diff를대조했다. T11Nativeactual/T12UIactual는최종CI에서확인하며 T14는완성된actualAPI를기준으로authoring한다.
+
+### CI 실제 환경 원인 및 T15 승인
+
+cfb/run43421817901/API35 job131873397235는제품테스트전 FATAL userdata 디스크부족(available7074.67MB/need7372.80MB)으로12:05:54중단된뒤12:15:56부팅timeout이었다. 기존unused toolchain cleanup이API36에만적용돼API35에누락됐다. 동일한기존안전환경준비를양API에적용하는T15를승인한다. 테스트/권한/버전/성공기준은보존한다. 코드수정/SAF리뷰와병렬로처리한다.
