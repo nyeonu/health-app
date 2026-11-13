@@ -43,6 +43,7 @@ tasks:
 ### EarlyStarterContracts
 
 ```text
+// EarlyStarterContracts — 기존 독립 기반 계약
 dependencies: implementation androidx.work:work-runtime:2.11.0
               androidTestImplementation androidx.work:work-testing:2.11.0
 production Application/main manifest/initialization 코드 변경 없음.
@@ -166,3 +167,7 @@ Galaxy/실계정/실제 HC background grant/Doze/reboot/network/battery/TalkBack
 ## 구체 계획 자동승인 및 조기 분리 근거
 
 2026-11-13 root는 위2개작업/각2파일과초기감사·실제starter gate를직접검토했다. 소유자의기존V1전체자동승인과새병렬지시에따라독립single계획으로승인한다. 같은spec_rev/ADR008선택을유지하며production worker/Application/permission/자동설정변경은제외한다. 부모단계의실행순서를몰래완료처리하지않고자동화도입전검증기반만앞당긴다. 기본initializer의실제manifest부수효과를감사하여공개하고generation/privatehealth이력과무관한합성test만실행한다. root현재검토head b35c11c, 실제API35/36·최종통합·PR독립검토전완료주장금지.
+
+### 계획 표기 복구1/2
+
+assemble_brief의명시참조 EarlyStarterContracts가heading만으로는해소되지않았다. 실제존재하는동일코드블록에조립기지원header주석만추가했다. 계약/API/파일/검증내용불변. 재조립에서해소실패0및Shared design원문포함확인후T1배정한다.
