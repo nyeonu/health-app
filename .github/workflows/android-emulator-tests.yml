@@ -34,8 +34,7 @@ jobs:
             android/**/*.gradle.kts
             android/gradle/wrapper/gradle-wrapper.properties
 
-      - name: Reserve disk for API36 userdata
-        if: matrix.api-level == 36
+      - name: API 35·36 에뮬레이터 userdata 디스크 공간 확보
         run: |
           # These preinstalled toolchains are unused by this Kotlin/JVM Android build.
           sudo rm -rf /usr/share/dotnet "${ANDROID_HOME:?}/ndk"
