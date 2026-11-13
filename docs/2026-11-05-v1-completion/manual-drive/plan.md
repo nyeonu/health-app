@@ -60,6 +60,26 @@ tasks:
     depends_on: [T9]
     status: pending
     tier: light
+  - id: T11
+    title: 복원 시 실제 권한 범위 coverage 투영
+    depends_on: [T9]
+    status: pending
+    tier: standard
+  - id: T12
+    title: 마지막 업로드와 최근 대상 날짜 표시
+    depends_on: [T8]
+    status: pending
+    tier: standard
+  - id: T13
+    title: 실제 core 처리 단계 성능 계측 복원
+    depends_on: [T9]
+    status: pending
+    tier: standard
+  - id: T14
+    title: bound 실행의 휴대폰 진단 수명 연결
+    depends_on: [T11, T13]
+    status: pending
+    tier: standard
 ---
 
 # 계정에 연결된 전경 수동 복구
@@ -137,6 +157,18 @@ ManualDriveSession은 작은 app controller이며 credential은 UiState 밖에 �
 확인 근거: 현재 Ports에는 upsertTracked가 아직 없고 HealthConnectReader는 HealthReader만 구현한다. SyncExecutionSession engine은 constructor field이며 gate 획득 전에는 merge만 한다. SqliteSyncStateStore에 configure/readBinding/invalidate/reset 및 all-profile uncertainty scan이 있지만 known-ID map/admin reopen은 없다. GoogleDriveTransport는 files path만 허용한다(현 source 직접 확인). SDK21.4/setAccount 및 AccountPicker constants/about scope/identity와 checksum optional 계약은 `/workspace/tooling/v1-manual-api-inventory.md`, `v1-manual-official-contracts.md`의 공식 URL/설치 API 확인값이다. 해당 메모의 후보 정책/이전 verdict는 승인 계약이 아니며 본 결정이 우선한다. 실제 OAuth/Galaxy/별칭 호환은 미확인이다.
 
 결정 로직 위치: BoundDriveAuthorization.kt의 IO 없는 companion 함수에 picker/result/ticket/proof 판정, PrivateDriveUploader.kt의 IO 없는 metadata/checksum/실패분류 함수에 target 판정, ManualDriveUi.kt의 pure projection에 current status/허용 동작을 둔다. SQL validation은 기존 store decode/transaction 경계를 재사용한다. 별도 validator framework/새 sealed 패턴/새 dependency를 도입하지 않는다. ADR007은 실제 conformance 전 Proposed를 유지한다.
+```
+
+```text
+// ProfilingRepairContracts — 기존 안전 진단의 additive 복원
+DestinationSync(store,reader,destination,clock,profiling:SyncProfiling?=null)
+SyncRevision.identify(snapshot,previous,observedAt,profiling:SyncProfiling?=null)
+ManualDriveSession의 기존 primary/production 인자 뒤 추가: newProfiling:()->ManualSyncProfiling?={null}, onProfileStarted:(ManualSyncProfiling)->Unit={}, onProfileFinished:(ManualSyncProfiling,ProfileOutcome)->Unit={_,_->}
+ManualDrivePorts.profiledDestination(transport,generation,profiling):StorageDestination 기본은 기존 destination 위임, production은 같은 collector를 PrivateDriveUploader에 전달.
+HEALTH_READ는 실제 readScoped, NORMALIZE/CSV_EXPORT는 identify 내부 두 실제 canonical/final projection 각각 계측(count2/day), DRIVE_TOTAL은 reconcile/write 실제 호출 각각 누적. about은 EXECUTION에만 포함하고 파일 요청으로 위장하지 않는다.
+유효 ticket만 profile 생성, authStarted→현재 authReturned→continuewait→gate owner prepare 안 executionStarted. stale/busy는 owner profile을 변경/종결하지 않는다. expected external pause는 authwait 유지, unexpected pause/withdraw/reset은 취소. RUNNING은 structured cleanup 뒤 종료한다.
+COMPLETED→측정성공, BLOCKED/STALE/RETRYABLE/PENDING/null/실패→실패, CancellationException→취소. MERGED는 새profile 생성/owner종결하지 않는다. factory/observer 오류는 업무 결과를 바꾸지 않는다.
+기존 foundation AUTHORIZATION_HISTORY/START_HISTORY/TERMINAL_HISTORY는 실제 호출하지 않으므로 미측정0으로 두고 V1 journal을 재명명하지 않는다. 기존 debug optin/고정24행/숫자enum만/메모리만/명시copy/release미노출 보존.
 ```
 
 ## 3. 작업
@@ -490,6 +522,75 @@ ManualDriveSession은 작은 app controller이며 credential은 UiState 밖에 �
 - **검증 방법**: android에서 `./gradlew :app:assembleDebugAndroidTest`; 최종 CI의 `bash android/ci/verify-history-process-recovery.sh` 실제 결과 대조.
 - **주의사항**: T9의 다섯 파일 제한을 보존하려고 누락된 host compatibility 한 파일만 별도 분리한다. 외부 grant/login/health 값/원격 쓰기는 없다. root가 T9 source를 통합한 뒤 compile하며 source authoring은 서로 다른 파일로 병렬 가능하다.
 
+### T11: 복원 시 실제 권한 범위 coverage 투영
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `android/app/src/main/java/com/ny/my/health/ManualDriveSession.kt` | 수정 | metadata-only scoped coverage |
+  | `android/app/src/test/java/com/ny/my/health/ManualDriveSessionTest.kt` | 수정 | 복원·권한변경·stale 메타데이터 회귀 |
+  | `android/app/src/androidTest/java/com/ny/my/health/ManualDriveFlowInstrumentedTest.kt` | 수정 | 실제SQLite scoped 복원 |
+
+- **인터페이스**: 2절 `ManualDriveContracts` 참조.
+- **결정 로직**: refresh/refreshGrants/구성 직후 실제 MANUAL access metadata와 한국 today로 store.loadForScope를 읽어 coverage를 투영한다. raw health/authorize/upload는0. grant 변경은 새 profile로 gap/excluded/blocked를 정확히 보여주고 null scope를 마지막 current scope처럼 표시하지 않는다. metadata await 중 ticket/gen/owner 변경 시 최신 상태를 지우지 않는다. 기존 state 필드를 사용하며 raw health 새 상태/DBschema는 없다.
+- **작성할 테스트**: 기존 grouped 회귀와 실제 SQLite에 scoped EMPTY/confirmed/blocked metadata를 저장→새 controller refresh에서 pending/blocked/current checked/uploaded/recent/excluded를 확인한다. grant 변경/0grant·stalegen·DB실패·healthraw0·Drive0. 자동 off 시작 감지/표시 기준(①③④⑤/유닛+Native).
+- **완료 기준**: 배정 focused/root 통합 검증 및 최종 실제 API35/36 Native 결과. 컴파일만으로 actual 통과를 주장하지 않는다.
+- **검증 방법**: android/에서 `./gradlew :app:testDebugUnitTest --tests com.ny.my.health.ManualDriveSessionTest :app:assembleDebugAndroidTest`.
+- **주의사항**: T14와 ManualDriveSession/NativeFlow 파일이 겹치므로 T11 완료 후 T14 authoring한다. VMdraft/UI API는 바꾸지 않는다. 기존 단언·CSV·취소·journal·credential 경계를 약화하지 않는다.
+
+### T12: 마지막 업로드와 최근 대상 날짜 표시
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `android/app/src/main/java/com/ny/my/health/ManualDriveUi.kt` | 수정 | safe KST timestamp와 최근 대상 날짜 확인/업로드 |
+  | `android/app/src/main/java/com/ny/my/health/HealthHomeScreen.kt` | 수정 | 기준 한국 날짜 전달 |
+  | `android/app/src/androidTest/java/com/ny/my/health/ManualDriveUiInstrumentedTest.kt` | 수정 | 미확인·오래됨·최근 날짜 구분 |
+
+- **인터페이스**: 2절 `ManualDriveContracts` 참조.
+- **결정 로직**: 기존 coverage.lastUploadAt은 active generation 전체 profile 최대라는 한계를 표시하고 현재 scope refresh 시각으로 과장하지 않는다. 주입된 한국 today와 enrolledDay로 최근 eligible {today-2,today-1}의 recentCheckedDays/recentUploadedDays를 각각 표시한다. 이는 최근 대상 날짜 확인/업로드 여부이며 오늘 다시 갱신되었다는 뜻은 아니다. raw health 새 필드 불필요, pure projection 유지.
+- **작성할 테스트**: 기존 light/dark/large semantics test를 재사용하며 같은 through값이나 최근 set 다른 fixture, lastUploadAt 있음/없음, partial/EMPTY(읽기확인과 업로드확인 다름), stale/미확인 문구를 단언(①②④/Compose).
+- **완료 기준**: 배정 focused/root 통합 검증 및 최종 실제 API35/36 Native 결과. 컴파일만으로 actual 통과를 주장하지 않는다.
+- **검증 방법**: android/에서 `./gradlew :app:assembleDebugAndroidTest`.
+- **주의사항**: T11/T13과 파일겹침 없어 병렬 가능. 선택·동의·reset·legacyhistory·상단safeinset 보존; 단순문구를 위하여 미실행 성공을 만들지 않는다. 기존 단언·CSV·취소·journal·credential 경계를 약화하지 않는다.
+
+### T13: 실제 core 처리 단계 성능 계측 복원
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `android/core/src/main/kotlin/com/ny/my/health/core/DestinationSync.kt` | 수정 | optional collector/real read·Drive |
+  | `android/core/src/main/kotlin/com/ny/my/health/core/SyncRevision.kt` | 수정 | real normalization/export |
+  | `android/core/src/test/kotlin/com/ny/my/health/core/DestinationSyncTest.kt` | 수정 | 실제stage/성공실패취소/null호환 |
+
+- **인터페이스**: 2절 `ProfilingRepairContracts` 참조.
+- **결정 로직**: 선언된 optional collector로 실제 수행 함수만 감싼다. 두 normalize/export projection은 숨기지 않는다. 예외를 swallow하거나 Drive 실패를 계측성공으로 바꾸지 않는다.
+- **작성할 테스트**: 실제 정상 read1/normalize2/export2, EMPTY Drive0, read/Drive failure·cancel active0, null collector와 결과/CSV/revision 동등. 기존 batch profiling 회귀 재사용(①③④/유닛).
+- **완료 기준**: 배정 focused/root 통합 검증 및 최종 실제 API35/36 Native 결과. 컴파일만으로 actual 통과를 주장하지 않는다.
+- **검증 방법**: android/에서 `./gradlew -PcoreOnly :core:test --tests com.ny.my.health.core.DestinationSyncTest --tests com.ny.my.health.core.PrivateDriveBatchTest --tests com.ny.my.health.core.SyncProfilingTest`.
+- **주의사항**: T11/T12와 파일겹침 없어 병렬 authoring. 새 enum/summary행/journal 계측은 없다. 기존 단언·CSV·취소·journal·credential 경계를 약화하지 않는다.
+
+### T14: bound 실행의 휴대폰 진단 수명 연결
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `android/app/src/main/java/com/ny/my/health/ManualDriveSession.kt` | 수정 | ticket/owner profile와productioncollector |
+  | `android/app/src/main/java/com/ny/my/health/SyncViewModel.kt` | 수정 | debug factory/phone state begin complete clear |
+  | `android/app/src/test/java/com/ny/my/health/ManualDriveSessionTest.kt` | 수정 | busy stale failure cancel profile |
+  | `android/app/src/androidTest/java/com/ny/my/health/ManualDriveFlowInstrumentedTest.kt` | 수정 | 실제VM bound 경로 report |
+
+- **인터페이스**: 2절 `ProfilingRepairContracts` 참조.
+- **결정 로직**: 실제 유효 auth ticket부터 profile 생성하고 owner-only execution/끝난 cleanup 후 finish. VM은 기존 safe 보고·copy 경로를 사용한다. callback/factory 실패가 sync 결과를 바꾸지 않고 stale/busy 요청은 현재profile에 간섭하지 않는다. release factory null.
+- **작성할 테스트**: 현재 bound VM 실제경로(realSQLite+session, syntheticHC/transport) 완료·실패·취소시 state.phoneProfiling.report 갱신/새시도이전보고폐기, uploader같은collector request/operation관측. 기존legacy업로드를 대신 호출하지 않는다. grouped 성공EMPTY/proof실패/권한/Drive실패/pause/reset/철회/externalwait/lateA/merged/observerthrow/null 및 기존formatter/redaction/copy/release 회귀(①②③④⑤/유닛+Native).
+- **완료 기준**: 배정 focused/root 통합 검증 및 최종 실제 API35/36 Native 결과. 컴파일만으로 actual 통과를 주장하지 않는다.
+- **검증 방법**: android/에서 `./gradlew :app:testDebugUnitTest --tests com.ny.my.health.ManualDriveSessionTest --tests com.ny.my.health.ManualSyncProfilingTest --tests com.ny.my.health.PhoneProfilingSessionTest :app:assembleDebugAndroidTest`.
+- **주의사항**: T11/T13 통합 후 시작. 기존 VM Application constructor와productionfactory 유지; 필요시 같은4파일내 actualsession factory seam만 추가하며 새로운 raw state/실계정/디스크metric은 금지. 기존 단언·CSV·취소·journal·credential 경계를 약화하지 않는다.
+
 ## 4. 검증
 
 최종 체크포인트(T9 이후): source 동결 head에서 root가 다음 순서로 실행하고 실제 XML/CI 원본 결과와 source head를 실행 보고에 기록한다. 계획 문서 작성 중 테스트/로그인/원격 쓰기는 실행하지 않았다.
@@ -633,3 +734,7 @@ installed JDK javap이 PATH에 없어 첫 읽기 전용 조회가 실패했다. 
 T9 최초 전체 실행166/0/0/0+APK/lint/testAPK2분58초 성공 후 정적 조사에서 stale SDK success가 owner slot을 미정리하는 경로와 초기 metadata 복원으로 사용자의 새 draft를 덮는 경로를 확인했다. stale owner를 finish하고 사용자가 수정한 draft를 늦은 복원이 덮지 않도록 private flag/restore helper를 적용한다. 기존 배정5파일만 수정하며 가능한 기존 Native 테스트의 sequencing 단언으로 확인한다. scope 확대나 fake metrics는 없다.
 
 PLAN 복구3은 기존 host test의 첫 toggle/continue 부재 단언이 새 bound UI에 맞지 않는 누락 보정이다. 원래 동의 off/no credential/no automatic execution 의미를 보존한 T10 한 파일 작업으로 분리했다. 새 제품 범위가 아니며 기존 소유자의 V1 자동승인 및 병렬 실행 지시에 따라 승인한다. 최종 CI의 기존20host를 실제 실행한다.
+
+### 독립 적합성 F1/F2/F3 제한 복구 승인 (소유자 자동승인·병렬 실행)
+
+독립 검증 cfb5009는 기존phoneprofiling 상실(P1), 실제 권한scope의 metadata coverage 복원 누락(P1), 마지막 upload·최근 대상 날짜 표시 누락(P2)를 확인했다. T11은 T7의 누락 보정(기존3회와 별도 누적4), T12는 T8의 누락 보정(누적2)이며 원래 scope를 새 task로 숨겨 회차를 초기화하지 않는다. 기존 profiling 복원은 performance reviewer가 실제API로 작성한2개 제한작업을 T13/T14로 승인해 부모 내에 고정했다. 새요구/미측정 성능 주장/스키마·의존성은 없다. T11/T12/T13은 파일이 달라 병렬 authoring하고 T14는 T11/T13 뒤 시작한다. 최종 exact-head 검증과 독립 재검토·PR댓글 없이는 병합하지 않는다.
