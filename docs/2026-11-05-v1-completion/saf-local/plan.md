@@ -45,7 +45,7 @@ tasks:
 
 ### 실행 전 고정점
 
-- **실제 선행 병합·부모 통합 준비 완료, root 계획 검토 전 draft**: PR #17은 실제 master `57da82514e8483f5f32f2ad34ae0111c7f1dc431`로 병합됐고 이 worktree는 그 head로 rebase됐다. `android/`·`.github/`가 검증 대상 `b35c11c8b4651cf9b12b004a7fc4ae3d52a4d3ee`와 diff 없이 동일함을 읽기 전용 확인했다(production `c33467141db12d3953f5c77e5e1e22730d93d424`). 기존 V1 자동승인 위임을 적용하므로 새 사용자 승인 질문은 필요하지 않다. root의 fresh-context 계획 검토·부모 commit 뒤 parent_rev 고정/승인 상태 확인 전 구현하지 않는다. 현재 parent_rev는 의도적으로 이전 값이며 root가 commit 뒤 실제 문서 revision으로 갱신한다. spec_rev는 변경하지 않는다.
+- **실제 선행 병합·부모 통합 준비 완료, root 계획 검토 전 draft**: PR #17은 실제 master `57da82514e8483f5f32f2ad34ae0111c7f1dc431`로 병합됐고 이 worktree는 그 head로 rebase됐다. `android/`·`.github/`가 검증 대상 `b35c11c8b4651cf9b12b004a7fc4ae3d52a4d3ee`와 diff 없이 동일함을 읽기 전용 확인했다(production `c33467141db12d3953f5c77e5e1e22730d93d424`). 기존 V1 자동승인 위임을 적용하므로 새 사용자 승인 질문은 필요하지 않다. root의 fresh-context 계획 검토·부모 commit 뒤 parent_rev 고정/승인 상태 확인 전 구현하지 않는다. parent_rev는 root가 실제 부모 문서 commit ec8698ad062cc683211613adf0ab9d2df40782fd로 고정했다. spec_rev는 변경하지 않는다.
 - 부모 §2의 파일 목록·SafLocalContracts·결정 위치와 §3 추적성을 통합했고 SAF 결정은 ADR-011 Proposed에 기록했다. 브리프에는 부모 해당 계약과 이 §2 전체/해당 T를 함께 전달한다. 이 문서는 SAF 구현·Native 통과를 뜻하지 않는다.
 - starter 조사 source는 `25739c54de7efb37607bf5cb6af70d9441a367f4`다. early run `43433735126` API36 actual 1 testcase PASS, API35 두 번째 REVOKE 제어 응답 timeout으로 양API 기동 gate는 미완료다(root 전달 실제 결과). T1은 pending, T3는 T1 양API 완료 뒤다. T2는 provider 없이 독립이므로 구체 계획 검토/승인·revision 고정 뒤 시작할 수 있다. 실제 Galaxy/외부 provider 수용을 앞당겨 주장하지 않는다.
 - 이 세션은 부모 계획·이 child·신규 ADR-011 세 문서만 갱신한다. 제품/CI/빌드/계정/picker/grant/네트워크/GitHub/commit을 수행하지 않는다.
