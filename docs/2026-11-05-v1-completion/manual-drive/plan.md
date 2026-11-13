@@ -63,17 +63,17 @@ tasks:
   - id: T11
     title: 복원 시 실제 권한 범위 coverage 투영
     depends_on: [T9]
-    status: pending
+    status: done
     tier: standard
   - id: T12
     title: 마지막 업로드와 최근 대상 날짜 표시
     depends_on: [T8]
-    status: pending
+    status: in_progress
     tier: standard
   - id: T13
     title: 실제 core 처리 단계 성능 계측 복원
     depends_on: [T9]
-    status: pending
+    status: done
     tier: standard
   - id: T14
     title: bound 실행의 휴대폰 진단 수명 연결
@@ -746,3 +746,5 @@ PLAN 복구3은 기존 host test의 첫 toggle/continue 부재 단언이 새 bou
 ### T11 복구1/2 — 테스트의 명시적 전경·동의 준비
 
 첫 실제 focused5개 중1개 실패/0error/0skip. 새 복원 테스트가 기본foreground=false/consent=false인 controller에서 사용자 설정을 호출해 beginAccountSelection=null로 정상 거부됐다. 해당 configure 직전에 setForeground(true), setPrivateFolderConsent(true)를 명시하여 실제 사용자 준비를 재현한다. production·assertion·권한게이트는 바꾸지 않는다. 원본실패XML/log 보존 뒤 동일5개unit을 재검증하고 Native APK는최종통합에서확인한다. 기존3grouped+새지연메타데이터group은첫실행PASS였다.
+
+T13 actual focused31/0/0/0, T11 actualfocused5/0/0/0(환경준비1·testfixture복구1 별도원본보존), T12testAPK컴파일PASS. 기존source의중복focused전체실행은생략하고root가XML/log·diff를대조했다. T11Nativeactual/T12UIactual는최종CI에서확인하며 T14는완성된actualAPI를기준으로authoring한다.
