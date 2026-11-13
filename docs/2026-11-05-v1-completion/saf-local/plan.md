@@ -1,11 +1,11 @@
 ---
 plan_id: saf-local
 title: 검증된 local tree 전경 내보내기
-status: in_progress
+status: done
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: a43e03749231fcfab123549e7bd776e8704ea757
+parent_rev: 3ca3bb04a180ab2522db5d4c2a73052918004f6b
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-saf-local
@@ -18,11 +18,11 @@ tasks:
   - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: done, tier: standard}
   - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: done, tier: standard}
   - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9, T10], status: done, tier: standard}
-  - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T11], status: in_progress, tier: standard}
+  - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T11], status: done, tier: standard}
   - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: done, tier: standard}
   - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: done, tier: standard}
   - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: done, tier: standard}
-  - {id: T11, title: 실제 Activity SAF 선택과 전경 수동 실행 검증, depends_on: [T6, T12], status: in_progress, tier: standard}
+  - {id: T11, title: 실제 Activity SAF 선택과 전경 수동 실행 검증, depends_on: [T6, T12], status: done, tier: standard}
   - {id: T12, title: 같은 구성의 metadata refresh 결과 보존, depends_on: [T5], status: done, tier: standard}
 ---
 
@@ -34,7 +34,7 @@ tasks:
 
 | 스펙 기준 | 테스트 이름 (출처/층) | 충족 위치 |
 |---|---|---|
-| SAF local 구성은 별도 privacy/tree 동의·실제 granted flags·persisted permission·합성 probe가 확인된 capability만 활성화하고 미검증 provider/background capability는 disabled 또는 BLOCKED로 유지한다. | `SAF configuration enables only consented persisted granted and successfully probed local capabilities` (①·②·③/합성 DocumentsProvider 통합 및 Compose E2E) | T1·T3·T9·T5·T6·T7 |
+| SAF local 구성은 별도 privacy/tree 동의·실제 granted flags·persisted permission·합성 probe가 확인된 capability만 활성화하고 미검증 provider/background capability는 disabled 또는 BLOCKED로 유지한다. | `safConfigurationEnablesOnlyConsentedPersistedGrantedAndSuccessfullyProbedLocalCapabilities` (①·②·③/합성 DocumentsProvider 통합 및 Compose E2E) | T1·T3·T9·T5·T6·T7 |
 | SAF 동일 날짜의 더 짧은 재내보내기는 같은 대상에 정확히 truncation/readback되고 duplicate·moved/deleted·grant 철회·write interruption은 suffix 재생성이나 false success 없이 reconciliation/명시적 복구로 연결된다. | `safShorterOverwriteReadsBackExactBytesAndAmbiguousRevokedMovedDeletedInterruptedTargetsRequireRecovery` (①·②·③·④/합성 DocumentsProvider 통합) | T2·T4·T7 |
 | 부분 실패·취소·결과불명 후 대상 reconciliation을 거쳐 pending 파일만 다시 처리하고 이미 확인된 동일 revision의 건강한 파일을 중복 create하거나 prior success를 지우지 않는다. | `afterPartialFailureCancellationOrUnknownCreateReconciliationRetriesOnlyPendingFiles` (①·③·④/유닛 및 local TLS·provider 통합) | T2·T4·T7; 기존 DestinationSyncTest·Drive 회귀 재사용 |
 
@@ -42,10 +42,10 @@ tasks:
 
 | 스펙 기준(위 원문) | 추가 테스트 이름 | 작업 |
 |---|---|---|
-| SAF local 구성은 별도 privacy/tree 동의·실제 granted flags·persisted permission·합성 probe가 확인된 capability만 활성화하고 미검증 provider/background capability는 disabled 또는 BLOCKED로 유지한다. | `Synthetic provider grants target UID tree access and resolver reads the seeded document`; `SAF selection and restore never export without explicit foreground continue`; `SAF intended category snapshots reject edited picker or stored scope mismatches and zero grants without shrinking partial grants`; `SAF actual activity selection configures without exporting and explicit continue confirms only selected local target`; `SAF actual activity rejects stale tree results and paused revoked grants without Drive fallback` | T1·T5·T6·T7 |
-| SAF local 구성은 별도 privacy/tree 동의·실제 granted flags·persisted permission·합성 probe가 확인된 capability만 활성화하고 미검증 provider/background capability는 disabled 또는 BLOCKED로 유지한다. | `SAF privacy tree continue retry and reset remain reachable in light dark and large text without URI disclosure` (①·②·③·④·⑤/Compose 합성 UI 통합) | T9; T7 재실행 |
+| SAF local 구성은 별도 privacy/tree 동의·실제 granted flags·persisted permission·합성 probe가 확인된 capability만 활성화하고 미검증 provider/background capability는 disabled 또는 BLOCKED로 유지한다. | `syntheticProviderGrantsTargetUidTreeAccessAndResolverReadsTheSeededDocument`; `SAF selection and restore never export without explicit foreground continue`; `SAF intended category snapshots reject edited picker or stored scope mismatches and zero grants without shrinking partial grants`; `safActualActivitySelectionConfiguresWithoutExportingAndExplicitContinueConfirmsOnlySelectedLocalTarget`; `safActualActivityRejectsStaleTreeResultsAndPausedRevokedGrantsWithoutDriveFallback` | T1·T3·T5·T6·T11·T7 |
+| SAF local 구성은 별도 privacy/tree 동의·실제 granted flags·persisted permission·합성 probe가 확인된 capability만 활성화하고 미검증 provider/background capability는 disabled 또는 BLOCKED로 유지한다. | `safPrivacyTreeContinueRetryAndResetRemainReachableInLightDarkAndLargeTextWithoutUriDisclosure` (①·②·③·④·⑤/Compose 합성 UI 통합) | T9; T7 재실행 |
 | SAF 동일 날짜의 더 짧은 재내보내기는 같은 대상에 정확히 truncation/readback되고 duplicate·moved/deleted·grant 철회·write interruption은 suffix 재생성이나 false success 없이 reconciliation/명시적 복구로 연결된다. | `safReconciliationPerformsNoWritesAndReservationsRejectChangedOrReusedInputs`; `safEncodedOpaqueDocumentUrisRetainTargetResolverIdentityAfterSQLiteReopen` | T4 |
-| 부분 실패·취소·결과불명 후 대상 reconciliation을 거쳐 pending 파일만 다시 처리하고 이미 확인된 동일 revision의 건강한 파일을 중복 create하거나 prior success를 지우지 않는다. | `All active scope generic URI and prior handles survive reopen while stale corrupt and orphan reads fail closed`; `SAF pause reset stale picker and double continue preserve journal and reject delayed results`; `SAF recovery reopens blockers without clearing unknown creation or remote stale`; `SAF explicit recovery preserves confirmed files unknown creates and old generation isolation after reopen` | T2·T5·T7 |
+| 부분 실패·취소·결과불명 후 대상 reconciliation을 거쳐 pending 파일만 다시 처리하고 이미 확인된 동일 revision의 건강한 파일을 중복 create하거나 prior success를 지우지 않는다. | `allActiveScopeGenericUriAndPriorHandlesSurviveReopenWhileStaleCorruptAndOrphanReadsFailClosed`; `SAF pause reset stale picker and double continue preserve journal and reject delayed results`; `SAF recovery reopens blockers without clearing unknown creation or remote stale`; `Metadata and foreground refresh preserve current SAF result and blocker but never promote changed scope or generation as completed`; `localConfigurationFailureRestoreAndResetPreserveDriveBindingAndHistory`; `safExplicitRecoveryPreservesConfirmedFilesUnknownCreatesAndOldGenerationIsolationAfterReopen` | T2·T5·T7·T12 |
 
 ## 2. 실행에 필요한 현재 상태
 
@@ -244,7 +244,7 @@ internal interface ManualSafPorts {
   ```
 
 - **작성할 테스트**:
-  - "Synthetic provider grants target UID tree access and resolver reads the seeded document"
+  - "syntheticProviderGrantsTargetUidTreeAccessAndResolverReadsTheSeededDocument"
 - **테스트 조건/층**: 실제 binder/OS grant와 exact synthetic bytes, read-only grant 및 revoke 거부도 확인한다(②·③/Android 통합).
 - **완료 기준**: provider는 target production manifest/APK에 없고 API35/36에서 starter가 실제 target UID ContentResolver 연결·grant·읽기를 증명한다. test APK의 자체 resolver 접근만으로 완료하지 않는다.
 - **검증 방법**:
@@ -277,7 +277,7 @@ internal interface ManualSafPorts {
   ```
 
 - **작성할 테스트**:
-  - "All active scope generic URI and prior handles survive reopen while stale corrupt and orphan reads fail closed"
+  - "allActiveScopeGenericUriAndPriorHandlesSurviveReopenWhileStaleCorruptAndOrphanReadsFailClosed"
 - **테스트 조건/층**: (②·③·④/실제 SQLite); 기존 `allActiveScopeKnownAndPriorHandlesSurviveReopenAndConflictingTargetsBlock` 재사용. handle은 공백·Unicode·reserved 문자가 포함된 합성 opaque document ID에서 DocumentsContract로 만든 encoded URI이며, 실제 SQLite close/reopen 후 문자열이 byte-for-byte 동일한지만 확인한다. T2는 provider/grant/resolver 호출 없이 실행하며 실제 resolver identity 확인은 T1·T3에 의존하는 T4로 배정한다. raw ID 직접 저장은 하지 않는다. encoded URI 4096-byte 경계·초과 및 raw whitespace handle 거부는 기존 validator와 대조한다.
 - **완료 기준**: 실제 store close/reopen 뒤 URI 문자열이 손실 없이 반환되고 기존 Drive method와 결과가 동일하다. provider fixture·실제 grant·resolver identity는 T2 완료 조건이 아니다. schema/format/column/Drive ID 검증 변경이 없다.
 - **검증 방법**:
@@ -323,7 +323,7 @@ internal interface ManualSafPorts {
   ```
 
 - **작성할 테스트**:
-  - "SAF configuration enables only consented persisted granted and successfully probed local capabilities"
+  - "safConfigurationEnablesOnlyConsentedPersistedGrantedAndSuccessfullyProbedLocalCapabilities"
 - **테스트 조건/층**: fixture partitions는 cancel/null/read-only/missing persistable/permission revoked/unsupported cloud/loading/null descriptor/nontruncating/short write/cleanup failure/restore다. fake grant collection만으로 persist를 증명하지 않고 T1 실제 grant를 사용한다(①·②·③/Android 통합).
 - **완료 기준**: health reader를 호출하지 않은 상태에서 검증된 foreground proof만 반환한다. cloud/test provider 생산 허용·background enable·새 persistent capability 필드가 없다.
 - **검증 방법**:
@@ -410,7 +410,7 @@ internal interface ManualSafPorts {
 - **결정 로직**: SafManualUi.kt private IO 없는 status/enablement 표시 함수. controller의 snapshot/proof/grant/gate 판정을 대체하지 않는다.
 - **동작**: metadata-only composition; 전체 intendedCategories 체크박스와 현재 grant 수를 구별; 고정 local 목적지 이름과 local visibility/backup privacy 설명; privacy/tree/명시 continue/retry/reset 확인; configured categories 불일치·grant0·pause/RUNNING 시 잘못된 continue 방지; partial grant는 전체 intended 그대로 표시; scoped/full coverage·pending/blocked·최근 날짜별 읽기/업로드·lastUploadAt/outcome을 구분; EMPTY를 업로드 성공으로 표시하지 않음; background 지원 없음. reset은 캡처한 generation 확인을 사용한다.
 - **표시 enablement**: idle = foreground && phase != RUNNING. tree = idle && privacyConsent && intendedCategories.any { it in grantedCategories }. continue = idle && privacyConsent && configured && generation != null && intendedCategories == categories && intendedCategories.any { it in grantedCategories } && phase == READY. retry는 idle/동의/구성/범위 일치/교집합과 BLOCKED 또는 STALE/RETRYABLE/PENDING 또는 scope pending/blocked 표시가 있는 경우에만 요청한다. UI는 retry로 export 성공을 선반영하지 않는다. 실제 허용 판정은 T5가 재검증한다. consent/categories/HC request/grant refresh는 idle에서 도달 가능하고, reset은 idle/configured/non-null generation에서 확인한다.
-- **작성할 테스트**: "SAF privacy tree continue retry and reset remain reachable in light dark and large text without URI disclosure" (기존 T7 이름 이동, ①·②·③·④·⑤/Compose 합성 UI 통합).
+- **작성할 테스트**: "safPrivacyTreeContinueRetryAndResetRemainReachableInLightDarkAndLargeTextWithoutUriDisclosure" (기존 T7 이름 이동, ①·②·③·④·⑤/Compose 합성 UI 통합).
 - **테스트 조건/층**: light/dark × fontScale 1/1.8에서 scroll·role·checked/enabled·callback을 확인. 최초 composition/recomposition/state 교체는 callback0; 빈 intended/grant0/동의 없음/비전경/RUNNING/저장범위 불일치는 continue 불가; partial grant는 intended 전체 유지; READY의 명시 클릭만 continue1. retry 클릭은 retry1이며 continue0. reset 취소0/확인1/세대 변경 뒤 오래된 확인0. 초기·BLOCKED/STALE/RETRYABLE·과거 성공+현재 pending·EMPTY·partial scope·최근 날짜별 증거가 다른 coverage를 합성 주입하고 구별 표시를 확인. URI/provider/proof 필드는 없고 고정 목적지 이름만 렌더링. fixture는 합성 metadata만 사용하고 semantics tree나 raw URI를 assertion message/artifact에 dump하지 않는다.
 - **완료 기준**: 3개 파일만으로 app 및 androidTest 컴파일; widget은 controller/backend를 참조하지 않음. 양API의 pure Compose class 결과를 각각 기록하고 실제 provider/gate/Activity/TalkBack 수용이라고 주장하지 않는다.
 - **검증 방법**: android/에서 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug; API35 및 API36에서 ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SafManualUiInstrumentedTest. 실행은 root 공용 build/기기 gate로 직렬화한다. 다른 agent와 공유 Gradle/emulator를 동시에 실행하지 않는다. 사용 불가 검증은 pending으로 기록한다.
@@ -522,8 +522,8 @@ internal interface ManualSafPorts {
 - **결정 로직**: 제품 판정을 테스트에 복제하지 않는다.
 - **호출 순서**: Application.onActivityPreCreated에서 instance factory와 test picker Intent를 주입 → 실제 MainActivity 생성 → UI 입력/consent/실제 launcher 결과 flags → 구성만 저장/health export0 → explicit continue → 실제 core/SQLite/provider 확인 → 모든 callback/scenario/grant/파일 정리.
 - **작성할 테스트**:
-  - "SAF actual activity selection configures without exporting and explicit continue confirms only selected local target"
-  - "SAF actual activity rejects stale tree results and paused revoked grants without Drive fallback"
+  - "safActualActivitySelectionConfiguresWithoutExportingAndExplicitContinueConfirmsOnlySelectedLocalTarget"
+  - "safActualActivityRejectsStaleTreeResultsAndPausedRevokedGrantsWithoutDriveFallback"
 - **테스트 조건/층**: UI categories 실제 setter, picker 도중 입력 변경, partial grant 전체 intended 유지, grant0 configure/read/write0, read-only 결과flags, 일반pause/secondpause/stale ticket/revoke 후 health read0를 검증한다. 실제ViewModel continue/retry 직후와pause/resume·권한refresh 뒤 COMPLETED 결과와 grant/probe BLOCKED 오류가즉시지워지지않는지, 이전성공이현재차단을가리지않는지, LOCAL→Drive 구성/reset 뒤LOCALconfigured·coverage가현재활성으로남지않는지도같은두groupedtests에서검증한다. selected local generation과 실제SQLite reopen/targetresolver readback을 대조한다. 실제 계정/HealthConnect provider는 열지 않고 합성 ScopedHealthReader·기존 test-only authority constructor를 주입한다. Drive bridge는 counting/throwing sentinel이며 fallback0이다. 허용된 synthetic capability probe쓰기를 health export0과 혼동하지 않는다. URI/body/credentials를 assertion message/log/screenshot에 노출하지 않는다.
 - **완료 기준**: 새2methods와 기존ManualDriveFlow6methods가 saf-flow 양API에서 실패·오류·skip·중복0이며 root가 원본 XML/정확class+method/SHA를 대조한다. 실제기기/계정/TalkBack 수용은 pending이다.
 - **검증 방법**:
@@ -884,3 +884,9 @@ head73f8705/fullrun43507441190는API35전체132+host20/17recovery/17cleanup·kil
 같은원래T6/T11누적8로한Native파일의기존왕복helper를operation인자로일반화하고Main이살아있는모든standaloneOBSERVE/REVOKE에적용한다(assertNoProviderMutation포함). 실제picker/heldcallback/release/명시secondpause는수정하지않고baseline관측은picker전·post관측은callback처리후를유지한다. 마지막observer왕복의실제새pause/resume·metadatajobs완료뒤grants를변경하고명시refresh작업을join한뒤exactemptygrants·create/write/delete불변·healthread0·fallback0을검증한다. positive의실제UIOnClick/독립CSV/SQLite단언도그대로다. timeout증가/sleep/skip/제품변경없이freezecompile1회·updated별도source검토·currenthead양API전체/host·freshspec-only검증을이어간다. 소유자기존V1자동수정위임안의새실제근거한정이며회차를reset하지않는다.
 
 T11교정8 sourceSHAf17635ae9214a90a2d297df7773300e4bfc3cf200b1450f0316a56193ee251d4는app97/testAPK30초PASS와updated별도Terra sourceAPPROVE를받았다. root가원본XML97unique/실패·오류·skip·중복0과sourceSHA를대조해통합했다. Main이살아있는모든standaloneOBSERVE/REVOKE는실제왕복완료를관측하며actualpicker/heldcallback/secondpause및권한0/무쓰기/무읽기/fallback0·독립CSV/SQLite단언을보존한다. full양API/host와freshconformance는계속pending이다.
+
+### 최종 소프트웨어 실행과 독립 스펙 적합성 완료
+
+소스bbde0da/run43513509886은양API각132unique/실패·오류·skip·중복0과기존host20/recovery17/cleanup17·killedholds0PASS다. JVM43513510015는181PASS이며root가공식artifact digest/ZIP/실제class·method집합과hostraw를직접대조했다. 실제top-level DurableHistoryActivity의3개method owner도정적파일명가정이아닌source/XML과일치한다. 승인스펙+구현+원본실행증거만받은새독립Terra세션은SAF소프트웨어범위PASS로판정했다. 위추적성표의Native이름을현재실제camelCase로동기화하고unit의실제backtick이름및metadata/구성복구추가단언을대조했다. 상세현재·실패이력은docs/V1/saf-local-verification.md이다.
+
+실행전고정점·복구이력은각당시의기록으로보존한다. 실행계획done은전체V1완료/실기기수용/최종PR병합을뜻하지않는다. 최신head독립품질·보안검토/댓글/reviewedmerge gate는유지하며자동화는실제SAFmerge후진행한다. ADR011은통과한이전경local결정범위만Accepted이고전체스펙status는approved다.

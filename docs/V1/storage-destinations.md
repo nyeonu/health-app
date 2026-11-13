@@ -1,15 +1,15 @@
 # V1 storage destinations — design and Galaxy validation plan
 
-Status: **Design only; no SAF destination, persisted URI state, storage-port refactor or WorkManager implementation exists in P0. All device/provider results below are PENDING.** SAF is not a P0 merge/exit gate. This addresses [PR1 comment 6537976514](https://github.com/nyeonu/health-app/pull/1#issuecomment-6537976514).
+Status: **V1의 공용 journal/Drive 및 전경 SAF local 구현은 소프트웨어 검증을 마쳤습니다. 아래 실제 Galaxy/provider 수용은 모두 PENDING이며 production WorkManager/SAF background/both-mode는 미구현입니다.** [현재 실행 증거](saf-local-verification.md)를 참고하세요. SAF is not a P0 merge/exit gate. This addresses [PR1 comment 6537976514](https://github.com/nyeonu/health-app/pull/1#issuecomment-6537976514).
 
 ## Coexistence and consent
 
-P0 retains its foreground-only `HealthReader -> Normalizer -> CsvExporter -> DriveUploader` path, app-created private Drive namespace and `drive.file` OAuth scope. Do not replace that working architecture while exploring SAF. V1 proposes a shared export pipeline:
+P0의 app-created private Drive namespace와 `drive.file` 경계는 유지합니다. V1의 수동 Drive/SAF는 아래 공용 CSV와 journal 경로를 구현합니다:
 
 ```text
 HealthReader -> Normalizer -> CsvExporter -> CsvFile
                                                |
-                                  StorageDestination.upsert(CsvFile)
+                                  StorageDestination.reconcile / writePending
                                                |
                                   +------------+------------+
                                   |                         |
@@ -17,19 +17,19 @@ HealthReader -> Normalizer -> CsvExporter -> CsvFile
                           Google Drive API        selected local/provider tree
 ```
 
-`StorageDestination`, `DriveApiDestination` and `SafDestination` are proposed interfaces/classes, not implemented components. The existing `CsvFile(relativePath: String, content: String)` DTO remains unchanged: `relativePath` identifies the deterministic dataset/date target, `schema_version` belongs to the CSV payload, and destinations encode the `content` string as UTF-8 at the destination boundary under the existing [CSV contract](../data-contract.md). This design proposes no new `CsvFile` fields or DTO refactor. Both destinations consume the same normalized export; a storage choice must not change measurements, quoting, time windows or missing-value semantics.
+`StorageDestination`, `DriveApiDestination`, `SafDestination`은 구현되어 있습니다. `DestinationSync`는 durable RUNNING 후 쓰기와 파일별 확인 commit을 조율하며, 다중 파일의 원자성을 보장하지 않습니다. The existing `CsvFile(relativePath: String, content: String)` DTO remains unchanged: `relativePath` identifies the deterministic dataset/date target, `schema_version` belongs to the CSV payload, and destinations encode the `content` string as UTF-8 at the destination boundary under the existing [CSV contract](../data-contract.md). This design proposes no new `CsvFile` fields or DTO refactor. Both destinations consume the same normalized export; a storage choice must not change measurements, quoting, time windows or missing-value semantics.
 
 V1 selection offers **SAF local/provider folder** or **Drive API**. A later, separately implemented **both** mode selects two destinations explicitly; it does not silently copy to another location. App-private staging, if needed, is distinct from a user-visible SAF export and needs bounded retention/deletion. Do not retain extra health-data copies by default.
 
 SAF itself needs **no app Google OAuth client or Google Cloud project setup**. It requires explicit user consent through Android's system picker. A cloud document provider can independently require its own installed app, signed-in account, network and consent; SAF does not bypass those requirements. Existing Drive API export still needs app OAuth/Cloud configuration. Health Connect permission is separate in every mode.
 
-A user-selected local folder is not automatically private: it can be visible to file managers, backups or other authorized apps. Provider folders can be shared or synced elsewhere. Explain the location and sharing implications before health export, require an explicitly authorized private destination, and do not claim SAF proves a cloud folder's ownership/sharing restrictions. If privacy cannot be established, block export to that target. Never add sharing permissions automatically. ChatGPT access to a SAF/local/Drive export remains a separate, unverified authorization/content-access path.
+A user-selected local folder is not automatically private: it can be visible to file managers, backups or other authorized apps. Provider folders can be shared or synced elsewhere. Drive는 검증된 비공개 app namespace를 요구합니다. Local은 위치·다른 앱·백업 노출 가능성을 별도로 설명하고 사용자 동의를 받아야 하며 비공개라고 표시하지 않습니다. 현재 release 경로는 local authority/capability만 허용하고 미검증/cloud provider는 차단합니다. Never add sharing permissions automatically. ChatGPT access to a SAF/local/Drive export remains a separate, unverified authorization/content-access path.
 
 ## SAF selection and durable access
 
 - Use `ACTION_OPEN_DOCUMENT_TREE` for folder access (API 21+), not a single-file chooser as evidence of folder support. SAF document access dates to API 19; these are documented Android APIs, not preview-only Android 16 features. API availability does not establish provider capability. [1][2]
 - Request read/write and persistable access; intersect the returned intent flags with `FLAG_GRANT_READ_URI_PERMISSION | FLAG_GRANT_WRITE_URI_PERMISSION` and pass only actually granted flags to `ContentResolver.takePersistableUriPermission`. Require the needed permissions; handle cancelled selection, missing URI, denied persistence and read-only grants explicitly. Do not fabricate grant flags. [1][3]
-- Persist the tree URI, destination configuration and file mapping only in app-private state. On process restart/reboot, restore the state, inspect `persistedUriPermissions` and probe actual access. Persisting the string alone does not retain permission. Re-consent is needed after access loss; a persisted grant does not survive every moved/deleted document. [1]
+- Persist the tree URI, destination configuration and file mapping only in app-private state. 프로세스 재시작의 화면 복원은 metadata-only입니다. 다음 명시적 전경 continue에서 `persistedUriPermissions`와 실제 probe를 다시 확인합니다. 실제 reboot 수용은 아직 미확인입니다. Persisting the string alone does not retain permission. Re-consent is needed after access loss; a persisted grant does not survive every moved/deleted document. [1]
 - Treat `content:` URIs as opaque capabilities. Use `ContentResolver`/`DocumentsContract` APIs, never convert them to filesystem paths. Do not place raw URIs, document/account/device identifiers, real CSVs or measurements in logs, screenshots, repository files or issue evidence.
 - On Android 11+, tree selection cannot grant internal-storage root, reliable SD-card volume roots or the `Download` directory; `Android/data` and `Android/obb` are restricted too. Test an allowed dedicated subfolder rather than treating these OS restrictions as an app defect. [1]
 - Every provider capability starts **UNSUPPORTED (unverified; not enabled)** until that device/provider combination passes the relevant probes: tree selection, child enumeration/create, write/truncate/readback, persisted grants, restart/reboot, offline and background behavior. Google Drive appearing for single-file selection does not establish Drive tree support. No provider, including Drive, has been tested here. Record a tested limitation separately from this conservative default.

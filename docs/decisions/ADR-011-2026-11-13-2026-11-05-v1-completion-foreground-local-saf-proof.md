@@ -1,7 +1,7 @@
 # ADR-011: 전경 local SAF 권한과 동일 대상 확인을 실행마다 검증
 
 ## 상태
-Proposed
+Accepted
 
 ## 날짜
 2026-11-13
@@ -56,10 +56,12 @@ Accepted ADR-009가 ADR-006의 noBackup DB·exact-scope 모델·generation CAS·
 
 test APK provider와 nested Activity/fixture는 Android framework·Java 표준 API·자체 Java만 사용한다. tested APK의 Kotlin runtime은 별도 provider UID에서 공유되지 않으며 이전 양API 실행의 `kotlin/io/FilesKt` 누락을 재도입하지 않는다. 이는 starter의 기동 경계이며 production 새 의존성이나 권한을 추가하는 결정이 아니다.
 
-starter `25739c54de7efb37607bf5cb6af70d9441a367f4`의 run `43433735126`은 API36 actual 1 testcase PASS/API35 두 번째 REVOKE 제어 응답 timeout으로 양API 기동 완료가 아니다(root 전달 결과). T1은 pending이다. SAF에 배정된 실제 양API 통합·독립 spec-conformance를 통과한 뒤 이 ADR의 Accepted 여부를 판단한다. Galaxy/local provider/reboot/Doze/background/TalkBack/P0 수용은 수행한 증거와 pending을 계속 구분한다.
+starter `25739c54de7efb37607bf5cb6af70d9441a367f4`의 run `43433735126`은 API36 actual 1 testcase PASS/API35 두 번째 REVOKE 제어 응답 timeout으로 양API 기동 완료가 아니다(root 전달 결과). 이는 당시 실패 이력이며 현재 상태를 뜻하지 않는다. 소스 `bbde0da5efbc6a6363bdd5f033128e5e2f5770b5`의 전체 run `43513509886`은 양 API 각각 Native132와 기존 host20/recovery17/cleanup17을 통과했고, JVM181 및 승인 스펙만 받은 새 세션의 SAF 소프트웨어 범위 적합성 검증도 PASS다. 따라서 이 전경 local 프로토콜 결정을 Accepted로 확정한다. 이는 실제 provider 호환성·출시 승인이 아니다. Galaxy/local provider/reboot/Doze/background/TalkBack/P0 수용은 수행한 증거와 pending을 계속 구분한다.
 
 ## 참고 자료
 - [승인 스펙](../2026-11-05-v1-completion/spec.md)
 - [부모 SafLocalContracts](../2026-11-05-v1-completion/plan.md)
-- [SAF 7T 실행 초안](../2026-11-05-v1-completion/saf-local/plan.md)
+- [SAF 실행 기록](../2026-11-05-v1-completion/saf-local/plan.md)
 - [기존 저장·generation·crash rollback ADR-009](ADR-009-2026-11-12-2026-11-05-v1-completion-validated-hot-journal-recovery.md)
+
+- [PR #18](https://github.com/nyeonu/health-app/pull/18) 및 [현재 소프트웨어 검증](../V1/saf-local-verification.md)
