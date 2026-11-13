@@ -85,6 +85,8 @@ tasks:
     depends_on: []
     status: pending
     tier: light
+  - {id: T16, title: 실제 제목을 유일하게 지정하는 UI 회귀 선택자, depends_on: [T12], status: pending, tier: light}
+  - {id: T17, title: 동일 전체 검증의 핵심 화면 fail-fast 분할, depends_on: [], status: pending, tier: standard}
 ---
 
 # 계정에 연결된 전경 수동 복구
@@ -610,6 +612,34 @@ COMPLETED→측정성공, BLOCKED/STALE/RETRYABLE/PENDING/null/실패→실패, 
 - **검증 방법**: 기존 YAML파서 또는 정적검사; GitHub최종head의기존전체CI.
 - **주의사항**: 한 파일만 수정하며 새 cleanup대상/permission/skip/externalgrant를도입하지않는다. 다른codeauthoring과파일겹침없어병렬가능.
 
+### T16: 실제 제목을 유일하게 지정하는 UI 회귀 선택자
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `android/app/src/androidTest/java/com/ny/my/health/HealthAppInstrumentedTest.kt` | 수정 | 제목 exact selector 두곳 |
+
+- **결정 로직**: firstLaunch와backgroundAndReturn에서 onNodeWithText("마지막 업로드 확인",substring=true)를정확한제목매칭으로바꾼다. assertExists/disabled/노업로드/노인증/geometry모든단언은그대로다.
+- **작성할 테스트**: 기존두Native를재사용. c334 actualAPI35 120중2실패/0error/0skip 원본XML이두노드매칭(설명+실제제목)을증명한다. production문구나검증기대는바꾸지않는다.
+- **완료 기준**: testAPK컴파일/최종양API120전체와host실행, exactselector가유일한제목을검증함.
+- **검증 방법**: ./gradlew :app:assembleDebugAndroidTest 및양API기존전체CI.
+- **주의사항**: 한파일두selector만. 테스트삭제/skip/firstnode선택/허용적카운트금지.
+
+### T17: 동일 전체 검증의 핵심 화면 fail-fast 분할
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `.github/workflows/android-emulator-tests.yml` | 수정 | 핵심4class를먼저실행하고나머지전체를뒤에실행 |
+
+- **결정 로직**: 같은API35/36/동일APK로 HealthAppInstrumentedTest,ManualDriveFlowInstrumentedTest,ManualDriveUiInstrumentedTest,DestinationConfigurationInstrumentedTest를첫connected class인자로실행한다. 성공XML/추가출력을별도critical디렉터리로보존한뒤 두번째connected는기존hold2개와이미실행한4개class만notClass로제외해나머지전체를각각한번실행한다. 그뒤기존host2개그대로. failure는즉시중단/alwaysartifact로실패증거보존. APK/Gradle/SDK/version/timeout/permissions/디스크준비불변. 추가한critical증거path를artifact에포함한다.
+- **작성할 테스트**: CIonly. 이전전체에서실행되던각class가critical또는remainder정확히한곳에있고기존hold만일반발견에서제외되는정적검사. 스크립트bash -n/기존host명령보존. root최종evidence는두XML의유일class+method합으로수집해중복PASS금지.
+- **완료 기준**: 최종양API critical+remainder총Native/host모두PASS. focused성공만전체성공으로표시금지.
+- **검증 방법**: YAML/bashstatic 및GitHub실제전체실행.
+- **주의사항**: testordering만조정하며테스트범위/단언/재시도는바꾸지않는다. provider별도branch optionaldispatch모드는후속통합시이full분기를유지한다.
+
 ## 4. 검증
 
 최종 체크포인트(T9 이후): source 동결 head에서 root가 다음 순서로 실행하고 실제 XML/CI 원본 결과와 source head를 실행 보고에 기록한다. 계획 문서 작성 중 테스트/로그인/원격 쓰기는 실행하지 않았다.
@@ -783,3 +813,7 @@ T14 actualfocused24/0/0/0(ManualDriveSession9+ManualSyncProfiling6+PhoneProfilin
 독립quality는신규Native테스트가unscoped store.load().days(의도적으로empty)에single()을호출하는결함도확인했다. loadForScope(currentgen,today,actualMANUALaccess)로scope를명시해실제EMPTY day를검증한다. production의rawread/쓰기정책을바꾸지않는다. 관련4파일만교정하고 focused단언·Native실제실행·최신head독립재검토까지병합보류한다. 이전24JVM통과와Nativecompile은이누락동작통과증거가아니다.
 
 T14복구1 actualfocused24/0/0/0와testAPK컴파일41초PASS. reset/withdraw는즉시clear하고늦은finish가무효identity를게시못하며단순pause취소보고는보존한다. terminalresolution실패는FAILED/active0, 실제외부pause는callback없이대기유지. NativeEMPTY는actualscopedstate조회로교정했다. root는수정후새source전체검증1회와같은head양API/4독립리뷰를진행하며이전210ad8a의실패예정Native단언을성공증거로쓰지않는다.
+
+### 실제 Native 회귀 T16/T17 승인
+
+c334/API35 artifact14037199934 SHA256cafa66bccc634b32ac6b68b9e673868f061073f8b759c485e4808be694576e56 원본XML Native120/2fail/0error/0skip. 두실패는제목substring선택자가새설명문구도찾아expected1/actual2인정확한오류다. T16은T12텍스트추가의테스트호환보정(누적1)이며제품오류로과장하지않는다. T17은소유자속도지시로같은전체테스트를초기핵심/나머지로분할해다음실패를13분뒤대신초기에확인한다. 모든Native/host gate를유지한다.
