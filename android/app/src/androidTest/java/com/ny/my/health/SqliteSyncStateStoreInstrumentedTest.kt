@@ -1061,12 +1061,12 @@ class SqliteSyncStateStoreInstrumentedTest {
         } finally { interrupted.close() }
     }
 
-    /** 실제 kill의 대체 증거가 아닌, 검증된 dirty pair fault 분할용 작은 합성 fixture. */
+    /** 실제 kill의 대체 증거가 아닌, 검증된 dirty pair fault 분할용 제한된 합성 fixture. */
     private class HotFixture {
         val f = Fixture()
         val started: Instant = Instant.parse("2026-11-05T00:00:00Z")
         val confirmed: Instant = started.plusSeconds(1)
-        val enrolled: LocalDate = f.date.minusDays(96)
+        val enrolled: LocalDate = f.date.minusDays(4096)
         val scopes = DataType.entries.associateWith { ReadScope.EXPLICIT_DAY }
         private var seededGeneration: DestinationGeneration? = null
         val generation: DestinationGeneration get() = requireNotNull(seededGeneration)
@@ -1085,7 +1085,7 @@ class SqliteSyncStateStoreInstrumentedTest {
             seededKey = SyncPlanner.scopeKey(config,f.access(scopes))!!
             val encoded = SyncStateCodec.encodeScopes(scopes)
             f.db.openForWrite().use { db -> f.db.transaction(db) {
-                repeat(96) { offset ->
+                repeat(4096) { offset ->
                     val day = enrolled.plusDays(offset.toLong())
                     val revision = RevisionKey("a".repeat(64),started)
                     val leaf = DatasetState(Dataset.DAILY,revision,FilePhase.CONFIRMED,true,handle,started,confirmed,null)
@@ -1108,16 +1108,49 @@ class SqliteSyncStateStoreInstrumentedTest {
                 f.db.openForWrite().use { db ->
                     malformed(db)
                     val before = file.readBytes()
-                    // test-only 작은 cache는 실제 host/production 설정과 독립이다.
-                    db.execSQL("PRAGMA cache_size=8")
-                    db.execSQL("PRAGMA cache_spill=ON")
                     f.db.transaction(db,{
                         dirtyDb = file.readBytes(); dirtyJournal = journal.readBytes()
+                        android.util.Log.i("HotWriterFixture",
+                            "main_before_bytes=${before.size} main_during_bytes=${dirtyDb.size} " +
+                                "journal_during_bytes=${dirtyJournal.size} main_changed=${!before.contentEquals(dirtyDb)} " +
+                                "journal_magic_valid=${magic.contentEquals(dirtyJournal.copyOfRange(0,8))}")
                         assertFalse(before.contentEquals(dirtyDb))
                         assertArrayEquals(magic,dirtyJournal.copyOfRange(0,8))
                         assertTrue(dirtyJournal.size > 512)
                         throw Copied()
-                    }) { db.execSQL("UPDATE dataset SET target_handle=?",arrayOf("d".repeat(4096))) }
+                    }) {
+                        // transaction에 고정된 실제 writer의 cache/spill만 준비하고 관측한다.
+                        db.execSQL("PRAGMA cache_size=1")
+                        db.execSQL("PRAGMA cache_spill=1")
+                        fun numericPragma(sql: String): Long = db.rawQuery(sql,null).use {
+                            check(it.moveToFirst())
+                            it.getLong(0)
+                        }
+                        val pageSize = numericPragma("PRAGMA page_size")
+                        val pageCount = numericPragma("PRAGMA page_count")
+                        val cacheSize = numericPragma("PRAGMA cache_size")
+                        val cacheSpill = numericPragma("PRAGMA cache_spill")
+                        val journalMode = db.rawQuery("PRAGMA journal_mode",null).use {
+                            check(it.moveToFirst())
+                            when (it.getString(0)) {
+                                "delete" -> "DELETE"
+                                "truncate" -> "TRUNCATE"
+                                "persist" -> "PERSIST"
+                                "memory" -> "MEMORY"
+                                "wal" -> "WAL"
+                                "off" -> "OFF"
+                                else -> "UNKNOWN"
+                            }
+                        }
+                        val synchronous = numericPragma("PRAGMA synchronous")
+                        val rowCount = numericPragma("SELECT count(*) FROM dataset")
+                        android.util.Log.i("HotWriterFixture",
+                            "writer_in_transaction=${db.inTransaction()} page_size=$pageSize page_count=$pageCount " +
+                                "cache_size=$cacheSize cache_spill=$cacheSpill journal_mode=$journalMode synchronous=$synchronous")
+                        db.execSQL("UPDATE dataset SET target_handle=?",arrayOf("d".repeat(4096)))
+                        val updatedRowCount = numericPragma("SELECT changes()")
+                        android.util.Log.i("HotWriterFixture","row_count=$rowCount updated_row_count=$updatedRowCount")
+                    }
                 }
                 fail("원래 writer는 rollback해야 합니다")
             } catch (_: Copied) { }

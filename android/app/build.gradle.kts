@@ -64,6 +64,8 @@ dependencies {
         }
     }
     implementation(project(":core"))
+    implementation("androidx.work:work-runtime:2.11.0")
+    androidTestImplementation("androidx.work:work-testing:2.11.0")
     implementation("com.squareup.okhttp3:okhttp:5.3.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:5.3.0")
