@@ -8,47 +8,103 @@ verify_workmanager_isolation() (
   set -euo pipefail
   local evidence=android/app/build/outputs/critical/workmanager-isolation
   local scratch app=com.ny.my.health runner=com.ny.my.health.test/androidx.test.runner.AndroidJUnitRunner
+  local job='' stage=setup failure=none
   scratch=$(mktemp -d)
   chmod 700 "$scratch"
-  trap 'rm -rf "$scratch"' EXIT
   mkdir -p "$evidence"
-  # source의 설치 호출과 registry를 비교하고 각 테스트의 실제 identity를 산출한다.
-  python3 - "$scratch" "${workmanager_helpers[@]}" <<'PY'
+  rm -f "$evidence"/*.raw.txt "$evidence"/*.json "$evidence"/*.failure.txt "$evidence"/source-inventory.txt
+  cleanup() {
+    local original=$? cleanup_failed=0 n
+    trap - EXIT
+    timeout 5s adb shell am force-stop "$app" >"$scratch/cleanup" 2>&1 || cleanup_failed=1
+    if [[ -n "$job" ]]; then
+      for ((n=0; n<50; n++)); do
+        kill -0 "$job" 2>/dev/null || break
+        sleep 0.1
+      done
+      if kill -0 "$job" 2>/dev/null; then kill -TERM "$job" 2>/dev/null || true; fi
+      for ((n=0; n<50; n++)); do
+        kill -0 "$job" 2>/dev/null || break
+        sleep 0.1
+      done
+      if kill -0 "$job" 2>/dev/null; then kill -KILL "$job" 2>/dev/null || true; fi
+      wait "$job" 2>/dev/null || true
+    fi
+    timeout 5s adb shell true >"$scratch/alive" 2>&1 || cleanup_failed=1
+    if timeout 5s adb shell pidof "$app" >"$scratch/remaining" 2>&1; then cleanup_failed=1; fi
+    if (( cleanup_failed )); then
+      printf 'stage=%s count=0 pass=false failure=cleanup\n' "$stage" >&2
+      (( original != 0 )) || original=1
+    fi
+    rm -rf "$scratch"
+    exit "$original"
+  }
+  trap cleanup EXIT
+  fail() {
+    failure=$1
+    printf 'stage=%s count=0 pass=false failure=%s\n' "$stage" "$failure" >&2
+    printf 'stage=%s count=0 pass=false failure=%s\n' "$stage" "$failure" >"$evidence/$stage.failure.txt"
+    exit 1
+  }
+  # 기존 connected 작업의 teardown 이후 빌드된 동일 APK를 다시 설치한다.
+  for apk in android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk; do
+    [[ -f "$apk" ]] || fail apk_missing
+    timeout 60s adb install -r -t "$apk" >"$scratch/install" 2>&1 || fail install
+    grep -Eq '^Success[[:space:]]*$' "$scratch/install" || fail install
+  done
+  timeout 30s adb shell pm list instrumentation >"$scratch/runner" 2>&1 || fail runner
+  grep -Fxq "instrumentation:$runner (target=$app)" <(tr -d '\r' <"$scratch/runner") || fail runner
+  # 주석과 문자열을 제외한 중괄호 범위에서 각 top-level class의 테스트를 찾는다.
+  python3 - "$scratch" "${workmanager_helpers[@]}" 2>"$scratch/inventory-error" <<'PYCODE' || fail inventory
 import pathlib, re, sys
 from collections import Counter
 scratch = pathlib.Path(sys.argv[1]); registry = sys.argv[2:]
-assert len(registry) == len(set(registry)), '중복 helper registry'
+assert len(registry) == len(set(registry))
 root = pathlib.Path('android/app/src/androidTest/java')
-installers = []
+installers, all_tests = [], []
+def mask(s):
+    pattern = r'//[^\n]*|/\*[\s\S]*?\*/|"""[\s\S]*?"""|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\''
+    return re.sub(pattern, lambda m: ''.join('\n' if c == '\n' else ' ' for c in m.group()), s)
 for p in root.rglob('*.kt'):
-    s = p.read_text()
-    if re.search(r'\bWorkManagerTestInitHelper\s*\.\s*initializeTestWorkManager\s*\(', s):
-        package = re.search(r'^package\s+([\w.]+)', s, re.M).group(1)
-        classes = re.findall(r'^class\s+(\w+)', s, re.M)
-        assert len(classes) == 1, 'helper source class 확인 실패'
-        installers.append(package + '.' + classes[0])
-assert Counter(installers) == Counter(registry), 'helper 설치 source와 registry 불일치'
-all_tests = []
-for p in root.rglob('*.kt'):
-    s = p.read_text()
+    raw = p.read_text(); s = mask(raw)
     package = re.search(r'^package\s+([\w.]+)', s, re.M)
-    cls = re.search(r'^class\s+(\w+)', s, re.M)
-    if not package or not cls: continue
-    methods = re.findall(r'@Test(?:\s*\([^)]*\))?\s+fun\s+(\w+)\s*\(', s)
-    all_tests.extend(package.group(1) + '.' + cls.group(1) + '#' + m for m in methods)
-assert len(all_tests) == len(set(all_tests)), '중복 테스트 identity'
+    if not package: continue
+    depth = 0; depths = []
+    for c in s:
+        depths.append(depth)
+        if c == '{': depth += 1
+        elif c == '}': depth -= 1
+        assert depth >= 0
+    assert depth == 0
+    classes = []
+    for m in re.finditer(r'\bclass\s+(\w+)[^{]*\{', s):
+        if depths[m.start()] != 0: continue
+        opening = m.end()-1
+        end = next((i for i in range(opening+1, len(s)) if s[i] == '}' and depths[i] == 1), None)
+        assert end is not None
+        classes.append((m.start(), end, package.group(1) + '.' + m.group(1)))
+    for m in re.finditer(r'@Test(?:\s*\([^)]*\))?\s+fun\s+(\w+)\s*\(', s):
+        owners = [c for start, end, c in classes if start < m.start() < end]
+        assert len(owners) == 1
+        all_tests.append(owners[0] + '#' + m.group(1))
+    for m in re.finditer(r'\bWorkManagerTestInitHelper\s*\.\s*initializeTestWorkManager\s*\(', s):
+        owners = [c for start, end, c in classes if start < m.start() < end]
+        assert len(owners) == 1
+        installers.append(owners[0])
+assert Counter(installers) == Counter(registry)
+assert len(all_tests) == len(set(all_tests))
 (scratch / 'inventory').write_text('\n'.join(sorted(all_tests)) + '\n')
 for i, cls in enumerate(registry):
     methods = [x for x in all_tests if x.startswith(cls + '#')]
-    assert methods, 'helper 테스트 없음'
+    assert methods
     (scratch / ('helper' + str(i))).write_text('\n'.join(methods) + '\n')
-PY
+PYCODE
   cp "$scratch/inventory" "$evidence/source-inventory.txt"
-  local seen_pids=' ' pid='' stage selector expected output job i status
+  local seen_pids=' ' pid='' selector expected output i status
   run_stage() {
     stage=$1 selector=$2 expected=$3
     output="$scratch/$stage.raw"
-    timeout 10s adb shell am force-stop "$app" >"$scratch/stop" 2>&1
+    timeout 10s adb shell am force-stop "$app" >"$scratch/stop" 2>&1 || fail force_stop
     timeout 90s adb shell am instrument -w -r -e class "$selector" "$runner" >"$output" 2>&1 &
     job=$!
     pid=''
@@ -60,38 +116,53 @@ PY
     done
     status=0
     wait "$job" || status=$?
-    # 원문은 고정 길이로 제한하며 PID가 포함된 출력은 공개하지 않는다.
-    [[ $(wc -c <"$output") -le 262144 ]] || { echo "stage=$stage output_too_large=true" >&2; return 1; }
-    if grep -Eq '(^|[^0-9])'"$pid"'([^0-9]|$)|[Pp][Ii][Dd][=: ]+[0-9]+' "$output"; then
-      echo "stage=$stage private_identifier_in_output=true" >&2; return 1
-    fi
-    cp "$output" "$evidence/$stage.raw.txt"
-    [[ "$status" == 0 ]] || { echo "stage=$stage invocation_failed=true" >&2; return 1; }
-    [[ "$pid" =~ ^[0-9]+$ && "$seen_pids" != *" $pid "* ]] || { echo "stage=$stage process_check_failed=true" >&2; return 1; }
+    job=''
+    [[ "$status" == 0 ]] || fail invocation
+    [[ "$pid" =~ ^[0-9]+$ && "$seen_pids" != *" $pid "* ]] || fail process
     seen_pids+="$pid "
-    python3 - "$output" "$expected" "$evidence/$stage.json" "$stage" <<'PY'
+    [[ $(wc -c <"$output") -le 262144 ]] || fail output_size
+    # 모든 줄이 고정된 성공 protocol과 예상 identity에 속할 때만 원문을 공개한다.
+    python3 - "$output" "$expected" "$evidence/$stage.json" "$stage" 2>"$scratch/protocol-error" <<'PYCODE' || fail protocol
 import json, pathlib, re, sys
-raw = pathlib.Path(sys.argv[1]).read_text(errors='replace').replace('\r', '')
-expected = set(pathlib.Path(sys.argv[2]).read_text().splitlines())
-assert expected
-assert len(re.findall(r'^INSTRUMENTATION_CODE: -1$', raw, re.M)) == 1
-assert not re.search(r'FAILURES|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED|shortMsg=|Process crashed|^INSTRUMENTATION_STATUS_CODE: (?:-2|-1|2|-3|-4)$', raw, re.M)
-started, passed = [], []
-# 상태 bundle은 바로 뒤 status code에 귀속된다.
-for match in re.finditer(r'((?:^INSTRUMENTATION_STATUS: .*\n)+)^INSTRUMENTATION_STATUS_CODE: (-?\d+)$', raw, re.M):
-    bundle, code = match.groups()
-    cls = re.search(r'^INSTRUMENTATION_STATUS: class=(.+)$', bundle, re.M)
-    method = re.search(r'^INSTRUMENTATION_STATUS: test=(.+)$', bundle, re.M)
-    if cls and method:
-        identity = cls.group(1) + '#' + method.group(1)
-        if code == '1': started.append(identity)
-        elif code == '0': passed.append(identity)
-        else: raise AssertionError('실패 또는 미완료 status')
-assert len(started) == len(expected) and set(started) == expected
-assert len(passed) == len(expected) and set(passed) == expected
-assert re.search(r'^OK \(' + str(len(expected)) + r' tests?\)$', raw, re.M)
+raw = pathlib.Path(sys.argv[1]).read_bytes()
+assert len(raw) <= 262144
+text = raw.decode('utf-8').replace('\r\n', '\n')
+assert '\r' not in text
+expected = pathlib.Path(sys.argv[2]).read_text().splitlines()
+assert expected and len(expected) == len(set(expected))
+classes = {x.split('#')[0] for x in expected}
+methods = {x.split('#')[1] for x in expected}
+started, passed, bundle, terminal, ok = [], [], {}, 0, 0
+for line in text.splitlines():
+    if line == '': continue
+    if line.startswith('INSTRUMENTATION_STATUS: '):
+        item = line.removeprefix('INSTRUMENTATION_STATUS: ')
+        key, sep, value = item.partition('='); assert sep and key not in bundle
+        valid = ((key == 'class' and value in classes) or (key == 'test' and value in methods) or
+                 (key == 'id' and value == 'AndroidJUnitRunner') or
+                 (key == 'current' and value.isdigit() and 1 <= int(value) <= len(expected)) or
+                 (key == 'numtests' and value == str(len(expected))) or
+                 (key == 'stream' and value == ''))
+        assert valid
+        bundle[key] = value
+    elif line in ('INSTRUMENTATION_STATUS_CODE: 1', 'INSTRUMENTATION_STATUS_CODE: 0'):
+        identity = bundle.get('class', '') + '#' + bundle.get('test', '')
+        assert identity in expected
+        (started if line.endswith('1') else passed).append(identity)
+        bundle = {}
+    elif line == 'INSTRUMENTATION_RESULT: stream=':
+        assert not bundle
+    elif re.fullmatch(r'Time: [0-9]+(?:\.[0-9]+)?', line): pass
+    elif line == 'OK (' + str(len(expected)) + (' test)' if len(expected) == 1 else ' tests)'):
+        ok += 1
+    elif line == 'INSTRUMENTATION_CODE: -1': terminal += 1
+    else: raise AssertionError('protocol')
+assert not bundle and terminal == 1 and ok == 1
+assert len(started) == len(expected) and set(started) == set(expected)
+assert len(passed) == len(expected) and set(passed) == set(expected)
 pathlib.Path(sys.argv[3]).write_text(json.dumps({'stage': sys.argv[4], 'count': len(expected), 'pass': True, 'tests': sorted(passed)}, indent=2) + '\n')
-PY
+PYCODE
+    cp "$output" "$evidence/$stage.raw.txt"
     printf 'stage=%s count=%s pass=true\n' "$stage" "$(wc -l <"$expected")"
   }
   printf '%s\n' "$workmanager_probe#normalRuntimeBeforeHelperHasALiveProductionManager" >"$scratch/before"
