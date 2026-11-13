@@ -16,7 +16,7 @@ tasks:
   - {id: T2, title: 목적지 공통 known-target 조회와 재열기, depends_on: [], status: done, tier: standard}
   - {id: T3, title: 전경 local tree 동의와 실제 capability probe, depends_on: [T1], status: done, tier: standard}
   - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: done, tier: standard}
-  - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: in_progress, tier: standard}
+  - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: done, tier: standard}
   - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9, T10], status: pending, tier: standard}
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
   - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: done, tier: standard}
@@ -673,3 +673,7 @@ T4 구현과 병렬 read-only 실제 API 조사로 기존 ManualDrivePorts 관�
 ### T10 외부 실행 차단 — runner 배정 전 Actions account 제한
 
 sourcecb274caf의두고정mode dispatch(run43459510333/43459516911)는GitHub Actions계정결제/지출한도annotation으로시작전에모두차단됐다. 네job모두runner_id0/steps빈값/tests0/artifact0이다. 제품테스트실패나Native검증완료가아니며T4코드복구회차를차감하지않는다. 요청mode는saf-destination/saf-provider-starter지만실제runner scope는실행되지않아확인되지않았다. root는소유자에게GitHub Billing확인을요청했으며계정/결제정보는요청·수집하지않고자동billing변경·동일차단무한재시도도하지않는다. T10blocked/T6pending을유지하고독립T5로컬구현·검증은계속한다. 기존실행중WM gate는그대로완료결과를대조한다. 한도해소뒤동일고정source component를실제실행하고기존최종full gate/독립PR검토/댓글/merge의무를유지한다.
+
+### T5 source/JVM 실제 완료
+
+기존두파일만작성한T5의targeted ManualSafSessionTest4개/실패·오류·skip·중복0과assembleDebug가1분26초/exit0으로통과했다. root가원본XML4개method와두source SHA-256을독립updatedreview APPROVE와복사전후대조했다. 실제Uri호출/가짜proof없이JVM수명·순서검증을했고실제adapter는freshselect/restore+privateproof를쓴다. 기존LOCAL아닌binding은generation만CAS기대값으로보존하고LOCAL구성/coverage로표시하지않는다. source리뷰의null-binding직접분기및post-probe변경경계추가제안은비차단이며현재코드의fresh재확인/차단은검토했다. T5done이며실제SQLite/sharedgate/Activity/provider성공으로이JVM결과를확대하지않는다. T6는여전히T10actual양API실행전pending이고T10은runner시작전외부한도로blocked다. 다음component재개시최신통합source를고정하고T4네파일동일성과T5새추가를기록한다.
