@@ -23,7 +23,7 @@ work_plans:
     title: 검증된 local tree 수동 내보내기
     path: saf-local/plan.md
     depends_on: [manual-drive]
-    status: pending
+    status: in_progress
   - id: automation-ui
     title: 자동 실행과 통합 상태 화면
     path: automation-ui/plan.md
