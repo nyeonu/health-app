@@ -771,3 +771,7 @@ T13 actual focused31/0/0/0, T11 actualfocused5/0/0/0(환경준비1·testfixture�
 ### CI 실제 환경 원인 및 T15 승인
 
 cfb/run43421817901/API35 job131873397235는제품테스트전 FATAL userdata 디스크부족(available7074.67MB/need7372.80MB)으로12:05:54중단된뒤12:15:56부팅timeout이었다. 기존unused toolchain cleanup이API36에만적용돼API35에누락됐다. 동일한기존안전환경준비를양API에적용하는T15를승인한다. 테스트/권한/버전/성공기준은보존한다. 코드수정/SAF리뷰와병렬로처리한다.
+
+### 최종 후보 통합 전 확인
+
+T14 actualfocused24/0/0/0(ManualDriveSession9+ManualSyncProfiling6+PhoneProfilingSession9), testAPK컴파일PASS1분19초. 기존4파일만변경하며실제boundVM+realSQLite/syntheticHC/transport Native진단수명테스트를추가했다. T13/T11/T12/T14/T15를통합한현재후보에root전체검증1회와양API전체CI·4독립리뷰를병렬수행한다. rawHealth/credential/date는진단입력에추가하지않았다. Nativeactual·최신head리뷰전완료/병합주장은없다.
