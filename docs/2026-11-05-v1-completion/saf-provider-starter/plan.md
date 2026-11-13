@@ -47,7 +47,7 @@ SAF production local authority allowlist/background disabled/privacy/probe 계�
 
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
-  | `android/app/src/androidTest/java/com/ny/my/health/SyntheticDocumentsProvider.kt` | 신규 | test APK provider·중첩 GrantActivity·제어된 실패/차단점 |
+  | `android/app/src/androidTest/java/com/ny/my/health/SyntheticDocumentsProvider.java` | 신규 | test APK provider·중첩 GrantActivity·제어된 실패/차단점 |
   | `android/app/src/androidTest/java/com/ny/my/health/SyntheticProviderStarterTest.kt` | 신규 | target ContentResolver로 실제 grant·query·read 한 번 |
   | `android/app/src/androidTest/AndroidManifest.xml` | 신규 | test APK에만 provider와 grant Activity 등록 |
 
@@ -130,3 +130,5 @@ run43428796098 API35 job131896773570은 Native 시작 전 shell end-of-file/expe
 ### T1 복구2 — 별도 test APK 프로세스의 Kotlin 런타임 부재
 
 run43431412244 양API에서 starter1개가 합성제어응답 timeout으로실패했고 provider프로세스 원본crash는 `NoClassDefFoundError: kotlin/io/FilesKt`/`SyntheticDocumentsProvider.reset:230`이다. AGP가 tested APK에있는 Kotlin stdlib를 testAPK에서공유기대로제외해 별도 testAPK UID provider/GrantActivity에서로드할수없다. 생산의존성/프로세스/grant를바꾸지않고 testAPK provider+중첩activity를같은FQCN의프레임워크/Java표준API만쓰는Java파일로기계적이식한다. 기존Kotlin1삭제+Java1추가의2경로만교정하고starter·manifest·UID/실제grant/bytes/denial단언모두보존한다. testAPKprovider하위전체DEX참조에kotlin/androidx/runtime외부호출부재를검사하고 실제API35/36재검증한다. cleanupR1과합산T1복구2이며숨은추가loop금지.
+
+T1복구2 실제APK/testAPK build90초PASS. 패키징된provider4classes의DEX전체참조allowlist는android/java/own만으로Kotlin·AndroidX참조0이며productionAPK격리확인했다. starter·manifest·기존단언byte불변. actualAPI35/36·별도최신source재검토는아직pending이다.
