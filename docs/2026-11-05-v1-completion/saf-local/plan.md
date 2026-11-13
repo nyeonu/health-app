@@ -479,3 +479,7 @@ T1첫wrapper는network-disabled sandbox에서Gradle FileLockContentionHandler wi
 ### T2 검토 보정1 — 실제 tree URI 형태와 기존 dedup 회귀 보존
 
 T2첫build176JVM/0fail·error·skip와testAPKcompile은성공했다. rootdiff대조에서testhelper가standalone document URI를만들고있어실제targetHandle의tree/documentURI형태를직접확인하지않았고, 범위별서로다른4handle로확장하면서이전동일handle의집합dedup경계가명시검증에서빠졌다. 기존성공기준에따라testhelper를DocumentsContract.buildTreeDocumentUri→buildDocumentUriUsingTree로고정하고같은2scope동일current/prior의이전dedup+DriveAPI동등성단언을같은테스트에보존한다. production/storescan/기존추가corrupt·경계·URI검증불변. test파일1개만수정/compile확인하며176JVM은같은source로중복실행하지않는다. actualNative는계속pending이다.
+
+### T8 검토 보정1 — 진단도 기존 공통 AVD 준비 유지
+
+정적/stub은모든full명령동등성을통과했지만root통합검토에서새diagnostic분기가기존SDKsetup/launcher1회종료앞에서return하여공통계정없는AVD준비를건너뛰는것을확인했다. 기본full본문의동등성과함께진단도같은기존준비를적용하도록scope분기를공통준비뒤/critical앞으로옮긴다. 권한/버전/기존prep명령/호스트/필터불변. helper1파일만교정하고stub은모든diagnostic에서prep1회뒤고정class명령만실행·실패전파를확인한다. 실제componentNative는원본증거확인전pending이다.
