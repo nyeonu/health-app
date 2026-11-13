@@ -95,7 +95,7 @@ tasks:
 
 ### T1: 실제 합성 DocumentsProvider와 grant starter
 
-- starter 재사용 기준: 별도 worktree `25739c54de7efb37607bf5cb6af70d9441a367f4`의 아래 세 test 파일을 실제 merge/rebase 뒤 비교하여 도입한다(전체 branch의 CI/문서 변경을 가져오지 않는다). 소스가 있다는 사실은 T1 완료가 아니다. API35/36 target UID runtime은 아직 pending이며 T3는 T1 양API 완료 전 시작하지 않는다.
+- starter 재사용 기준: 별도 worktree `52f7f97f2835e89e15b795883a540fa4b61c2259`의 아래 세 test 파일을 실제 merge/rebase 뒤 비교하여 도입한다(전체 branch의 CI/문서 변경을 가져오지 않는다). 소스가 있다는 사실은 T1 완료가 아니다. API35/36 target UID runtime은 아직 pending이며 T3는 T1 양API 완료 전 시작하지 않는다.
 - 실제 fixture API는 nested `SyntheticDocumentsProvider.GrantActivity`, `Control`, `EXTRA_CONTROL`/`EXTRA_RECEIVER`/`EXTRA_UID`, `AUTHORITY`/`TARGET_PACKAGE`/`TREE_ID`/`SEEDED_ID`/`ACCESS_FLAGS`, `seededBytes()`다. GrantActivity는 현재 ResultReceiver로 결과·test UID만 반환하고 raw activity result URI/flags를 반환하지 않는다. T6에 직접 picker replacement라고 가정하지 않는다. T1에서 같은 세 파일 안에 grant 명령의 실제 URI+granted flags를 `setResult`로 전달하는 test-only launcher 경계를 보완하고 기존 ResultReceiver/고정 target/enum-only 제어를 보존한다. provider는 Java이며 `queryChildDocuments`는 null을 반환할 수 있는 `Cursor`다(Kotlin 호출부에서는 nullable로 처리). FQCN·nested static GrantActivity/Control·상수·seededBytes() 계약은 유지된다.
 - 후속 T의 fixture 요구(opaque 공백/Unicode/reserved ID, 작업 횟수 관찰, null descriptor/짧은 write/cleanup·readback 실패)는 현재 starter에 모두 구현되어 있지 않다. 동일 T1 provider 파일의 합성 enum/control과 redacted 관찰 경계로 준비하고 starter 최소 grant/read 테스트와 분리한다. fixture가 조용히 일부 행을 누락한 결과만으로 production이 불완전을 탐지한다고 주장하지 않는다. loading/null/명시 불완전 신호를 검증한다. T3 이후 provider 파일 수정이 필요하면 파일 소유·의존 계획을 먼저 보정한다.
 
