@@ -633,6 +633,7 @@ COMPLETED→측정성공, BLOCKED/STALE/RETRYABLE/PENDING/null/실패→실패, 
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
   | `.github/workflows/android-emulator-tests.yml` | 수정 | 핵심4class를먼저실행하고나머지전체를뒤에실행 |
+  | `android/ci/run-emulator-validation.sh` | 신규 | 단일 bash 프로세스에서 준비·핵심·나머지·host 순서 실행 |
 
 - **결정 로직**: 같은API35/36/동일APK로 HealthAppInstrumentedTest,ManualDriveFlowInstrumentedTest,ManualDriveUiInstrumentedTest,DestinationConfigurationInstrumentedTest를첫connected class인자로실행한다. 성공XML/추가출력을별도critical디렉터리로보존한뒤 두번째connected는기존hold2개와이미실행한4개class만notClass로제외해나머지전체를각각한번실행한다. 그뒤기존host2개그대로. failure는즉시중단/alwaysartifact로실패증거보존. APK/Gradle/SDK/version/timeout/permissions/디스크준비불변. 추가한critical증거path를artifact에포함한다.
 - **작성할 테스트**: CIonly. 이전전체에서실행되던각class가critical또는remainder정확히한곳에있고기존hold만일반발견에서제외되는정적검사. 스크립트bash -n/기존host명령보존. root최종evidence는두XML의유일class+method합으로수집해중복PASS금지.
@@ -817,3 +818,7 @@ T14복구1 actualfocused24/0/0/0와testAPK컴파일41초PASS. reset/withdraw는�
 ### 실제 Native 회귀 T16/T17 승인
 
 c334/API35 artifact14037199934 SHA256cafa66bccc634b32ac6b68b9e673868f061073f8b759c485e4808be694576e56 원본XML Native120/2fail/0error/0skip. 두실패는제목substring선택자가새설명문구도찾아expected1/actual2인정확한오류다. T16은T12텍스트추가의테스트호환보정(누적1)이며제품오류로과장하지않는다. T17은소유자속도지시로같은전체테스트를초기핵심/나머지로분할해다음실패를13분뒤대신초기에확인한다. 모든Native/host gate를유지한다.
+
+### T17 복구1 — emulator-runner 줄별 shell 계약
+
+SAF focused run43428796098 API35 job131896773570 실제로그는 `/usr/bin/sh: 1: Syntax error: end of file unexpected (expecting "fi")`이며 Native 시작 전 중단이다. runner가 script 각 줄을 별도 shell로 실행하므로 T17 최초 여러 줄 if/변수도 같은 위험이 있다. 기존 전체 gate와 명령을 단일 신규 bash helper로 옮기고 workflow script는 bash helper 호출 한 줄로 고정한다. 변경2파일, 테스트·권한·버전·재시도 불변. bash -n뿐 아니라 runner처럼 줄별 실행하는 stub smoke로 실제 명령 순서·실패 즉시 종료를 검증한다. 같은 원인의 SAF T2도 별도 branch에서 동일 제한 교정한다.
