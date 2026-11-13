@@ -308,6 +308,7 @@ runner script는현재 단일bashhelper호출그대로; API35/36/permissions/버
 ### T4: journal 이후 동일 대상 SAF upsert와 reconciliation
 
 - T2·T3 완료 후 시작.
+- fixture 추가 계약: 기존 MOVE_OUTSIDE_TREE/DELETE_SEEDED/DUPLICATE에 private 합성 target-id extra를 추가할 수 있다. 미지정은 기존 seed 동작을 유지한다. ID는 provider nodes map의 opaque key로만 조회하고 filesystem 경로로 해석하거나 URI/ID/body를 로그·오류에 넣지 않는다. partial은 silent PARTIAL cursor와 다른 고정 DOCUMENT_PARTIAL enum/Column_FLAGS의 명시 bit로 구분한다. 기존 권한/UID/grant/Java-only/binding/schema/10초 단언을 유지한다.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
