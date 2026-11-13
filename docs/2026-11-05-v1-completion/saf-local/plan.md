@@ -595,3 +595,7 @@ T9병렬분리로기존4진단완료증거를보존하고fixed saf-ui choice1개
 T9첫bareGradle호출은read-onlyHOME lock전에실패하여기존Pythonwrapper/JDK/cache선택환경준비1로수정했다. 다음wrapper는overlay7.9GB가100%에이르러변경없는core클래스출력단계실패했다. root는완료작업의regenerableintermediates만삭제하고옛build5개를/tmp로옮겨symlink경로를유지해소스/XML/reports/APK/원본CI증거를보존했다. free1.4GB와동일출력경로writecheckPASS후T9실패core Kotlin출력만정리한disk준비1을수행했다. 그뒤T9app/APK/testAPKcompile은성공했으나lint가T3의DocumentsContract.isChildDocument API29호출/min28 NewApi를발견했다. 이는UI소스문제가아닌실제T3호환성결함이다.
 
 T3는소유자기존V1자동수정위임에따라누적3으로보정한다. app minSdk28/SDK/의존성은유지하고공개membership검증API가없는28에서는LOCAL capability를명시BLOCKED로중단한다. selected/restored URI의persist/probe전과isChildDocument사용직전에동일Build.VERSION.SDK_INT>=29 가드를적용해실제지원안되는호출/숨은fallback/파일생성을피한다. DRIVE/기존경로불변이며API28LOCAL/reboot/실기기수용을PASS로주장하지않는다. T3file1개guard·표기만교정하고wrapperlint/testAPK로검증한뒤새source양APIcomponent/UI를확인한다. 임의SuppressLint/RequiresApi로호출자책임전가/minSDK상향/새fallback금지.
+
+### T9 리뷰 제안 보정1 — retry guard를 독립 검증
+
+독립UI소스리뷰86270e5는차단0·APPROVE와Suggestion1을기록했다. disabled guard matrix가needsRetry=false인ready를기반으로해retry guard조건을독립검증하지못했다. 같은8개행의UI상태를PENDING outcome으로만강화해needsRetry=true에서도각foreground/consent/grants/scope/config/generation/RUNNING guard가버튼을막는지검증한다. 기존단언/제품소스/기타테스트는불변이며test한줄보정만한다. 이미존재하는enum/사용형태라중복localGradle없이정적diff후최종UI Native실행에서확인한다.
