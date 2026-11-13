@@ -10,6 +10,7 @@ spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feat/v1-saf-provider-starter
 tasks:
   - {id: T1, title: 실제 합성 DocumentsProvider와 grant starter, depends_on: [], status: in_progress, tier: standard}
+  - {id: T2, title: 기반 기동 전용 CI 수동 모드, depends_on: [], status: pending, tier: light}
 ---
 
 # 독립 SAF 합성 provider 기반
@@ -96,6 +97,20 @@ SAF production local authority allowlist/background disabled/privacy/probe 계�
 - **주의사항**: §2 확인: SDK DocumentsProvider.isChildDocument 기본값은 false이므로 fixture가 ancestry를 구현한다. provider는 test APK permission MANAGE_DOCUMENTS/grantUriPermissions와 DOCUMENTS_PROVIDER filter를 갖고 grant Activity만 실제 target URI grant를 발급한다. control payload는 enum/합성 값만; 측정값·URI를 assertion 메시지/출력에 담지 않는다. 신규 기반 최초 구현에 한해 manifest/test UID grant 기동 형태만 이 세 파일 안에서 보정할 수 있다. 구현 전 읽기 전용으로 UID/grant 동작을 확인하고 위임 범위 안에서 구현·보고한다. 기동/컴파일 또는 구현 후 검증 실패 뒤에는 blocked로 보고하고 집계된 복구 지시를 기다린다. 테스트 skip·단언 완화 금지.
 
 
+### T2: 기반 기동 전용 CI 수동 모드
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `.github/workflows/android-emulator-tests.yml` | 수정 | workflow_dispatch의 명시적 starter/full choice |
+
+- **결정 로직**: workflow_dispatch test_scope choice의 허용값은 full(default), saf-provider-starter 두개. PR event/기본은 기존전체 Native+history host+sync-state host 그대로 실행한다. 명시starter 요청만 constant class com.ny.my.health.SyntheticProviderStarterTest를connectedDebugAndroidTest class인자로실행하고host는full분기에둔다. input은env로전달해고정문자열비교만하며동적shell/testclass입력은없다. emulator API35/36·빌드·디스크확보·artifact·timeout·permission불변.
+- **작성할 테스트**: CI설정only,제품테스트추가없음. YAML구조와full분기기존명령보존, 선택starter가고정class1개이며런타임결과를전체회귀PASS로표시하지않음을확인.
+- **완료 기준**: 정적검사/동일branch수동starter실제API35/36PASS. 제품최종SAF PR은여전히기본full전체gate필수.
+- **검증 방법**: YAML/static检查 및 gh workflow run android-emulator-tests.yml --ref feat/v1-saf-provider-starter -f test_scope=saf-provider-starter.
+- **주의사항**: 한파일만변경. existingfull CI43427341555는유지하고새focused run은신규기반기동진단용으로구분한다. T1cleanup소스와겹치지않아병렬가능.
+
 ## 5. 전체 검증
 
 로컬 run-health-command.py wrapper로 app/testAPK컴파일, 최종API35/36에서 starter targetUID grant/읽기실행. 실제Native전완료판정없음. schema/dependency/productionpermission변경없음. branch배포/병합은PR17검증병합뒤SAFchild전체gate를따른다. 이기반단독으로새SAF기능완료를주장하지않는다.
@@ -103,3 +118,7 @@ SAF production local authority allowlist/background disabled/privacy/probe 계�
 ## 복구 기록
 
 없음. 신규기반첫구현은위task명시범위만허용하고실패후숨은교정/재시도금지.
+
+### T1 복구1 및 T2 승인
+
+독립fixture review261faa1는정적Critical/Important0,cleanup에서REVOKE실패시RESET생략/원래오류가림 Suggestion1을발견했다. T1의finally를두cleanup모두시도/원래실패보존/별도고정cleanup실패보고로보정하며기존테스트단언은유지한다. 실제runtime전판정을보류한다. 소유자의병렬화/속도지시에따라신규기반starter만빠르게실행하는수동CI모드를T2로승인한다. PR/default전체gate는기존명령그대로이며focused증거를full통과로과장하지않는다.
