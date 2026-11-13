@@ -1,18 +1,18 @@
 ---
 plan_id: automation-ui
 title: 제한된 자동 동기화와 현재성 화면
-status: draft
+status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 18f34a9ca1f53965dab0dfa6f7012f3ceebf7e8d
+parent_rev: 7d373d2f355246c33d47e85115241b025d3c94b2
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-auto-infra
 source_base: 6c5f5b0412029054cc992adc09a2296bcf0c696c
 execution_gate: actual-SAF-merge-WM-integration-parent-ADR-approved-and-repinned
 tasks:
-  - {id: T19, title: WorkManager helper process 격리 기반, depends_on: [], status: pending, tier: standard}
+  - {id: T19, title: WorkManager helper process 격리 기반, depends_on: [], status: in_progress, tier: standard}
   - {id: T1, title: 실제 WorkManager starter 기반, depends_on: [T19], status: pending, tier: standard}
   - {id: T2, title: durable retry 모델과 검증 경계, depends_on: [T1], status: pending, tier: standard}
   - {id: T3, title: 검증된 v1 상태의 v2 migration, depends_on: [T2], status: pending, tier: standard}
@@ -678,3 +678,7 @@ T19는earlystarter의옛script가아닌실제mergedSAF의진단earlyexit·critic
 ### 준비 교정2 — 독립 계획 검토의 격리·배선 충돌
 
 실제fullrunner없이helper설치class를같이실행할수있던10개task명령/전체검증을registry기반fullrunner로교체했다. source/API/테스트기준은유지하고부모/ADR008의worker세션배선을freshperworker+공유canonicalgate로정합화했다. T19/T1및관련task의기존준비교정이력을초기화하지않으며새명령은실제양API에서검증해야한다.
+
+### 실행 승인·T19 시작
+
+소유자의 기존 V1 자동 승인 위임과 독립 계획 재검토 APPROVE(f5ab721, auto-integrated-plan-readiness-rereview.md)에 따라 실행을 시작한다. 준비 교정1·2는 누적 보존한다. T19는 새로운 Terra 세션에 조립 브리프로 위임하며 실제 양 API 격리/full 증거 전 T1 생산 초기화를 시작하지 않는다. 새로운 근거가 필요한 추가 교정은 기존 V1 범위의 소유자 위임을 적용하되 원래 작업 ID와 회차를 이어 기록한다.
