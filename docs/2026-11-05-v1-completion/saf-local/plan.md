@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 7538e87a1797f3079525dbb6121f50624688ba44
+parent_rev: bfd659187072b616b24ab0be2c406409d87c715b
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-saf-local
@@ -19,6 +19,7 @@ tasks:
   - {id: T5, title: 명시적 전경 SAF controller와 화면 조각, depends_on: [T4], status: pending, tier: standard}
   - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5], status: pending, tier: standard}
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
+  - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: in_progress, tier: standard}
 ---
 
 # 검증된 local tree 전경 내보내기
@@ -52,7 +53,7 @@ tasks:
 
 ### 확인한 API와 공통 계약
 
-접두어는 상위와 동일하다: A=`android/app/src/main/java/com/ny/my/health/`, AT=`android/app/src/test/java/com/ny/my/health/`, AI=`android/app/src/androidTest/java/com/ny/my/health/`, C=`android/core/src/main/kotlin/com/ny/my/health/core/`. 표의 신규 이름은 이 계획의 제안 API이며 현재 존재한다고 주장하지 않는다. **브리프 조립기는 이 §2 전체와 해당 T를 함께 전달**한다. 상위만 검색하는 조립기를 쓸 때는 먼저 아래 이름을 부모 §2에 통합한다. 이름이 누락되면 실행을 멈춘다.
+접두어는 상위와 동일하다: A=`android/app/src/main/java/com/ny/my/health/`, AT=`android/app/src/test/java/com/ny/my/health/`, AI=`android/app/src/androidTest/java/com/ny/my/health/`, C=`android/core/src/main/kotlin/com/ny/my/health/core/`. 표의 신규 이름은 이 계획의 제안 API이며 현재 존재한다고 주장하지 않는다. **브리프 조립기는 해당 T와 명시 참조된 §2 계약 조각을 원문으로 전달**한다. 상위만 검색하는 조립기를 쓸 때는 먼저 아래 이름을 부모 §2에 통합한다. 이름이 누락되면 실행을 멈춘다.
 
 | 이름 | 현재 확인/고정할 인터페이스 |
 |---|---|
@@ -90,6 +91,22 @@ tasks:
 - 자동/background SAF=false를 고정한다. 전경 runtime probe는 reboot/Doze/background/provider 호환 수용 PASS가 아니다. 실제 Galaxy·grant/reboot·외부 provider·TalkBack acceptance는 pending이며 unsupported cloud는 blocked로 유지한다.
 
 결정 로직 위치: SafTreeConfiguration.kt companion에 consent/flags/local capability 판정, SafDestination.kt의 IO 없는 companion 함수에 relativePath/identity/known handle/중복/byte 확인 판정, SafManualUi.kt의 pure projection에 표시·활성 동작을 둔다. grant/persist/probe IO는 SafTreeConfiguration, export/reconciliation IO는 SafDestination, 호출 수명은 controller가 소유한다. 기존 sealed enum 관례를 유지하고 새 의존성/validator framework를 도입하지 않는다. 최소 LOCAL binding과 generic target URI는 ADR-006을 승계한 Accepted ADR-009의 기존 모델/schema/generation 계약을 재사용한다. persistable grant·local allowlist·foreground proof·encoded target URI·single-use reservation 정책은 ADR-011 Proposed로 기록했다. 기존 ADR-009를 대체하지 않으며 SAF 적합성/Android 검증 전 Accepted가 아니다.
+
+### SafCiProtocol
+
+```text
+// SafCiProtocol — 고정 class 진단과 기존 전체 gate 보존
+workflow_dispatch.test_scope choice default full; choices full,saf-provider-starter,saf-store,saf-capability,saf-destination.
+GITHUB_EVENT_NAME=workflow_dispatch일 때만 TEST_SCOPE 선택을 적용; PR/기타/변수없음은 기존 full.
+saf-provider-starter → com.ny.my.health.SyntheticProviderStarterTest
+saf-store → com.ny.my.health.ManualDriveStoreInstrumentedTest
+saf-capability → com.ny.my.health.SafTreeConfigurationInstrumentedTest
+saf-destination → com.ny.my.health.SafDestinationInstrumentedTest,com.ny.my.health.SafJournalInstrumentedTest
+선택 class는 위 리터럴만허용하고 해당고정 testsource가없으면명시실패. 임의 class 문자열/eval/쉘명령입력금지.
+unknown dispatch scope는 명시실패; diagnostic branch는 고정class connected만실행하고host를full통과로표시하지않음.
+기본full은현재 critical14+나머지전체+기존host2스크립트 및artifact수집 그대로. 새테스트자동포함/skip없음.
+runner script는현재 단일bashhelper호출그대로; API35/36/permissions/버전/timeout/디스크준비불변.
+```
 
 ## 3. 작업
 
@@ -408,6 +425,22 @@ tasks:
 
 - **주의사항**: §2 확인: instrumentation은 JUnit4/Compose 기존 의존성을 재사용하고 별도 Gradle dependency/CI 변경을 요구하지 않는다. 실패 후 테스트 skip·단언 완화·test authority production 등록 금지. 추정이 틀리면 우회하지 말고 blocked.
 
+### T8: 기본 전체 gate를 유지하는 명시 component 진단
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `.github/workflows/android-emulator-tests.yml` | 수정 | dispatch choice와 TEST_SCOPE env만 추가 |
+  | `android/ci/run-emulator-validation.sh` | 수정 | 고정 허용목록 diagnostic 분기, 기존 full 본문 보존 |
+
+- **인터페이스**: §2 `SafCiProtocol` 참조.
+- **결정 로직**: fixed scope→fixed class, dispatch guard; 실제 app/provider 정책 변경 없음.
+- **작성할 테스트**: CI-only static/stub. YAML matrix/settings/artifact/host/fullcommands byte parity; PR에scope주입·빈변수·full→full, explicit각진단→고정class만, unknown/missingclass→실패, connected실패→즉시전파. runner처럼script줄별shell실행. Native0개/다른class는root원본XML검증에서PASS아님.
+- **완료 기준**: 기본 PR/full은 모든 Native·host를보존한다. 진단결과는해당component에만사용하고최종현재Androidsource의양API전체회귀는별도필수다.
+- **검증 방법**: YAML구조·bash -n·실제한줄action stub branch/failure전파와원본full본문동등성검증. GitHubactualcomponent는해당T의원본XML/class/method/count/head로root확인한다.
+- **주의사항**: API/settings/dependency/앱기능/테스트단언변경금지. T1/T2소유파일과안겹쳐병렬가능하며작성만먼저하고class실제존재전진단을기동성공으로표시하지않는다.
+
 ## 4. 검증
 
 1. 실행 전 실제 merge `57da82514e8483f5f32f2ad34ae0111c7f1dc431`와 모든 API/파일·승인 문서 revision, 부모 commit 뒤 parent_rev 고정·root 계획 검토/승인 상태를 확인한다. T1/T2만 서로 독립이며 나머지는 frontmatter 의존 순서를 지킨다. T4/T7가 같은 journal test를 수정하므로 순차다.
@@ -438,3 +471,7 @@ tasks:
 ## 환경 준비 기록
 
 T1첫wrapper는network-disabled sandbox에서Gradle FileLockContentionHandler wildcardIP확정전실패했다(compile0). 기존JDK/cache/버전/명령을유지하고로컬daemon socket을허용하는tool `with_additional_permissions/network.enabled=true`로실행하는환경준비1회를승인했다. source결함/Native실패가아니며T2는처음부터같은args로진행한다. T1의앞선상대경로편집은cwd android에서못찾아미적용이었고완료주장없다. 미적용된배정fixture마무리2개만절대경로로적용하는작업경로교정1회를기록하며전체파일재작성/임의재시도금지다. 실제추가검증실패시중단한다.
+
+### 실행 기술 보정 — component CI 피드백
+
+소유자의진행속도/병렬지시로기존검증을약화하지않는T8두파일작업을승인한다. 실측전체PR17 CI는약25분, 별도starter진단은약8분이며host/기존120Native를매component확인마다중복실행하면직렬대기가늘어난다. component별원본증거를먼저받되최종full은필수로유지한다. 기본full의새테스트자동포함과host/critical증거보존을정적/stub및최종Native로검증한다. 부모는CIownership만추가한bfd6591로재고정했고기존T1/T2계약/파일/성공기준은불변이다. Shared1 table-only SafKnownTargets 경고는root가실제method서명/두scan/current-prior/throw계약이그한줄과T2전체순서에완전히포함됨을확인했으며누락계약추정없이계속한다. §2전체전달이라는옛조립기설명은실제선별추출에맞춰문구만교정했다.
