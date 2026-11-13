@@ -13,6 +13,7 @@ tasks:
   - {id: T1, title: WorkManager 의존성 초기 감사, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 실제 test WorkManager 합성 starter, depends_on: [T1], status: in_progress, tier: standard}
   - {id: T3, title: 기존 hot-journal fixture의 실제 writer spill 증거, depends_on: [T1], status: in_progress, tier: standard}
+  - {id: T4, title: 관측된 외부 system ANR의 test window 준비, depends_on: [T1], status: in_progress, tier: standard}
 ---
 
 # 독립 WorkManager 기반 준비
@@ -80,6 +81,18 @@ page_size/page_count/cache_size/cache_spill/journal_mode/synchronous를 같은 w
 UPDATE후 main bytes changed 증거·8byte hot-journal magic·journal>512·실제 typed readonly exception 및 모든 원본byte보존/복구assertions은그대로필수.
 원본을 fake patch하거나 journal header를써서만들기/skip/timeout상향/재시도/payload·URI·pathdump/production설정수정금지.
 기존host가실제spill을증명한bounded4096-row/4096-byte 유효합성데이터와공개schema, 기존4개test body 유지; 변화는 testwriter의connection-boundcache 준비/관측뿐.
+```
+
+### NativeWindowEnvironment
+
+```text
+// NativeWindowEnvironment — disposable CI의 관측된 외부 ANR만 해소
+신규 androidTest helper는 공개 UiAutomation/AccessibilityNodeInfo API와기존InstrumentationRegistry만사용. 새의존성/권한/production 변경없음.
+root.packageName=android AND messageexact System UI isn't responding 또는 Pixel Launcher isn't responding인경우만 Close app 클릭.
+Health App ANR/permission/account/기타dialog는절대해소하지않고unknown은no-op. rawtree/message/URI/값로그·dump금지, 고정enum log만.
+기존10초waitUntil에서실제windowFocus가false일때 instrumentation thread에서helper를호출하고원래focus/resumed predicate를다시확인한다.
+helperreturn을focus성공으로대체하거나assert/pixel/inset조건/timeout/count/재시도조건을바꾸지않는다.
+제어는그Root의닫기action에만한정, SDK/permissions/settings/launcher/systemUI package disable/forcekill/newprocess변경금지.
 ```
 
 ## 3. 추적성
@@ -178,6 +191,23 @@ UPDATE후 main bytes changed 증거·8byte hot-journal magic·journal>512·실�
 - **검증 방법**: source assertion보존검사+wrapped :app:assembleDebugAndroidTest; 실제 API35/36 전체 Native/host는 rootCI. 동일 JVM/production 변경없어176unit 중복실행금지.
 - **주의사항**: 첫컴파일/실제검증실패시STOP보고. 추측에의한seed증량/production변경/hiddenretry금지. 원본실패로그/짝보존, 고정수치진단으로다음가설에필요한실측확보.
 
+### T4: 관측된 외부 system ANR의 test window 준비
+
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `android/app/src/androidTest/java/com/ny/my/health/NativeWindowEnvironment.kt` | 신규 | exact system package+known external title+Close app만 처리 |
+  | `android/app/src/androidTest/java/com/ny/my/health/HealthAppInstrumentedTest.kt` | 수정 | 기존 capture focus guard에 외부환경 준비만 삽입 |
+  | `android/app/src/androidTest/java/com/ny/my/health/PhoneProfilingClipboardInstrumentedTest.kt` | 수정 | 동일 실제 resumed/focus guard에 환경 준비 적용 |
+
+- **인터페이스**: §2 `NativeWindowEnvironment` 참조.
+- **결정 로직**: test-only exact package/title whitelist; 일반 appANR/권한대화상자는거부.
+- **작성할 테스트**: 기존 nativeScreenKeepsContentBoundaryWhileScrollingAndReturningToTop/nativeScreenKeepsContentBoundaryAfterRecreationAtScrolledPosition/explicitForegroundWritePlacesTheSameSafeSummaryOnSystemClipboard의실제focus/frame/clipboard단언유지; 단순literal조건을그대로복제하는lowvalue테스트추가안함. 실제양API전체Native와관측popup해소enum증거로환경경계검증.
+- **완료 기준**: 기존10초·geometry/pixel/clipboard/lifecycle조건과전체테스트/host필수. 앱ANR/권한UI를넘기거나현실기기성공을주장하지않음.
+- **검증 방법**: callsitepredicate/timeout/단언보존staticdiff+wrapped :app:assembleDebugAndroidTest; 원격full bothAPI gate는root.
+- **주의사항**: 공개AndroidAPI만, instrumentation thread IO; rootwindow객체/노드는적절히해제. firstactualfailureSTOP, source동결/절대경로편집/별도buildcalls.
+
 ## 5. 전체 검증과 통합
 
 T1 초기 audit PASS → T2 local build + actual CI API35/36 PASS → current-head 독립 검토와 차단 지적 수정/재검토 순서다. 전체 제품 기능 실행은 이 초기 audit와 실제 starter 통과 전 시작하지 않는다. 초기 감사 후 최종 automation 통합 head에서 네 graph/OSV/manifest/AAR 재감사는 별도로 유지한다.
@@ -225,3 +255,7 @@ run43435616205 source d07284f 양API121 tests중117PASS/4FAIL/0skip. newWorkMana
 ### T3 복구2 / T2 전체 gate 누적3 — 실효 cache 가설 기각 및 proven working set
 
 cdde62b/run43441031207 양API는같은4fixture지점에서여전히실패했다. API35 artifact14046362252 SHA3c7f7c1cd1887430252dbc797848912b02fd9a7ab4455008534da56e37093510 원본에서 writer_in_transaction=true/page_size4096/page_count153/cache_size1/cache_spill1/DELETE/FULL2를확인했다. 따라서connection pin만으로고쳐졌다는가설은기각하며동일조정재시도하지않는다. 원인은아직불명이나96rows가실제mainspill을만들지못한것은측정됐다. 기존b35 양APIhost가실제증명한 SyncStateProcessRecoveryInstrumentedTest.spillRows4096/spillHandleBytes4096/enrolled=today-rows의bounded유효workingSet을이작은fixture에도적용하는새가설을승인한다. 4096-rows/enrollment를같이맞추고각DayState기존isValid단언을유지하며schema/핸들규칙/production캐시를바꾸지않는다. native rowcount/변경행수·실제main/journal크기·magic 여부는고정수치/boolean만관측하고기존changed-main·8magic·typedReadonly·원본보존/모든4testbody단언불변이다. marker/header/fake bytes수정/commit/skip/불제한seed루프금지. 소유자의기존V1자동수정위임에따라기존2회뒤누적3임을명시하며새실측근거가있는test1파일만부분교정한다. compile뒤실제양API전체Native/host통과전수정완료아니다.
+
+### T4 환경 전제 보정 — 관측된 외부 System UI ANR
+
+6590cfa/run43446839480 API36 critical14중2개가원래focus10초대기에서실패해remainder107/host는미실행이다. 원본artifact14049527280 SHAd187f39efe02cf266517bec9c10d3043cb6afed14e46c7b0cbbf7ee02b03f851의두failurePNG에System UI ANR/Close app/Wait를확인했다(PixelLauncher라고오인하지않는다). actualTOP_LAYOUT_WINDOW lifecycle4/showninteractive true/keyguardfalse/activity·decorFocusfalse다. 이전manual로그에는PixelLauncher ANR이관측됐었다. root는별도test-only 준비3파일을승인하며known외부systemdialog만해소하고기존실제focus/pixel/clipboard검증을유지한다. source앱ANR을숨기거나SystemUI/launcher를disable하지않는다. T3workingSet 가설의API36실행은없었으므로기각하지않고API35/새full증거를기다린다. 기존T2closure복구예산을새task로reset하지않으며환경전제보정1을별도누적한다. 소유자기존V1자동수정·병렬범위에근거한다.
