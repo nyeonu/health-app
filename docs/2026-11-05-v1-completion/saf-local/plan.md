@@ -475,3 +475,7 @@ T1첫wrapper는network-disabled sandbox에서Gradle FileLockContentionHandler wi
 ### 실행 기술 보정 — component CI 피드백
 
 소유자의진행속도/병렬지시로기존검증을약화하지않는T8두파일작업을승인한다. 실측전체PR17 CI는약25분, 별도starter진단은약8분이며host/기존120Native를매component확인마다중복실행하면직렬대기가늘어난다. component별원본증거를먼저받되최종full은필수로유지한다. 기본full의새테스트자동포함과host/critical증거보존을정적/stub및최종Native로검증한다. 부모는CIownership만추가한bfd6591로재고정했고기존T1/T2계약/파일/성공기준은불변이다. Shared1 table-only SafKnownTargets 경고는root가실제method서명/두scan/current-prior/throw계약이그한줄과T2전체순서에완전히포함됨을확인했으며누락계약추정없이계속한다. §2전체전달이라는옛조립기설명은실제선별추출에맞춰문구만교정했다.
+
+### T2 검토 보정1 — 실제 tree URI 형태와 기존 dedup 회귀 보존
+
+T2첫build176JVM/0fail·error·skip와testAPKcompile은성공했다. rootdiff대조에서testhelper가standalone document URI를만들고있어실제targetHandle의tree/documentURI형태를직접확인하지않았고, 범위별서로다른4handle로확장하면서이전동일handle의집합dedup경계가명시검증에서빠졌다. 기존성공기준에따라testhelper를DocumentsContract.buildTreeDocumentUri→buildDocumentUriUsingTree로고정하고같은2scope동일current/prior의이전dedup+DriveAPI동등성단언을같은테스트에보존한다. production/storescan/기존추가corrupt·경계·URI검증불변. test파일1개만수정/compile확인하며176JVM은같은source로중복실행하지않는다. actualNative는계속pending이다.
