@@ -133,5 +133,25 @@
       "PureCompose is notactualActivity/TalkBack acceptance",
       "Final bothAPIfullNative+host remainsmandatory"
     ]
+  },
+  "destination_checkpoint_infrastructure_block": {
+    "source": "cb274caf5f2f5e4e75c439f0506251affcbfaf37",
+    "run_ids": [
+      43459510333,
+      43459516911
+    ],
+    "requested_modes": [
+      "saf-destination",
+      "saf-provider-starter"
+    ],
+    "actual_scope": "unverified: runner not started",
+    "jobs": 4,
+    "runner_allocated": 0,
+    "tests_executed": 0,
+    "artifacts": 0,
+    "reason": "ACTIONS_ACCOUNT_BILLING_OR_SPENDING_LIMIT",
+    "status": "BLOCKED_BEFORE_TESTS",
+    "code_failure": false,
+    "next": "Owner restores Actions capacity, then execute both fixed modes on both APIs; retain all final full gates."
   }
 }

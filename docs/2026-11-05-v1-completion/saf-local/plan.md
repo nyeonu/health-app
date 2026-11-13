@@ -21,7 +21,7 @@ tasks:
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
   - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: done, tier: standard}
   - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: done, tier: standard}
-  - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: in_progress, tier: standard}
+  - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: blocked, tier: standard}
 ---
 
 # 검증된 local tree 전경 내보내기
@@ -669,3 +669,7 @@ T4 구현과 병렬 read-only 실제 API 조사로 기존 ManualDrivePorts 관�
 ### T4 안정 source 완료 / actual checkpoint T10 시작
 
 복구1 source의 lintDebug+assembleDebug+assembleDebugAndroidTest가2분1초/exit0으로통과했다. root는이전동일기존JVM core84/app92/합176/실패·오류·skip·중복0의원본XML을직접대조했다. 독립updatedsource APPROVE와네파일SHA-256을복사전후직접대조했으며이름/권한오류분류/canonical충돌/handle4096·4097/mainIO교정을확인했다. Native 실제실행을로컬build로대신하지않고T10에서동일source 양API destination4methods/providerstarter1method를검증한다. T4done은병렬분리한sourcegate만의완료이며T5두파일은동시에작성가능하고T6는actualT10PASS전차단한다. 원래T4복구1/2회차는유지한다. 새create4096성공 직접검증제안은비차단이며동일validator의existing4096채택/overwrite와new4097실패를현재검증한다. opaque ID의canonicalCSVadoption은fixture미지원한계로남기고실제SQLiteURI재열기/resolver동일성/잘못된경로차단을증거로사용한다.
+
+### T10 외부 실행 차단 — runner 배정 전 Actions account 제한
+
+sourcecb274caf의두고정mode dispatch(run43459510333/43459516911)는GitHub Actions계정결제/지출한도annotation으로시작전에모두차단됐다. 네job모두runner_id0/steps빈값/tests0/artifact0이다. 제품테스트실패나Native검증완료가아니며T4코드복구회차를차감하지않는다. 요청mode는saf-destination/saf-provider-starter지만실제runner scope는실행되지않아확인되지않았다. root는소유자에게GitHub Billing확인을요청했으며계정/결제정보는요청·수집하지않고자동billing변경·동일차단무한재시도도하지않는다. T10blocked/T6pending을유지하고독립T5로컬구현·검증은계속한다. 기존실행중WM gate는그대로완료결과를대조한다. 한도해소뒤동일고정source component를실제실행하고기존최종full gate/독립PR검토/댓글/merge의무를유지한다.
