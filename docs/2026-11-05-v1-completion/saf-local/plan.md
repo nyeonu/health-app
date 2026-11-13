@@ -1,19 +1,19 @@
 ---
 plan_id: saf-local
 title: 검증된 local tree 전경 내보내기
-status: draft
+status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: ec8698ad062cc683211613adf0ab9d2df40782fd
+parent_rev: 7538e87a1797f3079525dbb6121f50624688ba44
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-saf-local
 source_base: 57da82514e8483f5f32f2ad34ae0111c7f1dc431
 execution_gate: PR17-merged-and-parent-integration-repinned
 tasks:
-  - {id: T1, title: 실제 합성 DocumentsProvider와 grant starter, depends_on: [], status: pending, tier: standard}
-  - {id: T2, title: 목적지 공통 known-target 조회와 재열기, depends_on: [], status: pending, tier: standard}
+  - {id: T1, title: 실제 합성 DocumentsProvider와 grant starter, depends_on: [], status: in_progress, tier: standard}
+  - {id: T2, title: 목적지 공통 known-target 조회와 재열기, depends_on: [], status: in_progress, tier: standard}
   - {id: T3, title: 전경 local tree 동의와 실제 capability probe, depends_on: [T1], status: pending, tier: standard}
   - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: pending, tier: standard}
   - {id: T5, title: 명시적 전경 SAF controller와 화면 조각, depends_on: [T4], status: pending, tier: standard}
@@ -430,3 +430,7 @@ tasks:
 
 | 원인·근거 | 준비 조치 | 조치 사용/1 | 확인 명령·결과 | 확인 사용/1 | 다음 조치 |
 |---|---|---|---|---|---|
+
+## 실행 승인 — 2026-11-13
+
+기존V1자동승인/병렬지시에따라root는실제PR17merge57da, 부모인터페이스/추적성통합ec8698, 독립fresh-context 계획검토a43788e APPROVE/차단0을대조해이구체7작업을승인했다. 부모SAF상태in_progress commit7538e87로rev를재고정했다. 계약·파일·검증기준은독립검토대상과같고frontmatter상태/승인근거만갱신했다. T1/T2는파일이달라병렬실행한다. T1의초기3파일은standalone provider 최신52f7f97를토대로재사용하되추가fixture/rawpicker경계와실제양API통과를확인전done아님. T3는T1뒤, T4는T2/T3뒤의gate를유지한다. 실제환경명령은설치된wrapper/JDK/sharedcache를사용하며로컬Gradle최대2개만동시에실행한다.
