@@ -530,3 +530,7 @@ PR16 Important Q1 보정: SQLite hot rollback journal은 정상원자복구에�
 ### SAF component 대기 병렬화 승인
 
 소유자의 병렬 진행 지시와 기존 V1 자동승인 범위에서 saf-local의 T4 안정 source 검증 뒤 T5 두 파일 작성과 T10 actual component 검증을 병렬 진행한다. T10은 원래 T4 양API provider/destination gate를 소유하고 T6 actual Activity 연결의 필수 선행조건이다. full Native/host/독립 최종 검토/PR 댓글/머지 기준은 그대로 유지한다. shared DTO·외부 계약·권한·데이터·의존성·schema 변경은 없다.
+
+### SAF Terra 작업 단위 분리
+
+소유자의작업별Terra새세션지시에맞춰saf-local T6의제품배선3파일과새실제Flow테스트1파일을T6→T11로순차분리한다. 원래실제두행동/8methods 양APIgate는T11에그대로유지하고T7은T11뒤다. CI두파일은기존독립T8이소유한다. 원래성공기준·단일목적지/동의/권한/SQL/URI정책및전체최종검증은바꾸지않는다.
