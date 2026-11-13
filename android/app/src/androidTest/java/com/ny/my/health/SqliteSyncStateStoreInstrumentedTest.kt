@@ -1108,16 +1108,42 @@ class SqliteSyncStateStoreInstrumentedTest {
                 f.db.openForWrite().use { db ->
                     malformed(db)
                     val before = file.readBytes()
-                    // test-only 작은 cache는 실제 host/production 설정과 독립이다.
-                    db.execSQL("PRAGMA cache_size=8")
-                    db.execSQL("PRAGMA cache_spill=ON")
                     f.db.transaction(db,{
                         dirtyDb = file.readBytes(); dirtyJournal = journal.readBytes()
                         assertFalse(before.contentEquals(dirtyDb))
                         assertArrayEquals(magic,dirtyJournal.copyOfRange(0,8))
                         assertTrue(dirtyJournal.size > 512)
                         throw Copied()
-                    }) { db.execSQL("UPDATE dataset SET target_handle=?",arrayOf("d".repeat(4096))) }
+                    }) {
+                        // transaction에 고정된 실제 writer의 cache/spill만 준비하고 관측한다.
+                        db.execSQL("PRAGMA cache_size=1")
+                        db.execSQL("PRAGMA cache_spill=1")
+                        fun numericPragma(sql: String): Long = db.rawQuery(sql,null).use {
+                            check(it.moveToFirst())
+                            it.getLong(0)
+                        }
+                        val pageSize = numericPragma("PRAGMA page_size")
+                        val pageCount = numericPragma("PRAGMA page_count")
+                        val cacheSize = numericPragma("PRAGMA cache_size")
+                        val cacheSpill = numericPragma("PRAGMA cache_spill")
+                        val journalMode = db.rawQuery("PRAGMA journal_mode",null).use {
+                            check(it.moveToFirst())
+                            when (it.getString(0)) {
+                                "delete" -> "DELETE"
+                                "truncate" -> "TRUNCATE"
+                                "persist" -> "PERSIST"
+                                "memory" -> "MEMORY"
+                                "wal" -> "WAL"
+                                "off" -> "OFF"
+                                else -> "UNKNOWN"
+                            }
+                        }
+                        val synchronous = numericPragma("PRAGMA synchronous")
+                        android.util.Log.i("HotWriterFixture",
+                            "writer_in_transaction=${db.inTransaction()} page_size=$pageSize page_count=$pageCount " +
+                                "cache_size=$cacheSize cache_spill=$cacheSpill journal_mode=$journalMode synchronous=$synchronous")
+                        db.execSQL("UPDATE dataset SET target_handle=?",arrayOf("d".repeat(4096)))
+                    }
                 }
                 fail("원래 writer는 rollback해야 합니다")
             } catch (_: Copied) { }

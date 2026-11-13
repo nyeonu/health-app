@@ -51,3 +51,7 @@
 - `closeWorkDatabase()`는 테스트 scope/DB를 닫지만 global delegate를 기본 인스턴스로 복원하지 않는다. 다음 helper 초기화가 delegate를 교체하며 현재 production에는 WorkManager 호출이 없다. 따라서 후속 production 연결이나 helper를 초기화하지 않는 WorkManager 테스트가 추가되면 이 경계를 다시 검토해야 한다. 지원되지 않는 delegate 복원 API는 사용하지 않았다.
 - process death·재부팅·실제 OS scheduling·주기 작업·retry·production factory 연결은 이 합성 starter가 검증하지 않는다. 초기화/작업/정리 실패 경로의 별도 failure injection 테스트는 승인된 T2 테스트 범위에 없다.
 - 실제 Galaxy·계정·provider·TalkBack·배터리·기존 P0 수용과 recoverable key backup 미확인은 그대로 남는다. 이 테스트는 실제 건강 데이터 접근 또는 업로드 성공의 증거가 아니다.
+
+## 실제 첫 전체 Native와 fixture 보정
+
+source d07284f/run43435616205는양API121/4fail/0skip이다. 새starter는양API PASS이나기존4HotFixture테스트의실제main-file변경준비가before==dirty로실패해host를실행하지못했다. 복구/원본보존동작에도달전실패이며근본원인은현재PRAGMA관측부재로미확정이다. test-only동일writer transaction안의cache1/spill1설정과안전한실효값관측으로제한교정했다. 기존4test body/96row/payload/실제changedmain·journalmagic·typedreadonly·모든byte보존단언은변경하지않았다. testAPK compile40초PASS는실제새NativePASS가아니며새양API전체gate를기다린다.
