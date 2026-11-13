@@ -2,7 +2,7 @@
 plan_id: workmanager-starter
 title: 독립 WorkManager 의존성 감사와 합성 starter 준비
 kind: single
-status: in_progress
+status: done
 author: Codex
 created: 2026-11-13
 spec: ../spec.md
@@ -11,9 +11,9 @@ branch: feat/v1-workmanager-starter
 baseline: b35c11c8b4651cf9b12b004a7fc4ae3d52a4d3ee
 tasks:
   - {id: T1, title: WorkManager 의존성 초기 감사, depends_on: [], status: done, tier: standard}
-  - {id: T2, title: 실제 test WorkManager 합성 starter, depends_on: [T1], status: in_progress, tier: standard}
-  - {id: T3, title: 기존 hot-journal fixture의 실제 writer spill 증거, depends_on: [T1], status: in_progress, tier: standard}
-  - {id: T4, title: 관측된 외부 system ANR의 test window 준비, depends_on: [T1], status: in_progress, tier: standard}
+  - {id: T2, title: 실제 test WorkManager 합성 starter, depends_on: [T1], status: done, tier: standard}
+  - {id: T3, title: 기존 hot-journal fixture의 실제 writer spill 증거, depends_on: [T1], status: done, tier: standard}
+  - {id: T4, title: 관측된 외부 system ANR의 test window 준비, depends_on: [T1], status: done, tier: standard}
 ---
 
 # 독립 WorkManager 기반 준비
@@ -259,3 +259,7 @@ cdde62b/run43441031207 양API는같은4fixture지점에서여전히실패했다.
 ### T4 환경 전제 보정 — 관측된 외부 System UI ANR
 
 6590cfa/run43446839480 API36 critical14중2개가원래focus10초대기에서실패해remainder107/host는미실행이다. 원본artifact14049527280 SHAd187f39efe02cf266517bec9c10d3043cb6afed14e46c7b0cbbf7ee02b03f851의두failurePNG에System UI ANR/Close app/Wait를확인했다(PixelLauncher라고오인하지않는다). actualTOP_LAYOUT_WINDOW lifecycle4/showninteractive true/keyguardfalse/activity·decorFocusfalse다. 이전manual로그에는PixelLauncher ANR이관측됐었다. root는별도test-only 준비3파일을승인하며known외부systemdialog만해소하고기존실제focus/pixel/clipboard검증을유지한다. source앱ANR을숨기거나SystemUI/launcher를disable하지않는다. T3workingSet 가설의API36실행은없었으므로기각하지않고API35/새full증거를기다린다. 기존T2closure복구예산을새task로reset하지않으며환경전제보정1을별도누적한다. 소유자기존V1자동수정·병렬범위에근거한다.
+
+### 기반 source 전체 검증 실제 완료
+
+sourceea21e9d75c0661b3db3a18543d13d940b8650799/run43453138754가양API전체SUCCESS다. root가각ZIP SHA-256과critical14+remainder107의원본XML class+method를직접대조해API별121unique/failure·error·skip·duplicate0을확인했다. 기존historyhost8+settings4+cleanup8=20, sync-state verifier17+cleanup17 및killed-holds-pass0도원본results.txt로대조했다. 새starter1method와hotfixture4개의실제spill/readonly/원본보존단언이모두통과했다. sourceupdated독립APPROVEea21와기존155selectedcoordinate/OSV0응답오류0/네graph·manifest·AARaudit와JVM176/lint/APK/testAPK근거를합쳐T2/T3/T4및이기반계획의개발검증을done으로기록한다. 이branch는아직PR/merged상태가아니며최종통합source대조·freshPR현재head검토·한국어댓글/merge의무는그대로다. productionApplication/customfactory/자동enqueue/실계정/실기기수용및ADR008전체Accepted를주장하지않는다. 상세수치와원본위치는final-verification.md에기록한다.
