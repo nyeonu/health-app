@@ -12,7 +12,7 @@ Accepted
 ## 배경
 SAF는 사용자에게 보이는 local 폴더를 쓰므로 private Drive의 계정/소유/공유 검증과 다른 권한 경계가 필요하다. tree URI 문자열 저장만으로 현재 read/write 권한이나 짧은 덮어쓰기의 truncation을 증명할 수 없다. create/write는 SQLite transaction과 함께 rollback되지 않으며 응답불명 뒤 재생성하면 같은 날짜의 중복 파일을 만들 수 있다.
 
-PR #17 실제 merge `57da82514e8483f5f32f2ad34ae0111c7f1dc431`의 Store/공용 gate/unknown-create 계약을 조사했다. 기존 V1 자동승인 위임에 따라 부모 SAF 계약과 7T 계획의 결정을 기록한다. child는 root 계획 검토·부모 commit/revision 고정 전 draft이며 이 ADR은 실행 통과나 실제 기기 수용을 뜻하지 않는다. ADR-010은 자동화 계획용으로 예약되어 SAF에는 ADR-011을 사용한다.
+PR #17 실제 merge `57da82514e8483f5f32f2ad34ae0111c7f1dc431`의 Store/공용 gate/unknown-create 계약을 조사했다. 기존 V1 자동승인 위임에 따라 부모 SAF 계약과 7T 계획의 결정을 기록한다. 계획 작성 당시 child는 root 검토·부모 commit/revision 고정 전 draft였다. 현재 소프트웨어 실행·적합성 검증 결과는 아래에 기록하며, 이 결정의 Accepted 상태는 실제 기기 수용을 뜻하지 않는다. ADR-010은 자동화 계획용으로 예약되어 SAF에는 ADR-011을 사용한다.
 
 ## 결정
 production은 `com.android.externalstorage.documents`의 사용자 선택 tree만 지원하고 `EXTRA_LOCAL_ONLY`는 hint로 취급한다. test authority는 명시 test constructor 주입에만 허용한다. cloud/알 수 없는 provider 및 background SAF는 disabled/BLOCKED다. local 폴더의 파일 관리자·백업·다른 앱 노출 가능성을 별도 설명하고 명시 privacy 동의를 받는다.
