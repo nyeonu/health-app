@@ -5,7 +5,7 @@ status: draft
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 1ac848c08065b12088240375e82619d8ec3b2428
+parent_rev: 18f34a9ca1f53965dab0dfa6f7012f3ceebf7e8d
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-auto-infra
@@ -114,7 +114,7 @@ tasks:
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
   | `A/HealthApplication.kt` | 신규 | Configuration.Provider와 nested WorkerFactory/공유 runtime |
-  | `android/app/src/main/AndroidManifest.xml` | 수정 | Application과 WorkManagerInitializer만 제거·diagnostics receiver 감사 |
+  | `android/app/src/main/AndroidManifest.xml` | 수정 | Application 등록·Startup의 WorkManagerInitializer metadata만 제거·DiagnosticsReceiver 별도 제거/비활성화 감사 |
   | `AI/WorkManagerStarterInstrumentedTest.kt` | 수정 | 통합된 starter와 production bootstrap의 test factory 경계 |
   | `AI/WorkManagerIsolationInstrumentedTest.kt` | 수정 | stable manager/publiclookup/liveDB·Activity off/recreate 확인 |
   | `docs/V1/dependency-audit.json` | 수정 | 도입 시 네 resolved graph OSV·manifest/AAR metadata·호환성 근거 |
@@ -134,7 +134,8 @@ tasks:
   ./gradlew :app:dependencyInsight --configuration releaseRuntimeClasspath --dependency kotlinx-coroutines
   ./gradlew :app:dependencyInsight --configuration releaseRuntimeClasspath --dependency kotlin-stdlib
   ./gradlew :app:dependencyInsight --configuration releaseRuntimeClasspath --dependency guava
-  ./gradlew :app:checkDebugAarMetadata :app:checkReleaseAarMetadata :app:processDebugMainManifest :app:processReleaseMainManifest :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :app:connectedDebugAndroidTest
+  ./gradlew :app:checkDebugAarMetadata :app:checkReleaseAarMetadata :app:processDebugMainManifest :app:processReleaseMainManifest :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest
+  (cd "$(git rev-parse --show-toplevel)" && GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh)
   ```
 
 - **주의사항**: early starter의 두 dependency와 actual Native/audit를 통합·대조해 재사용하며 중복 신규작성/버전변경을 하지 않는다. Production lookup은 app-owned stable reference를 주입하고 framework globals는 helper가 없는 freshprocess에서 검증한다. helper test는 별도process에서만 publicTestInitHelper를 사용한다.  Configuration.Provider/WorkerFactory와 androidx.startup provider에서 WorkManagerInitializer만 제거한다. 전체 Startup provider를 지우지 않는다. 테스트 전용 worker는 test factory로 주입한다. 네 configuration의 실제 resolved Maven ModuleComponentIdentifier 전체(BOM/variant/testing 포함)를 OSV querybatch로 감사하고 응답 오류·취약점·reachability/disposition을 기록한다. Kotlin/compiler/coroutines/runtime/AAR metadata와 debug/release merged manifest의 single process/initializer/diagnostics receiver/backup을 확인한다. 필요한 dependencyInsight는 네 configuration에 반복한다. T1 전체 PASS 전 T2 이후 기능 구현을 시작하지 않는다; 공식 호환 조사나 starter 단독 PASS로 대체하지 않는다. 암묵 초기화/새 migration의 추정이 틀리면 우회하지 말고 blocked로 보고한다. 단언 완화·skip 금지.
@@ -180,7 +181,8 @@ tasks:
 - **검증 방법** (실행 단계, `android/`에서):
 
   ```bash
-  ./gradlew :app:assembleDebugAndroidTest :app:connectedDebugAndroidTest
+  ./gradlew :app:assembleDebugAndroidTest
+  (cd "$(git rev-parse --show-toplevel)" && GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh)
   ```
 
 - **주의사항**: §2 migration 계약을 따른다. version>2를 future unsupported fixture로 사용하며 malformed v1는 계속 거부한다. native v1 hot-journal forensic fixture를 v2라는 이유로 제거하지 않는다. 새 row만 추가하고 old row/bytes의 의미를 재작성하지 않는다. 암묵 초기화/새 migration의 추정이 틀리면 우회하지 말고 blocked로 보고한다. 단언 완화·skip 금지.
@@ -205,7 +207,8 @@ tasks:
 - **검증 방법** (실행 단계, `android/`에서):
 
   ```bash
-  ./gradlew :app:assembleDebugAndroidTest :app:connectedDebugAndroidTest
+  ./gradlew :app:assembleDebugAndroidTest
+  (cd "$(git rev-parse --show-toplevel)" && GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh)
   ```
 
 - **주의사항**: 하나의 기존 DB transaction으로 proposal 검증/frozen scope·날짜 저장/attempt 시작/budget claim/due CAS를 묶는다. initial/manual 이전 row/partial grants/계획 후 scope·grant 변경/재claim cohort 교체 거부와 due 직전·정각/SQLite reopen/CAS race에서 count·attempt 원자성을 검증한다. finalize는 종료와 RETRY_EXHAUSTED blocker를 함께 commit한다. read/store 오류를 empty/new budget으로 바꾸지 않는다. config.format_version/domain SyncState.version=1과 DB user_version=2는 별개 계약이다. 암묵 초기화/새 migration의 추정이 틀리면 우회하지 말고 blocked로 보고한다. 단언 완화·skip 금지.
@@ -229,7 +232,8 @@ tasks:
 - **검증 방법** (실행 단계, `android/`에서):
 
   ```bash
-  ./gradlew :app:assembleDebugAndroidTest :app:connectedDebugAndroidTest
+  ./gradlew :app:assembleDebugAndroidTest
+  (cd "$(git rev-parse --show-toplevel)" && GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh)
   ```
 
 - **주의사항**: manual runPrepared 계약과 profiling optional 인자를 보존한다. detectPending 기본 MANUAL을 유지하여 기존 호출부를 깨지 않되 config.automatic 암묵 trigger를 제거한다. manual/automatic 별도 session이 같은 canonical gate에서 상호 배제되는지 검증한다. initial proposal과 기존 manual attempt 불일치/partial grants/계획 후 grant 변화는 BLOCKED·STALE이며 새 cohort로 우회하지 않는다. automatic factory/auth는 gate/claim 이후 호출한다. current generation/automatic 재검사 후 Health read. source 새 revision은 ledger 관찰값만 바꾸며 미종결 lineage claim count는 바꾸지 않는다. 암묵 초기화/새 migration의 추정이 틀리면 우회하지 말고 blocked로 보고한다. 단언 완화·skip 금지.
@@ -349,7 +353,8 @@ tasks:
 - **검증 방법** (실행 단계, `android/`에서):
 
   ```bash
-  ./gradlew :app:assembleDebugAndroidTest :app:connectedDebugAndroidTest
+  ./gradlew :app:assembleDebugAndroidTest
+  (cd "$(git rev-parse --show-toplevel)" && GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh)
   ```
 
 - **주의사항**: BoundDriveAuthorization.acceptResult/withVerifiedTransport의 기존 exact principal proof를 재사용한다. production Identity.getAuthorizationClient(app).authorize(setAccount(bound)) Task 취소/late result를 generation ticket으로 거부한다. 테스트 대역은 silent real-account 성공 증거가 아니다. 암묵 초기화/새 migration의 추정이 틀리면 우회하지 말고 blocked로 보고한다. 단언 완화·skip 금지.
@@ -375,7 +380,8 @@ tasks:
 - **검증 방법** (실행 단계, `android/`에서):
 
   ```bash
-  ./gradlew :app:assembleDebugAndroidTest :app:connectedDebugAndroidTest
+  ./gradlew :app:assembleDebugAndroidTest
+  (cd "$(git rev-parse --show-toplevel)" && GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh)
   ```
 
 - **주의사항**: production factory에서 auto reader를 session/engine에 함께 주입하며 manual 캐시를 재사용하지 않는다. manual-first/worker-first 생성 순서 모두 실제 reader 호출을 검증한다. periodic 24h, CONNECTED, batteryNotLow, exponential backoff30s를 앱 선택으로 사용한다. periodic/one-time 이름 분리, generation만 입력. unique KEEP로 중복 catch-up 병합; 하나의 worker invocation은 최대7일 한 batch만 처리하고 내부 drain loop 없음. 남은 gap은 durable 유지하여 다음 trigger/catch-up이 처리한다. runAttemptCount는 판정 원본이 아니다. 암묵 초기화/새 migration의 추정이 틀리면 우회하지 말고 blocked로 보고한다. 단언 완화·skip 금지.
@@ -401,7 +407,8 @@ tasks:
 - **검증 방법** (실행 단계, `android/`에서):
 
   ```bash
-  ./gradlew :app:assembleDebugAndroidTest :app:connectedDebugAndroidTest
+  ./gradlew :app:assembleDebugAndroidTest
+  (cd "$(git rev-parse --show-toplevel)" && GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh)
   bash ci/verify-sync-retry-process-recovery.sh
   ```
 
@@ -430,7 +437,8 @@ tasks:
 - **검증 방법** (실행 단계, `android/`에서):
 
   ```bash
-  ./gradlew :app:assembleDebugAndroidTest :app:connectedDebugAndroidTest
+  ./gradlew :app:assembleDebugAndroidTest
+  (cd "$(git rev-parse --show-toplevel)" && GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh)
   ```
 
 - **주의사항**: enable는 기존 namespace/coverage를 유지한 config 자동 bit CAS만 허용하고 새 권한을 자동 요청하지 않는다. disable는 기존 invalidate 의미(새 generation, auto off, 기존 metadata archive)를 사용하고 lineage metadata를 삭제하지 않는다. binder 계정은 private 유지. 재enable은 새 generation/명시 동의와 fresh 검증이며 archived coverage 합치기 금지. disable/invalidate 뒤 same physical namespace known-target 안전성은 선행 manual/SAF 계약을 따른다. 암묵 초기화/새 migration의 추정이 틀리면 우회하지 말고 blocked로 보고한다. 단언 완화·skip 금지.
@@ -476,7 +484,8 @@ tasks:
 - **검증 방법** (실행 단계, `android/`에서):
 
   ```bash
-  ./gradlew :app:assembleDebugAndroidTest :app:connectedDebugAndroidTest
+  ./gradlew :app:assembleDebugAndroidTest
+  (cd "$(git rev-parse --show-toplevel)" && GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh)
   ```
 
 - **주의사항**: SAF UI/ManualDriveUi/default parameters·legacy history·insets·phone profiling를 보존한다. 신규 자동 permission 요청은 별도 전경 action에서 feature 확인 후 실행하며 broad history 권한 없음. LOCAL 자동 toggle은 이유와 함께 disabled다. restore가 authorize/HC record read/upload를 직접 호출하지 않는다. 암묵 초기화/새 migration의 추정이 틀리면 우회하지 말고 blocked로 보고한다. 단언 완화·skip 금지.
@@ -500,7 +509,8 @@ tasks:
 - **검증 방법** (실행 단계, `android/`에서):
 
   ```bash
-  ./gradlew :app:assembleDebugAndroidTest :app:connectedDebugAndroidTest
+  ./gradlew :app:assembleDebugAndroidTest
+  (cd "$(git rev-parse --show-toplevel)" && GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh)
   ```
 
 - **주의사항**: permission/account/tree 결과가 stale이면 무시하고 credential 재사용 금지. profile은 foreground manual only·debug allowlist를 유지한다. worker raw exceptions/IDs/CSV/URI/health/account/WorkRequest UUID는 진단 금지. 제3자 library DEBUG 로그를 앱 safe diagnostic으로 취급하지 않으며 release manifest/logging에서 SDK/WorkManager verbose 출력을 활성화하지 않는다. 실제 TalkBack PASS를 합성 semantics에서 추론하지 않는다. 암묵 초기화/새 migration의 추정이 틀리면 우회하지 말고 blocked로 보고한다. 단언 완화·skip 금지.
@@ -565,7 +575,7 @@ tasks:
 3. migration은 valid actual v1→v2→재열기, v1 unfinished/hot journal→canary 검증→migration, stage 생성/검증/marker/publish/reopen 각 crash, reset owner와 migration owner 경합, corrupt/future schema/symlink/sidecar/source 교체 거부, original byte fingerprint 보존, v2 hot-journal 복구와 unsupported version3를 검증한다. 기존 native v1 forensic fixture도 의미 있는 그대로 유지한다. 자동 reset/원본 삭제/strict schema 생략으로 통과 금지.
 4. HC adapter는 실제 설치1.1.0 request 구조를 fake client 경계에서 검증한다. unavailable/background feature denied/grant revoked/partial grants; null vs0 duration·fractional minutes·metric별 provenance; latest weight ties; cross-midnight/earlier-start unproven HR BLOCKED; 완전한 no-session에서0 HR calls; 반복 page token·page/sample/query 공유 한도. steps/sleep/exercise 가능한 범위는 HR 불명에도 진행하고 전체5종 완료가 아니다. manual CSV golden bytes와 raw 세션 bounds·기존 normalization/HR pagination 회귀를 재사용한다.
 5. per-worker automatic reader/session/engine과 manual cached session을 생성 순서 양쪽에서 검증하고 detectPending의 명시 trigger, auto grant/aggregate와 manual raw 경로 분리 및 canonical gate 상호 배제를 실제 배선으로 검증한다. UI는 실제 Activity에서 restore(off/on), 설정/동의/권한/ticket 늦은 결과, worker와 manual 동시 admission, EMPTY/partial/gap/REMOTE_STALE/old success/recent failure, reset과 history 삭제 구분을 검증한다. light/dark/fontScale2.0과 작은 viewport에서 scroll을 통해 동의·계정·폴더·자동 설정·수동 계속·retry·reset확인까지 접근하고 interactive semantics가 잘리지 않아야 한다. 실제 TalkBack/기기 관찰은 별도 pending이다.
-6. `android/`에서 `./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:lintDebug :app:lintRelease :app:assembleDebugAndroidTest`, 연결 에뮬레이터에서 `./gradlew :app:connectedDebugAndroidTest`, 기존 `ci/verify-history-process-recovery.sh`, `ci/verify-sync-state-process-recovery.sh`와 신규 retry process script를 실행한다. 기존 JVM/TLS/store/UI/profiling 회귀를 삭제하지 않는다. SDK 없는 환경의 `-PcoreOnly :core:test` 성공을 APK 성공으로 표현하지 않는다.
+6. `android/`에서 `./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:lintDebug :app:lintRelease :app:assembleDebugAndroidTest`를 실행한다. 연결된 각 API emulator의 repo root에서 `GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh`를 실행해 helper registry/process 격리, 기존 전체 Native/history/sync-state 및 등록된 retry host를 함께 검증한다. 필터 없는 단독 전체 Gradle instrumentation으로 대체하지 않는다. 기존 JVM/TLS/store/UI/profiling 회귀를 삭제하지 않으며 SDK-free core 성공을 APK 성공으로 표현하지 않는다.
 7. 실제 resolved configurations 네 종류와 work/coroutines/Kotlin/Guava `dependencyInsight`, merged debug/release manifest의 single-process/initializer/diagnostics receiver/backup/background permission, release APK의 debug profiling UI/log 부재를 검사한다. OSV querybatch 오류·취약점·reachability/disposition을 구분하고 테스트 좌표도 포함한다. 심각도만으로 무조건 zero-findings를 만들지 않는다.
 8. source·fixtures·CI upload path·APK logs/diagnostics의 allowlist를 검사한다. raw health/CSV/token/auth code/account/device/document/URI/SDK-provider exception/WorkRequest UUID를 출력하지 않는다. synthetic 계정 문자열도 기존 공개 fixture 관례만 사용한다. noBackup DB/migration marker/backup exclusion을 실제 manifest와 경로로 확인한다. worker는 clipboard/manual profiling을 자동으로 호출하지 않는다.
 9. reviewed commit별 실제 명령/결과/미실행 이유를 기록하고 독립 latest-head 리뷰/차단 지적 fix+재검토를 PR 댓글에 남긴다. 개발 merge와 출시 수용은 별개다. 실제 Galaxy background feature/grant, silent selected-account authorize/about/upload, local provider persisted grant/reboot, Doze/no network/low battery/reboot/force-stop/missed-day recovery, Samsung delayed source, actual TalkBack, private signing-key recoverable backup은 수행 전까지 pending이다. 이번 준비에는 실제 계정/건강자료/업로드/grant를 사용하지 않는다.
@@ -664,3 +674,7 @@ T19는earlystarter의옛script가아닌실제mergedSAF의진단earlyexit·critic
 ### 실제 통합 고정점 — 실행 승인 준비
 
 현재worktree는실제SAFmerge9ab774beac85bf7a96953bb0a0aa1b8098c76c69에서분기했고completedWMsource6파일은donor와SHA동일하게6c5f5b0412029054cc992adc09a2296bcf0c696c로통합했다. 공통contract원문은부모2절로옮겼고ADR010은Proposed다. 과거draft의c334/미통합가정은당시이력이며현재source_base가실제기준이다. 부모commit후parent_rev를고정하고독립계획검토/기존V1위임의승인상태를확인한뒤T19를시작한다. 원래19task/correctioncount/전체gate는보존한다.
+
+### 준비 교정2 — 독립 계획 검토의 격리·배선 충돌
+
+실제fullrunner없이helper설치class를같이실행할수있던10개task명령/전체검증을registry기반fullrunner로교체했다. source/API/테스트기준은유지하고부모/ADR008의worker세션배선을freshperworker+공유canonicalgate로정합화했다. T19/T1및관련task의기존준비교정이력을초기화하지않으며새명령은실제양API에서검증해야한다.
