@@ -534,3 +534,7 @@ PR16 Important Q1 보정: SQLite hot rollback journal은 정상원자복구에�
 ### SAF Terra 작업 단위 분리
 
 소유자의작업별Terra새세션지시에맞춰saf-local T6의제품배선3파일과새실제Flow테스트1파일을T6→T11로순차분리한다. 원래실제두행동/8methods 양APIgate는T11에그대로유지하고T7은T11뒤다. CI두파일은기존독립T8이소유한다. 원래성공기준·단일목적지/동의/권한/SQL/URI정책및전체최종검증은바꾸지않는다.
+
+### SAF metadata 결과와 kind projection 보완
+
+기존same-generation결과보존·단일현재목적지기준의실제source불일치를교정한다. saf-local의T6 UI3파일과T12 controller/JVM2파일은서로겹치지않고T11 actualflow는둘을의존한다. committed kind는현재generation의strictprivatebinding으로판정하며draft·UNKNOWN을다른목적지완료로표시하지않는다. 결과보존은새범위/세대완료로승격하지않는다. 사용자기존V1자동승인에따라범위·권한·schema·최종fullgate는불변이다.
