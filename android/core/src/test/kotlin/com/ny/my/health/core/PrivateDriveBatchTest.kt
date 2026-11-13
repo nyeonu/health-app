@@ -93,6 +93,19 @@ class PrivateDriveBatchTest {
     }
 
     @Test
+    fun `Typed batch callback preserves file identity and root once with at most two writes`() = runBlocking {
+        val fake = Fake()
+        val confirmed = mutableListOf<Pair<CsvFile, String>>()
+        val uploader: DriveUploader = PrivateDriveUploader(fake)
+        uploader.upsertTracked(files) { file, id -> confirmed += file to id }
+        assertEquals(files.toSet(), confirmed.map { it.first }.toSet())
+        assertEquals(files.map { it.relativePath.substringBefore('/') + "-file" }.toSet(), confirmed.map { it.second }.toSet())
+        assertEquals(1, fake.calls.count { it.name == "HealthApp" })
+        assertEquals(3, fake.calls.count { it.method == "PATCH" })
+        assertTrue(fake.maximum <= 2)
+    }
+
+    @Test
     fun `Warm batch of three datasets confirms three files with ten requests`() = runBlocking {
         val fake = Fake()
         val confirmed = mutableListOf<String>()

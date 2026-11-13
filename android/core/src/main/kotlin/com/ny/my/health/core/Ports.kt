@@ -19,6 +19,15 @@ interface CsvExporter {
 interface DriveUploader {
     suspend fun upsert(file: CsvFile): String
 
+    suspend fun upsertTracked(files: List<CsvFile>, onConfirmed: suspend (CsvFile, String) -> Unit) {
+        for (file in files) {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val id = upsert(file)
+            check(id.isNotBlank()) { "Unconfirmed Drive upload" }
+            onConfirmed(file, id)
+        }
+    }
+
     suspend fun upsertBatch(files: List<CsvFile>, onConfirmed: suspend (String) -> Unit) {
         for (file in files) {
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
@@ -68,5 +77,12 @@ class DestinationException(val reason: BlockReason) : IllegalStateException(reas
         require(reason in setOf(BlockReason.DESTINATION_TRANSIENT_FAILURE,
             BlockReason.DESTINATION_RECONCILIATION_REQUIRED, BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED,
             BlockReason.DESTINATION_BLOCKED))
+    }
+}
+
+/** 제공자 원문 없이 읽기 상한과 접근 철회만 구별한다. */
+class SourceReadException(val reason: BlockReason) : IllegalStateException(reason.name) {
+    init {
+        require(reason == BlockReason.SOURCE_LIMIT_EXCEEDED || reason == BlockReason.SOURCE_ACCESS_REQUIRED)
     }
 }

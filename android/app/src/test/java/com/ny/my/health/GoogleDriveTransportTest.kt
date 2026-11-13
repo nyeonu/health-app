@@ -227,6 +227,34 @@ class GoogleDriveTransportTest {
     }
 
     @Test
+    fun `Server retry after zero never replays bodyless GET and a separate explicit call receives next response`() = runBlocking {
+        for (url in listOf(endpoint, BoundDriveAuthorization.ABOUT_URL)) LocalTls().use { local ->
+            val transport = local.transport()
+            local.server.enqueue(MockResponse.Builder().code(503).addHeader("Retry-After", "0")
+                .body("synthetic-private-provider-error").build())
+            local.enqueue("{}")
+            val first = transport.execute("GET", url)
+            assertEquals(503, first.status)
+            assertEquals("", first.body)
+            assertEquals(1, local.server.requestCount)
+            val firstRequest = local.request()
+            assertEquals("GET", firstRequest.method)
+            assertEquals("", firstRequest.body?.utf8() ?: "")
+            assertNull(firstRequest.headers["Content-Type"])
+            assertEquals("Bearer synthetic-test-token", firstRequest.headers["Authorization"])
+            assertNotNull(firstRequest.handshake)
+            val next = transport.execute("GET", url)
+            assertEquals(200, next.status)
+            assertEquals("{}", next.body)
+            assertEquals(2, local.server.requestCount)
+            val nextRequest = local.request()
+            assertEquals(firstRequest.url, nextRequest.url)
+            assertEquals("GET", nextRequest.method)
+            assertEquals("", nextRequest.body?.utf8() ?: "")
+        }
+    }
+
+    @Test
     fun `Server retry after zero never replays POST or PATCH without an explicit new attempt`() = runBlocking {
         for (method in listOf("POST", "PATCH")) {
             for (body in listOf(file.content.toByteArray(), null)) {
@@ -374,4 +402,79 @@ class GoogleDriveTransportTest {
             assertStats(profiling.snapshot().operations[DriveOperation.APP_FOLDER_LOOKUP], cancelled = 1)
         }
     }
+    @Test
+    fun `About proof uses same bearer exact encoded fields and no GET body over local TLS`() = runBlocking {
+        LocalTls().use { local ->
+            val account = BoundDriveAuthorization.AccountSelection("selected@example.invalid", "com.google")
+            val generation = com.ny.my.health.core.DestinationGeneration("synthetic-generation")
+            val ticket = BoundDriveAuthorization.Ticket(1, generation, account)
+            val credential = checkNotNull(BoundDriveAuthorization.acceptResult(ticket, ticket, generation,
+                false, "synthetic-test-token", listOf(BoundDriveAuthorization.DRIVE_FILE_SCOPE)))
+            val good = """{"user":{"emailAddress":"selected@example.invalid","me":true}}"""
+            var reads = 0
+            local.enqueue(good)
+            credential.withVerifiedTransport({ true }, { local.transport() }) { reads++ }
+            val request = local.request()
+            assertEquals("GET", request.method)
+            assertEquals("/drive/v3/about", request.url.encodedPath)
+            assertEquals("fields=user%28emailAddress%2Cme%29", request.url.encodedQuery)
+            assertEquals("Bearer synthetic-test-token", request.headers["Authorization"])
+            assertEquals("", request.body?.utf8() ?: "")
+            assertNotNull(request.handshake)
+            for ((status, body) in listOf(401 to good, 403 to good, 429 to good, 500 to good,
+                502 to good, 503 to good, 504 to good, 200 to "malformed", 200 to "{}",
+                200 to """{"user":{"me":true}}""", 200 to """{"user":{"emailAddress":"selected@example.invalid"}}""",
+                200 to (good + " ".repeat(1_048_576)))) {
+                local.enqueue(body, status)
+                val error = runCatching {
+                    credential.withVerifiedTransport({ true }, { local.transport() }) { reads++ }
+                }.exceptionOrNull()
+                assertTrue(error is BoundDriveAuthorizationException)
+                assertNull(error?.cause)
+                local.request()
+                assertEquals(1, reads)
+            }
+            LocalTls().use { destination ->
+                local.server.enqueue(MockResponse.Builder().code(302)
+                    .addHeader("Location", destination.server.url("/capture")).build())
+                assertTrue(runCatching {
+                    credential.withVerifiedTransport({ true }, { local.transport() }) { reads++ }
+                }.isFailure)
+                local.request()
+                assertEquals(0, destination.server.requestCount)
+            }
+            local.server.enqueue(MockResponse.Builder().body(good).headersDelay(30, TimeUnit.SECONDS).build())
+            val pending = async(Dispatchers.Default) {
+                credential.withVerifiedTransport({ true }, { local.transport() }) { reads++ }
+            }
+            local.request()
+            pending.cancelAndJoin()
+            assertTrue(runCatching { pending.await() }.exceptionOrNull() is CancellationException)
+            assertEquals(1, reads)
+        }
+    }
+
+    @Test
+    fun `About rejects nonexact host path method query and body before authorization request`() = runBlocking {
+        LocalTls().use { local ->
+            val transport = local.transport()
+            val about = BoundDriveAuthorization.ABOUT_URL
+            for (bad in listOf(
+                about.replace("www.googleapis.com", "other.example.invalid"),
+                about.replace("https:", "http:"), about.replace("/about?", "/about/extra?"),
+                "https://www.googleapis.com/drive/v3/about", "$about&extra=true",
+                about.replace("user%28emailAddress%2Cme%29", "user%28emailAddress%29"),
+                about.replace("user%28emailAddress%2Cme%29", "user(emailAddress,me)"),
+                about.replace("www.googleapis.com", "user@www.googleapis.com"), "$about#fragment",
+            )) {
+                assertTrue(runCatching { transport.execute("GET", bad) }.exceptionOrNull() is IllegalArgumentException)
+            }
+            for (method in listOf("POST", "PATCH", "DELETE")) {
+                assertTrue(runCatching { transport.execute(method, about) }.exceptionOrNull() is IllegalArgumentException)
+            }
+            assertTrue(runCatching { transport.execute("GET", about, "text/plain", byteArrayOf()) }.exceptionOrNull() is IllegalArgumentException)
+            assertEquals(0, local.server.requestCount)
+        }
+    }
+
 }

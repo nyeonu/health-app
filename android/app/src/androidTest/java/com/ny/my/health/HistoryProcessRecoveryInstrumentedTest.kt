@@ -148,9 +148,13 @@ class HistoryProcessRecoveryInstrumentedTest {
         assertNull(state.transientRemoteStatus)
         val token = SyncViewModel::class.java.getDeclaredField("accessToken").apply { isAccessible = true }
         assertNull(token.get(model))
-        compose.onAllNodes(isToggleable())[0].performScrollTo().assertIsOff()
+        val manual = model.manual.state.value
+        assertFalse(manual.privateFolderConsent)
+        assertNotEquals(ManualDrivePhase.READY, manual.phase)
+        assertNotEquals(ManualDrivePhase.RUNNING, manual.phase)
+        compose.onNodeWithContentDescription("V1 비공개 Drive 업로드 동의").performScrollTo().assertIsOff()
         compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithText("업로드 계속").assertDoesNotExist()
+        compose.onNodeWithText("업로드 계속").performScrollTo().assertIsNotEnabled()
     }
 
     @Test fun reopenedActivityRestoresOnlyCommittedMetadata() {

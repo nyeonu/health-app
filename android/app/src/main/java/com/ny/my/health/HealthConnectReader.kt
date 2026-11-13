@@ -12,6 +12,13 @@ import androidx.health.connect.client.records.WeightRecord
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import com.ny.my.health.core.BlockReason
+import com.ny.my.health.core.ReadAccess
+import com.ny.my.health.core.ReadScope
+import com.ny.my.health.core.ScopedHealthReader
+import com.ny.my.health.core.ScopedSnapshot
+import com.ny.my.health.core.SourceReadException
+import com.ny.my.health.core.SyncTrigger
 import com.ny.my.health.core.DataType
 import com.ny.my.health.core.DayWindow
 import com.ny.my.health.core.ExerciseSession
@@ -28,7 +35,7 @@ import kotlin.reflect.KClass
 class HealthConnectReader internal constructor(
     private val clientProvider: () -> HealthConnectClient,
     private val sdkStatus: () -> Int,
-) : HealthReader {
+) : HealthReader, ScopedHealthReader {
     constructor(context: Context) : this(
         context.applicationContext.let { app -> { HealthConnectClient.getOrCreate(app) } },
         context.applicationContext.let { app -> { HealthConnectClient.getSdkStatus(app) } },
@@ -39,11 +46,49 @@ class HealthConnectReader internal constructor(
     suspend fun grantedPermissions(): Set<String> = availableClient()
         .permissionController.getGrantedPermissions()
 
+    override suspend fun access(trigger: SyncTrigger): ReadAccess {
+        if (availability() != HealthConnectClient.SDK_AVAILABLE) {
+            return ReadAccess(false, emptySet(), DataType.entries.associateWith { ReadScope.BLOCKED })
+        }
+        val grants = grantedPermissions()
+        val types = permissionByType.filterValues { it in grants }.keys
+        return ReadAccess(true, types, DataType.entries.associateWith {
+            if (trigger == SyncTrigger.MANUAL && it in types) ReadScope.EXPLICIT_DAY else ReadScope.BLOCKED
+        })
+    }
+
+    override suspend fun readScoped(date: LocalDate, requestedScopes: Map<DataType, ReadScope>): ScopedSnapshot {
+        if (availability() != HealthConnectClient.SDK_AVAILABLE) {
+            throw SourceReadException(BlockReason.SOURCE_ACCESS_REQUIRED)
+        }
+        try {
+            val client = availableClient()
+            val grants = client.permissionController.getGrantedPermissions()
+            val allowed = requestedScopes.filter { (type, scope) ->
+                scope == ReadScope.EXPLICIT_DAY && permissionByType[type] in grants
+            }.keys
+            val snapshot = readFiltered(date, client, allowed, true)
+            // 읽기 중 철회도 빈 날짜나 부분 성공으로 확인하지 않는다.
+            val latest = client.permissionController.getGrantedPermissions()
+            val scopes = requestedScopes.mapValues { (type, _) ->
+                if (type in allowed && permissionByType[type] in latest) ReadScope.EXPLICIT_DAY else ReadScope.BLOCKED
+            }
+            return ScopedSnapshot(snapshot, scopes, scopes.filterValues { it == ReadScope.BLOCKED }.keys)
+        } catch (_: SecurityException) {
+            throw SourceReadException(BlockReason.SOURCE_ACCESS_REQUIRED)
+        }
+    }
+
     override suspend fun read(date: LocalDate): HealthSnapshot {
         // Never cache either SDK readiness or the user's revocable grants between syncs.
         val client = availableClient()
         val granted = client.permissionController.getGrantedPermissions()
         val grantedTypes = permissionByType.filterValues { it in granted }.keys
+        return readFiltered(date, client, grantedTypes, false)
+    }
+
+    private suspend fun readFiltered(date: LocalDate, client: HealthConnectClient,
+        grantedTypes: Set<DataType>, typedLimits: Boolean): HealthSnapshot {
         val start = DayWindow.start(date)
         val end = DayWindow.end(date)
         val window = TimeRangeFilter.between(start, end)
@@ -61,7 +106,7 @@ class HealthConnectReader internal constructor(
         } else null
 
         val weights = if (DataType.WEIGHT in grantedTypes) {
-            readAll(client, WeightRecord::class, window).map { record ->
+            readAll(client, WeightRecord::class, window, typedLimits).map { record ->
                 WeightMeasurement(
                     record.metadata.id, record.metadata.dataOrigin.packageName,
                     record.time, record.weight.inKilograms,
@@ -72,10 +117,10 @@ class HealthConnectReader internal constructor(
         val heartRateSamples = if (DataType.HEART_RATE in grantedTypes) {
             val samples = mutableListOf<HeartRateSample>()
             var sampleCount = 0L
-            readPages(client, HeartRateRecord::class, intervalWindow) { page ->
+            readPages(client, HeartRateRecord::class, intervalWindow, typedLimits) { page ->
                 // Check the received page before processing it or requesting another one.
                 sampleCount += page.sumOf { it.samples.size.toLong() }
-                check(sampleCount <= MAX_HEART_RATE_SAMPLES) { "Health Connect sample limit exceeded" }
+                checkLimit(sampleCount <= MAX_HEART_RATE_SAMPLES, typedLimits) { "Health Connect sample limit exceeded" }
                 page.forEach { record ->
                     record.samples.forEach { sample ->
                         if (sample.time >= start && sample.time < end) {
@@ -91,7 +136,7 @@ class HealthConnectReader internal constructor(
         } else emptyList()
 
         val sleepSessions = if (DataType.SLEEP in grantedTypes) {
-            readAll(client, SleepSessionRecord::class, intervalWindow)
+            readAll(client, SleepSessionRecord::class, intervalWindow, typedLimits)
                 .filter { overlaps(it.startTime, it.endTime) }.map { record ->
                     SleepSession(
                         record.metadata.id, record.metadata.dataOrigin.packageName,
@@ -101,7 +146,7 @@ class HealthConnectReader internal constructor(
         } else emptyList()
 
         val exerciseSessions = if (DataType.EXERCISE in grantedTypes) {
-            readAll(client, ExerciseSessionRecord::class, intervalWindow)
+            readAll(client, ExerciseSessionRecord::class, intervalWindow, typedLimits)
                 .filter { overlaps(it.startTime, it.endTime) }.map { record ->
                     ExerciseSession(
                         record.metadata.id, record.metadata.dataOrigin.packageName,
@@ -126,9 +171,10 @@ class HealthConnectReader internal constructor(
         client: HealthConnectClient,
         recordType: KClass<T>,
         window: TimeRangeFilter,
+        typedLimits: Boolean,
     ): List<T> {
         val records = mutableListOf<T>()
-        readPages(client, recordType, window) { records += it }
+        readPages(client, recordType, window, typedLimits) { records += it }
         return records
     }
 
@@ -136,6 +182,7 @@ class HealthConnectReader internal constructor(
         client: HealthConnectClient,
         recordType: KClass<T>,
         window: TimeRangeFilter,
+        typedLimits: Boolean,
         consume: (List<T>) -> Unit,
     ) {
         val seenTokens = mutableSetOf<String>()
@@ -149,14 +196,19 @@ class HealthConnectReader internal constructor(
                     pageToken = token,
                 ),
             )
-            check(response.records.size <= PAGE_SIZE) { "Health Connect page size exceeded" }
+            checkLimit(response.records.size <= PAGE_SIZE, typedLimits) { "Health Connect page size exceeded" }
             consume(response.records)
             val next = response.pageToken
             if (next.isNullOrEmpty()) return
-            check(seenTokens.add(next)) { "Health Connect repeated page token" }
+            checkLimit(seenTokens.add(next), typedLimits) { "Health Connect repeated page token" }
             token = next
         }
-        error("Health Connect page limit exceeded")
+        checkLimit(false, typedLimits) { "Health Connect page limit exceeded" }
+    }
+
+    private inline fun checkLimit(condition: Boolean, typed: Boolean, message: () -> String) {
+        if (!condition && typed) throw SourceReadException(BlockReason.SOURCE_LIMIT_EXCEEDED)
+        check(condition, message)
     }
 
     companion object {

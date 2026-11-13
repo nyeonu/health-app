@@ -30,6 +30,7 @@ import com.ny.my.health.core.HistoryPhase
 import com.ny.my.health.core.HistoryReadStatus
 import com.ny.my.health.core.SyncStatus
 import java.time.Instant
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 internal data class HistoryUiActions(
@@ -42,7 +43,14 @@ internal data class HistoryUiActions(
 )
 
 @Composable
-internal fun HealthHomeScreen(state: SyncUiState, actions: HistoryUiActions) {
+internal fun HealthHomeScreen(
+    state: SyncUiState,
+    actions: HistoryUiActions,
+    manualState: ManualDriveState? = null,
+    manualActions: ManualDriveActions? = null,
+    manualCategories: Set<DataType> = manualState?.categories.orEmpty().ifEmpty { DataType.entries.toSet() },
+    todayInSeoul: LocalDate = state.date.plusDays(1),
+) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val session = state.history
     val readable = session?.read?.status in setOf(HistoryReadStatus.READY, HistoryReadStatus.ABSENT)
@@ -91,9 +99,14 @@ internal fun HealthHomeScreen(state: SyncUiState, actions: HistoryUiActions) {
     ) {
         Text("Health App · 수동 동기화", style = MaterialTheme.typography.headlineMedium)
         Text("이번 동기화 대상: 어제, ${state.date} (한국 시간)")
+        if (manualState != null && manualActions != null) {
+            ManualDriveUi(manualState, manualActions, manualCategories, todayInSeoul)
+            Text("이전 동기화 이력 · 읽기 전용 기록", style = MaterialTheme.typography.titleMedium)
+            Text("아래 이전 동기화 이력은 과거 기록입니다. V1의 현재 날짜별 확인 범위로 사용하지 않습니다.")
+        }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("현재 상태", style = MaterialTheme.typography.titleMedium)
+                Text(if (manualState != null && manualActions != null) "이전 기록의 상태" else "현재 상태", style = MaterialTheme.typography.titleMedium)
                 Text(status, color = if (storageError || session?.deleteFailed == true || attempt?.phase == HistoryPhase.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                 if (session?.error == HistoryError.RECOVERY_WRITE && readable && recoveredOutcome != null) {
                     Text(recoveredOutcome)
@@ -129,25 +142,27 @@ internal fun HealthHomeScreen(state: SyncUiState, actions: HistoryUiActions) {
                 }
             }
         }
-        Text("수동 동기화", style = MaterialTheme.typography.titleMedium)
-        Text("Health Connect: ${when (state.availability) {
-            HealthConnectClient.SDK_AVAILABLE -> "사용 가능"
-            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> "설치 또는 업데이트 필요"
-            else -> "사용 불가"
-        }}")
-        Text("읽기 권한: ${state.grantedCount}/5개 · 걸음, 체중, 심박, 수면, 운동")
-        Text("일부 허용 시 허용된 항목만 처리합니다. 미허용·빈 데이터는 완료된 5개 항목으로 간주하지 않습니다.")
-        Button(enabled = available && state.availability == HealthConnectClient.SDK_AVAILABLE, onClick = actions.requestHealthConsent) { Text("Health Connect 권한 요청") }
-        Row {
-            Checkbox(
-                checked = state.uploadOptIn, enabled = available, onCheckedChange = actions.changeOptIn,
-                modifier = Modifier.semantics { contentDescription = "비공개 Drive 업로드 동의" },
-            )
-            Text("내 Google Drive의 비공개 HealthApp 폴더 생성·사용과 날짜별 CSV 갱신에 동의합니다. 공유 권한은 추가하지 않습니다.")
+        if (manualState == null || manualActions == null) {
+            Text("수동 동기화", style = MaterialTheme.typography.titleMedium)
+            Text("Health Connect: ${when (state.availability) {
+                HealthConnectClient.SDK_AVAILABLE -> "사용 가능"
+                HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> "설치 또는 업데이트 필요"
+                else -> "사용 불가"
+            }}")
+            Text("읽기 권한: ${state.grantedCount}/5개 · 걸음, 체중, 심박, 수면, 운동")
+            Text("일부 허용 시 허용된 항목만 처리합니다. 미허용·빈 데이터는 완료된 5개 항목으로 간주하지 않습니다.")
+            Button(enabled = available && state.availability == HealthConnectClient.SDK_AVAILABLE, onClick = actions.requestHealthConsent) { Text("Health Connect 권한 요청") }
+            Row {
+                Checkbox(
+                    checked = state.uploadOptIn, enabled = available, onCheckedChange = actions.changeOptIn,
+                    modifier = Modifier.semantics { contentDescription = "비공개 Drive 업로드 동의" },
+                )
+                Text("내 Google Drive의 비공개 HealthApp 폴더 생성·사용과 날짜별 CSV 갱신에 동의합니다. 공유 권한은 추가하지 않습니다.")
+            }
+            Button(enabled = available && state.uploadOptIn && !state.readyToUpload, onClick = actions.authorize) { Text("Google 권한 확인") }
+            if (state.readyToUpload) Button(enabled = available, onClick = actions.continueUpload) { Text("업로드 계속") }
+            Text("화면을 벗어나면 중단됩니다. 일부 원격 파일은 남을 수 있으며, 다시 실행하면 같은 날짜 파일을 갱신합니다.")
         }
-        Button(enabled = available && state.uploadOptIn && !state.readyToUpload, onClick = actions.authorize) { Text("Google 권한 확인") }
-        if (state.readyToUpload) Button(enabled = available, onClick = actions.continueUpload) { Text("업로드 계속") }
-        Text("화면을 벗어나면 중단됩니다. 일부 원격 파일은 남을 수 있으며, 다시 실행하면 같은 날짜 파일을 갱신합니다.")
         PhoneProfilingSection(state.phoneProfiling, actions.copyPhoneProfiling)
         TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "상세·설정 접기" else "상세·설정 펼치기") }
         if (expanded) {

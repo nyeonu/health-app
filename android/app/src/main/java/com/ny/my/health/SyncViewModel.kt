@@ -68,12 +68,87 @@ internal fun SyncUiState.invalidateCurrentAttempt(): SyncUiState = copy(
     message = "로컬 동의와 현재 시도 표시를 지웠습니다. 저장된 기록을 확인해 주세요.",
 )
 
-class SyncViewModel(application: Application) : AndroidViewModel(application) {
-    private val reader = HealthConnectReader(application)
-    private val clock = Clock.systemUTC()
+class SyncViewModel internal constructor(application: Application,
+    sessionFactory: ((() -> ManualSyncProfiling?, (ManualSyncProfiling) -> Unit,
+        (ManualSyncProfiling, ProfileOutcome) -> Unit, () -> Unit) -> ManualDriveSession)?,
+) : AndroidViewModel(application) {
+    constructor(application: Application) : this(application, null)
+
     private val debugEnabled = application.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     private val phoneProfilingSession = PhoneProfilingSession(debugEnabled)
     private val mutableState = MutableStateFlow(SyncUiState(phoneProfiling = phoneProfilingSession.state))
+    private val reader = HealthConnectReader(application)
+    private val clock = Clock.systemUTC()
+    private val syncStore = SqliteSyncStateStore(application)
+    private val execution = SyncExecutionSession.get(application) {
+        SyncExecutionSession(syncStore, reader, null, clock, { java.util.UUID.randomUUID().toString() })
+    }
+    internal val manual = sessionFactory?.invoke(::newBoundProfiling, ::boundProfileStarted, ::boundProfileFinished, ::boundProfileInvalidated)
+        ?: ManualDriveSession(syncStore, reader, execution, clock,
+            ::newBoundProfiling, ::boundProfileStarted, ::boundProfileFinished, ::boundProfileInvalidated)
+    private val mutableCategories = MutableStateFlow(DataType.entries.toSet())
+    private var categoriesEdited = false
+    internal val manualCategories = mutableCategories.asStateFlow()
+    private var manualJob: Job? = null
+    private var resumeJob: Job? = null
+
+    internal fun changeManualCategories(categories: Set<DataType>) {
+        if (manual.state.value.phase != ManualDrivePhase.RUNNING) {
+            categoriesEdited = true
+            mutableCategories.value = categories.toSet()
+        }
+    }
+
+    /** 초기 읽기보다 늦게 도착한 저장 구성은 사용자의 새 선택을 덮어쓰지 않는다. */
+    internal fun restoreInitialManualCategories(categories: Set<DataType>) {
+        if (!categoriesEdited) mutableCategories.value = categories.toSet()
+    }
+
+    internal fun selectManualAccount(bridge: ManualDriveBridge) {
+        if (bridge.isBusy()) return
+        val categories = mutableCategories.value.toSet()
+        viewModelScope.launch {
+            val picker = manual.beginAccountSelection() ?: return@launch
+            bridge.selectAccount(picker) { ok, extras, name, type ->
+                viewModelScope.launch {
+                    // 계정 선택을 시작할 때의 범위만 명시적 구성 변경으로 저장한다.
+                    val ticket = manual.selectAccount(ok, picker, extras, name, type, categories)
+                    if (ticket != null && mutableCategories.value == manual.state.value.categories)
+                        authorizeManualTicket(bridge, ticket)
+                }
+            }
+        }
+    }
+
+    internal fun authorizeManual(bridge: ManualDriveBridge) {
+        if (bridge.isBusy()) return
+        if (mutableCategories.value != manual.state.value.categories) return
+        viewModelScope.launch {
+            val ticket = manual.beginAuthorization() ?: return@launch
+            authorizeManualTicket(bridge, ticket)
+        }
+    }
+
+    private fun authorizeManualTicket(bridge: ManualDriveBridge, ticket: BoundDriveAuthorization.Ticket) {
+        bridge.authorize(ticket) { resolution, token, scopes ->
+            if (mutableCategories.value == manual.state.value.categories)
+                manual.acceptAuthorization(ticket, resolution, token, scopes)
+        }
+    }
+
+    internal fun continueManual() {
+        if (mutableCategories.value != manual.state.value.categories ||
+            manual.state.value.phase != ManualDrivePhase.READY || manualJob?.isActive == true) return
+        manualJob = viewModelScope.launch { manual.continueManual() }
+    }
+
+    internal fun resetManualConfiguration() {
+        categoriesEdited = true
+        viewModelScope.launch {
+            if (manual.resetConfiguration()) mutableCategories.value = DataType.entries.toSet()
+        }
+    }
+
     internal val state = mutableState.asStateFlow()
     private var foreground = false
     private var syncJob: Job? = null
@@ -85,6 +160,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         private set
     private val resolutionTickets = AuthorizationResolutionTickets()
     private val historySession = HistorySession(SqliteHistoryStore(application), viewModelScope) {
+        manual.setPrivateFolderConsent(false)
         phoneProfilingSession.clear()
         finishProfiling(manualProfiling, ProfileOutcome.CANCELLED)
         accessToken = null
@@ -95,6 +171,10 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private val effects = HistoryEffects(historySession)
 
     init {
+        viewModelScope.launch {
+            manual.refresh()
+            if (manual.state.value.configured) restoreInitialManualCategories(manual.state.value.categories)
+        }
         viewModelScope.launch {
             historySession.state.collect { history ->
                 val attempt = history.read.history?.attempt
@@ -114,13 +194,22 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { historySession.restore() }
     }
 
-    internal fun resume() {
+    internal fun resume(onManualRefreshed: () -> Unit = {}) {
         foreground = true
+        manual.setForeground(true)
+        resumeJob?.cancel()
+        resumeJob = viewModelScope.launch {
+            manual.refresh()
+            manual.refreshGrants()
+            if (foreground && manual.state.value.foreground) onManualRefreshed()
+        }
         refreshPermissions()
     }
 
     internal fun pause() {
         foreground = false
+        resumeJob?.cancel()
+        manual.setForeground(false)
         if (mutableState.value.syncing) {
             syncJob?.cancel()
             accessToken = null
@@ -133,6 +222,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     internal fun refreshPermissions() {
+        viewModelScope.launch { manual.refreshGrants() }
         refreshJob?.cancel()
         mutableState.value = mutableState.value.copy(refreshing = true)
         refreshJob = viewModelScope.launch {
@@ -380,6 +470,24 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         mutableState.value = mutableState.value.copy(phoneProfiling = phoneProfilingSession.state)
     }
 
+    private fun newBoundProfiling(): ManualSyncProfiling? = if (debugEnabled) ManualSyncProfiling() else null
+
+    private fun boundProfileStarted(profile: ManualSyncProfiling) {
+        phoneProfilingSession.begin(profile)
+        mutableState.value = mutableState.value.copy(phoneProfiling = phoneProfilingSession.state)
+    }
+
+    private fun boundProfileInvalidated() {
+        phoneProfilingSession.clear()
+        mutableState.value = mutableState.value.copy(phoneProfiling = phoneProfilingSession.state)
+    }
+
+    private fun boundProfileFinished(profile: ManualSyncProfiling, @Suppress("UNUSED_PARAMETER") outcome: ProfileOutcome) {
+        profile.publish(debugEnabled) { Log.d("SyncProfiling", it) }
+        phoneProfilingSession.complete(profile)
+        mutableState.value = mutableState.value.copy(phoneProfiling = phoneProfilingSession.state)
+    }
+
     private fun finishProfiling(profiling: ManualSyncProfiling?, outcome: ProfileOutcome) {
         profiling ?: return
         profiling.finish(outcome)
@@ -394,6 +502,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        manual.setForeground(false)
         if (!mutableState.value.syncing) finishProfiling(manualProfiling, ProfileOutcome.CANCELLED)
         super.onCleared()
     }

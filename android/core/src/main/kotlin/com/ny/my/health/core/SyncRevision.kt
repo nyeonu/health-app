@@ -6,7 +6,8 @@ import java.time.Instant
 
 /** 정규 CSV 투영을 이용해 읽기 시각과 독립적인 의미 리비전을 만든다. */
 object SyncRevision {
-    fun identify(snapshot: ScopedSnapshot, previous: DayState?, observedAt: Instant): DayRevision {
+    fun identify(snapshot: ScopedSnapshot, previous: DayState?, observedAt: Instant,
+        profiling: SyncProfiling? = null): DayRevision {
         require(validInstant(observedAt) && validDate(snapshot.snapshot.date))
         val scopes = snapshot.scopeByType
         require(scopes.isNotEmpty() && scopes.size <= 5)
@@ -21,8 +22,14 @@ object SyncRevision {
             require(scopes.keys == requested.keys)
             require(scopes.all { (type, scope) -> type in requested && (scope == ReadScope.BLOCKED || requested[type] == scope) })
         }
-        fun export(at: Instant): Map<Dataset, CsvFile> = VersionedCsvExporter()
-            .export(DefaultNormalizer().normalize(snapshot.snapshot, at)).associateBy { file ->
+        fun export(at: Instant): Map<Dataset, CsvFile> {
+            val normalized = profiling?.measureValue(ProfileStage.NORMALIZE) {
+                DefaultNormalizer().normalize(snapshot.snapshot, at)
+            } ?: DefaultNormalizer().normalize(snapshot.snapshot, at)
+            val files = profiling?.measureValue(ProfileStage.CSV_EXPORT) {
+                VersionedCsvExporter().export(normalized)
+            } ?: VersionedCsvExporter().export(normalized)
+            return files.associateBy { file ->
                 when (file.relativePath.substringBefore('/')) {
                     "daily" -> Dataset.DAILY
                     "workouts" -> Dataset.WORKOUTS
@@ -31,6 +38,7 @@ object SyncRevision {
                     else -> error("알 수 없는 데이터셋")
                 }
             }
+        }
         val digest = MessageDigest.getInstance("SHA-256")
         fun add(value: String) {
             val bytes = value.toByteArray(Charsets.UTF_8)

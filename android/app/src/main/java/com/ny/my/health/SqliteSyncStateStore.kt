@@ -122,6 +122,63 @@ internal class SqliteSyncStateStore internal constructor(
         }
     }
 
+    /** 현재 세대의 모든 범위에서 확인한 ID를 함께 돌려주어 충돌을 숨기지 않는다. */
+    suspend fun loadKnownDriveTargets(expected: DestinationGeneration, date: LocalDate): Map<Dataset, Set<String>> =
+        withContext(Dispatchers.IO) {
+            val coroutine = currentCoroutineContext()
+            synchronized(database.pathLock) {
+                val checkedAt = today()
+                val db = admittedRead(checkedAt,coroutine) ?: throw IllegalStateException("동기화 DB가 없습니다")
+                db.use {
+                    val meta = metadata(db)
+                    if (meta.generation != expected) throw StaleSyncStateException()
+                    val targets = linkedMapOf<Dataset,MutableSet<String>>()
+                    val args = arrayOf(expected.value,date.toString())
+                    // 날짜별 두 index scan으로 모든 profile과 orphan을 함께 검증한다.
+                    db.rawQuery("SELECT * FROM day WHERE generation=? AND date=? ORDER BY scope_key",args).use { days ->
+                        db.rawQuery("SELECT * FROM dataset WHERE generation=? AND date=? ORDER BY scope_key,dataset",args).use { datasets ->
+                            var hasDataset = datasets.moveToFirst()
+                            while (days.moveToNext()) {
+                                coroutine.ensureActive()
+                                val files = linkedMapOf<Dataset,DatasetState>()
+                                while (hasDataset && datasets.s("scope_key") == days.s("scope_key")) {
+                                    coroutine.ensureActive()
+                                    val file = decodeDataset(datasets)
+                                    require(files.put(file.dataset,file) == null)
+                                    hasDataset = datasets.moveToNext()
+                                }
+                                val day = decodeDay(days,files,meta,checkedAt)
+                                for (file in day.datasets.values) {
+                                    val handles = listOfNotNull(file.targetHandle,file.priorConfirmation?.targetHandle)
+                                    if (handles.isNotEmpty()) targets.getOrPut(file.dataset) { linkedSetOf() }.addAll(handles)
+                                }
+                            }
+                            require(!hasDataset)
+                        }
+                    }
+                    coroutine.ensureActive()
+                    targets.mapValues { (_,handles) -> handles.toSet() }
+                }
+            }
+        }
+
+    /** fresh proof와 명시 계속을 확인한 gate 소유자만 호출하는 복구 경계다. */
+    suspend fun reopenManualBlockers(expected: DestinationGeneration): SyncCommit = write(expected) { db,admitted ->
+        val admission = checkNotNull(admitted)
+        val meta = admission.metadata
+        if (meta.generation != expected) return@write SyncCommit(CommitStatus.STALE,meta.generation)
+        if (meta.configuration == null || admission.attempt?.finishedAt == null && admission.attempt != null)
+            return@write SyncCommit(CommitStatus.INVALID,meta.generation)
+        // 파일 journal과 attempt는 그대로 두고 복구 가능한 날짜 차단만 원자적으로 해제한다.
+        db.execSQL("UPDATE day SET phase=CASE WHEN phase=? THEN ? ELSE phase END,blocker=NULL " +
+            "WHERE generation=? AND blocker IN (?,?,?,?)",arrayOf(DayPhase.BLOCKED.name,DayPhase.PENDING.name,
+                expected.value,BlockReason.DESTINATION_BLOCKED.name,BlockReason.DESTINATION_RECONCILIATION_REQUIRED.name,
+                BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED.name,BlockReason.RETRY_EXHAUSTED.name))
+        // 변경된 모든 profile을 기존 decoder로 재검증하고 전체 상태 유효성도 확인한다.
+        snapshot(db,today(),null)
+        SyncCommit(CommitStatus.COMMITTED,meta.generation)
+    }
+
     suspend fun configure(expected: DestinationGeneration?, configuration: SyncConfiguration,
         binding: PrivateDestinationBinding): SyncCommit {
         if (!configuration.isValid() || configuration.enrolledDay != today().minusDays(1)) return SyncCommit(CommitStatus.INVALID, expected)

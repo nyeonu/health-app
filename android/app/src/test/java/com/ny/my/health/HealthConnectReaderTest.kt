@@ -16,6 +16,11 @@ import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.response.ReadRecordsResponse
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.units.Mass
+import com.ny.my.health.core.BlockReason
+import com.ny.my.health.core.DataType
+import com.ny.my.health.core.ReadScope
+import com.ny.my.health.core.SourceReadException
+import com.ny.my.health.core.SyncTrigger
 import com.ny.my.health.core.DayWindow
 import com.ny.my.health.core.CsvFile
 import com.ny.my.health.core.DefaultNormalizer
@@ -101,6 +106,105 @@ class HealthConnectReaderTest {
                     call(method.name, args ?: emptyArray())
                 }))
         }
+    }
+
+    @Test
+    fun `Scoped manual read queries only requested current grants and revoked access never becomes empty`() = runBlocking {
+        val recordTypes = mapOf(DataType.STEPS to StepsRecord::class, DataType.WEIGHT to WeightRecord::class,
+            DataType.HEART_RATE to HeartRateRecord::class, DataType.SLEEP to SleepSessionRecord::class,
+            DataType.EXERCISE to ExerciseSessionRecord::class)
+        for (selected in listOf(setOf(DataType.STEPS), setOf(DataType.HEART_RATE),
+            setOf(DataType.WEIGHT, DataType.SLEEP, DataType.EXERCISE))) {
+            val provider = Provider(*recordTypes.values.toTypedArray())
+            val access = provider.reader.access(SyncTrigger.MANUAL)
+            assertEquals(recordTypes.keys, access.granted)
+            assertTrue(access.scopeByType.values.all { it == ReadScope.EXPLICIT_DAY })
+            for (trigger in listOf(SyncTrigger.SCHEDULED, SyncTrigger.CATCH_UP)) {
+                assertTrue(provider.reader.access(trigger).scopeByType.values.all { it == ReadScope.BLOCKED })
+            }
+            val result = provider.reader.readScoped(day, selected.associateWith { ReadScope.EXPLICIT_DAY })
+            assertEquals(selected, result.snapshot.grantedTypes)
+            assertTrue(result.blockedTypes.isEmpty())
+            assertEquals(selected - DataType.STEPS,
+                provider.requests.map { request -> recordTypes.entries.single { it.value == request.recordType }.key }.toSet())
+            assertEquals(if (DataType.STEPS in selected) 1 else 0, provider.aggregates.size)
+            provider.aggregates.forEach { assertEquals(AggregateRequest(setOf(StepsRecord.COUNT_TOTAL),
+                TimeRangeFilter.between(start, end)), it) }
+        }
+        val denied = Provider(StepsRecord::class, HeartRateRecord::class)
+        val requested = denied.reader.access(SyncTrigger.MANUAL).scopeByType.filterValues { it == ReadScope.EXPLICIT_DAY }
+        denied.grants = setOf(HealthPermission.getReadPermission(StepsRecord::class))
+        val revoked = denied.reader.readScoped(day, requested)
+        assertEquals(setOf(DataType.HEART_RATE), revoked.blockedTypes)
+        assertEquals(ReadScope.BLOCKED, revoked.scopeByType[DataType.HEART_RATE])
+        assertTrue(denied.requests.isEmpty())
+        assertEquals(1, denied.aggregates.size)
+        val blocked = Provider(*recordTypes.values.toTypedArray())
+        val unsupported = DataType.entries.associateWith { ReadScope.BLOCKED }
+        assertEquals(recordTypes.keys, blocked.reader.readScoped(day, unsupported).blockedTypes)
+        assertTrue(blocked.requests.isEmpty()); assertTrue(blocked.aggregates.isEmpty())
+        for (scope in listOf(ReadScope.SUMMARY, ReadScope.WORKOUT_SCOPED)) {
+            assertEquals(setOf(DataType.HEART_RATE), blocked.reader.readScoped(day,
+                mapOf(DataType.HEART_RATE to scope)).blockedTypes)
+        }
+        assertTrue(blocked.requests.isEmpty()); assertTrue(blocked.aggregates.isEmpty())
+        val duringRead = Provider(HeartRateRecord::class)
+        duringRead.read = { throw SecurityException("합성 철회") }
+        assertEquals(BlockReason.SOURCE_ACCESS_REQUIRED,
+            (runCatching { duringRead.reader.readScoped(day, mapOf(DataType.HEART_RATE to ReadScope.EXPLICIT_DAY)) }
+                .exceptionOrNull() as SourceReadException).reason)
+        val afterRead = Provider(HeartRateRecord::class)
+        afterRead.read = {
+            afterRead.grants = emptySet()
+            ReadRecordsResponse(emptyList<HeartRateRecord>(), null)
+        }
+        assertEquals(setOf(DataType.HEART_RATE), afterRead.reader.readScoped(day,
+            mapOf(DataType.HEART_RATE to ReadScope.EXPLICIT_DAY)).blockedTypes)
+        val unknown = HealthConnectReader({ error("사용 불가 SDK는 client를 만들지 않는다") }, { -1 })
+        assertFalse(unknown.access(SyncTrigger.MANUAL).available)
+        assertTrue(unknown.access(SyncTrigger.MANUAL).scopeByType.values.all { it == ReadScope.BLOCKED })
+        assertEquals(BlockReason.SOURCE_ACCESS_REQUIRED, (runCatching {
+            unknown.readScoped(day, mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY))
+        }.exceptionOrNull() as SourceReadException).reason)
+    }
+
+    @Test
+    fun `Scoped source limits remain blocked and legacy pagination overlap and CSV remain unchanged`() = runBlocking {
+        for (mode in listOf("repeated", "page-limit", "oversize", "samples")) {
+            val provider = Provider(HeartRateRecord::class)
+            provider.read = {
+                when (mode) {
+                    "repeated" -> ReadRecordsResponse(emptyList<HeartRateRecord>(), "same")
+                    "page-limit" -> ReadRecordsResponse(emptyList<HeartRateRecord>(), "page-${provider.requests.size}")
+                    "oversize" -> ReadRecordsResponse(List(1001) { heartRate("synthetic", start, 1) }, null)
+                    else -> ReadRecordsResponse(listOf(heartRate("synthetic", start, 100_001)), null)
+                }
+            }
+            val error = runCatching { provider.reader.readScoped(day,
+                mapOf(DataType.HEART_RATE to ReadScope.EXPLICIT_DAY)) }.exceptionOrNull()
+            assertEquals(BlockReason.SOURCE_LIMIT_EXCEEDED, (error as SourceReadException).reason)
+            assertEquals(when (mode) { "repeated" -> 2; "page-limit" -> 100; else -> 1 }, provider.requests.size)
+        }
+        val boundary = Provider(SleepSessionRecord::class)
+        val page = List(1000) { sleep("synthetic", start, end) }
+        boundary.read = {
+            ReadRecordsResponse(page, if (boundary.requests.size == 100) null else "page-${boundary.requests.size}")
+        }
+        val full = boundary.reader.readScoped(day, mapOf(DataType.SLEEP to ReadScope.EXPLICIT_DAY))
+        assertEquals(100_000, full.snapshot.sleepSessions.size)
+        assertEquals(100, boundary.requests.size)
+        assertTrue(boundary.requests.all { it.pageSize == 1000 && it.timeRangeFilter == TimeRangeFilter.before(end) })
+        assertTrue(full.blockedTypes.isEmpty())
+        val provider = Provider(WeightRecord::class, SleepSessionRecord::class, HeartRateRecord::class)
+        provider.records = listOf(WeightRecord(start, null, Mass.kilograms(61.0), Metadata.manualEntry()),
+            sleep("overnight", start.minusSeconds(3600), start.plusSeconds(3600)), heartRate("sample", start, 1))
+        val legacy = provider.reader.read(day)
+        val scoped = provider.reader.readScoped(day, legacy.grantedTypes.associateWith { ReadScope.EXPLICIT_DAY })
+        assertEquals(legacy, scoped.snapshot)
+        val generated = end
+        val exporter = VersionedCsvExporter()
+        assertEquals(exporter.export(DefaultNormalizer().normalize(legacy, generated)),
+            exporter.export(DefaultNormalizer().normalize(scoped.snapshot, generated)))
     }
 
     @Test

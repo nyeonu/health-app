@@ -88,7 +88,7 @@ class HealthHomeScreenInstrumentedTest {
         }
     }
 
-    private fun render(history: HistorySessionState? = session(attempt()), state: SyncUiState = SyncUiState()) {
+    private fun render(history: HistorySessionState? = session(attempt()), state: SyncUiState = SyncUiState(), manualState: ManualDriveState? = null, manualActions: ManualDriveActions? = null) {
         ui.value = state.copy(date = date, availability = HealthConnectClient.SDK_AVAILABLE, history = history)
         val actions = HistoryUiActions(
             requestHealthConsent = { calls += "health" }, refreshPermissions = { calls += "permissions" },
@@ -108,11 +108,36 @@ class HealthHomeScreenInstrumentedTest {
             CompositionLocalProvider(LocalDensity provides Density(density, textScale.value)) {
                 MaterialTheme(colorScheme = if (dark.value) darkColorScheme() else lightColorScheme()) {
                     Surface(Modifier.fillMaxSize()) {
-                        key(fixtureKey.value) { HealthHomeScreen(ui.value, actions) }
+                        key(fixtureKey.value) { HealthHomeScreen(ui.value, actions, manualState, manualActions) }
                     }
                 }
             }
         }
+    }
+
+    @Test fun boundManualControlsRemainIndependentOfLegacyHistoryErrorsAndPreserveHistorySettings() {
+        val manualCalls = mutableListOf<String>()
+        val manual = ManualDriveState(phase = ManualDrivePhase.READY, configured = true,
+            foreground = true, privateFolderConsent = true, categories = setOf(DataType.STEPS), grantedCategories = setOf(DataType.STEPS))
+        val manualActions = ManualDriveActions({}, {}, {}, {}, {}, {}, { manualCalls += "continue" }, {})
+        render(history = session(attempt()).copy(error = HistoryError.RECOVERY_WRITE), manualState = manual, manualActions = manualActions)
+        shown("Health App · 수동 동기화")
+        shown("이번 동기화 대상: 어제, 2026-01-02 (한국 시간)")
+        click("업로드 계속")
+        assertEquals(listOf("continue"), manualCalls)
+        assertEquals(emptyList<String>(), calls)
+        shown("이전 동기화 이력 · 읽기 전용 기록")
+        shown("이전 기록의 상태")
+        compose.onNodeWithText("현재 상태").assertDoesNotExist()
+        shown("아래 이전 동기화 이력은 과거 기록입니다. V1의 현재 날짜별 확인 범위로 사용하지 않습니다.")
+        shown("대상 날짜: 2026-01-01")
+        details()
+        shown("인증 요청 시각: 2026-01-03 09:00:00 (한국 시간)")
+        click("로컬 이력 삭제")
+        compose.onNodeWithText("이 기기의 동기화 이력과 현재 업로드 동의를 지웁니다. Drive 파일과 Health Connect·Google 권한은 유지됩니다.").assertIsDisplayed()
+        compose.onNodeWithText("취소").performClick()
+        assertEquals(listOf("requestDelete", "cancelDelete"), calls)
+        assertEquals(listOf("continue"), manualCalls)
     }
 
     private fun click(text: String) { compose.onNodeWithText(text).performScrollTo().performClick() }

@@ -48,7 +48,9 @@ class GoogleDriveTransport internal constructor(
         // Validate the original endpoint before constructing any credential-bearing request.
         require(uri != null && uri.scheme == "https" && uri.host == "www.googleapis.com" &&
             uri.port == -1 && uri.rawUserInfo == null && uri.rawFragment == null &&
-            Regex("/(upload/)?drive/v3/files(/[A-Za-z0-9_-]{1,200})?").matches(uri.rawPath)) { "Unsupported Drive endpoint" }
+            (Regex("/(upload/)?drive/v3/files(/[A-Za-z0-9_-]{1,200})?").matches(uri.rawPath) ||
+                (uri.rawPath == "/drive/v3/about" && uri.rawQuery == "fields=user%28emailAddress%2Cme%29" &&
+                    method == "GET" && contentType == null && body == null))) { "Unsupported Drive endpoint" }
         require(method in setOf("GET", "POST", "PATCH")) { "Unsupported Drive method" }
         require(contentType == null || contentType.all { it.code in 32..126 }) { "Invalid content type" }
         require(body == null || contentType != null) { "Missing content type" }
@@ -112,6 +114,12 @@ class GoogleDriveTransport internal constructor(
             .followSslRedirects(false)
             .retryOnConnectionFailure(false)
             .authenticator(Authenticator.NONE)
+            .addNetworkInterceptor { chain ->
+                val response = chain.proceed(chain.request())
+                // OkHttp의 503 후속 요청은 연결 재시도 설정과 별개다. 재시도는 호출자가 정한다.
+                if (response.code == 503) response.newBuilder().removeHeader("Retry-After").build()
+                else response
+            }
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
