@@ -127,7 +127,7 @@ class SafManualUiInstrumentedTest {
                 ready.copy(phase = ManualSafPhase.RUNNING), ready.copy(categories = setOf(DataType.WEIGHT)),
                 ready.copy(generation = null), ready.copy(configured = false),
             )) {
-                replace(blocked)
+                replace(blocked.copy(outcome = BatchStatus.PENDING))
                 button("로컬 업로드 계속").assertIsNotEnabled()
                 button("로컬 동기화 재시도").assertIsNotEnabled()
             }
