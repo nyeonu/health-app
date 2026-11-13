@@ -742,3 +742,7 @@ PLAN 복구3은 기존 host test의 첫 toggle/continue 부재 단언이 새 bou
 ### 병렬 검증 자원 확인 및 T11 환경 준비
 
 소유자의 병렬화 지시로 환경을 재측정했다: CPU3, 메모리 약10GB/가용약9GB, 각Gradle heap2GB이다. 분리worktree의 읽기전용공유cache/SDK를 쓰는 로컬빌드를 최대2개로 제한해 병렬 진행하고 각source는검증중동결한다. 메모리/잠금 오류 증거가 나오면 해당 검증만 직렬로 복귀하며 기능/검증기준은 바꾸지 않는다. CI/코드/리뷰/계획준비는 계속병렬이다. T11 최초 bare wrapper실행은 /home/agent/.gradle lock 부모생성 전에 실패해 테스트0이다. 기존 run-health-command.py로 installedJDK/sharedcache를선택하는 환경준비1회를 승인했고 소스/설정변경은없다. 기존 metadata access 기대0→1은 승인된 refresh의 실제MANUALpermission조회에 맞춘 교정이며 raw/Drive0단언은보존한다.
+
+### T11 복구1/2 — 테스트의 명시적 전경·동의 준비
+
+첫 실제 focused5개 중1개 실패/0error/0skip. 새 복원 테스트가 기본foreground=false/consent=false인 controller에서 사용자 설정을 호출해 beginAccountSelection=null로 정상 거부됐다. 해당 configure 직전에 setForeground(true), setPrivateFolderConsent(true)를 명시하여 실제 사용자 준비를 재현한다. production·assertion·권한게이트는 바꾸지 않는다. 원본실패XML/log 보존 뒤 동일5개unit을 재검증하고 Native APK는최종통합에서확인한다. 기존3grouped+새지연메타데이터group은첫실행PASS였다.
