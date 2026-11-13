@@ -85,6 +85,7 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
     public static final String EXTRA_UID = "synthetic_uid";
     public static final String EXTRA_COUNTS = "synthetic_counts";
     public static final String EXTRA_RESULT_DATA = "synthetic_result_data";
+    public static final String EXTRA_BLOCK_RECEIVER = "synthetic_block_receiver";
     public static final String OPAQUE_SPACE_ID = "opaque space document";
     public static final String OPAQUE_UNICODE_ID = "합성 문서 Ω";
     public static final String OPAQUE_RESERVED_ID = "opaque:/?#%[]@!$&'()+,;=";
@@ -120,6 +121,7 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
     public static int deleteCount(Bundle snapshot) { return snapshot.getInt(COUNT_DELETE, 0); }
     public static int moveCount(Bundle snapshot) { return snapshot.getInt(COUNT_MOVE, 0); }
     private static volatile CountDownLatch barrier;
+    private static volatile ResultReceiver blockReceiver;
 
     public static byte[] seededBytes() {
         return "synthetic fixture only\n".getBytes(StandardCharsets.UTF_8);
@@ -353,6 +355,8 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
                 } else if (command == Control.REVOKE) {
                     revokeUriPermission(TARGET_PACKAGE, tree, ACCESS_FLAGS);
                 } else {
+                    if (command == Control.BLOCK_BEFORE_EFFECT)
+                        blockReceiver = intent.getParcelableExtra(EXTRA_BLOCK_RECEIVER);
                     control(command);
                 }
                 success = true;
@@ -463,6 +467,7 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
         synchronized (lock) {
             if (barrier != null) barrier.countDown();
             barrier = null;
+            blockReceiver = null;
             outcome = null;
             deleteRecursively(storage);
             if (!storage.mkdirs()) throw new IllegalStateException("합성 저장소 준비 실패");
@@ -502,6 +507,7 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
             else if (command == Control.RELEASE_BLOCK) {
                 if (barrier != null) barrier.countDown();
                 barrier = null;
+                blockReceiver = null;
             } else outcome = command;
         }
     }
@@ -509,6 +515,13 @@ public final class SyntheticDocumentsProvider extends DocumentsProvider {
     private static void checkpoint() throws FileNotFoundException {
         CountDownLatch current = barrier;
         if (current == null) return;
+        // 비공개 callback에는 고정 진입 결과와 발급자 UID만 전달한다.
+        ResultReceiver entered = blockReceiver;
+        if (entered != null) {
+            Bundle event = new Bundle();
+            event.putInt(EXTRA_UID, Process.myUid());
+            entered.send(Activity.RESULT_OK, event);
+        }
         try {
             if (!current.await(10, TimeUnit.SECONDS)) throw syntheticFailure();
         } catch (InterruptedException ignored) {
