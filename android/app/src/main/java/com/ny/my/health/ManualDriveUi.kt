@@ -23,6 +23,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.ny.my.health.core.BatchStatus
 import com.ny.my.health.core.DataType
+import com.ny.my.health.core.DayWindow
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 internal data class ManualDriveActions(
     val changeConsent: (Boolean) -> Unit,
@@ -41,6 +44,7 @@ internal fun ManualDriveUi(
     state: ManualDriveState,
     actions: ManualDriveActions,
     selectedCategories: Set<DataType> = state.categories.ifEmpty { DataType.entries.toSet() },
+    todayInSeoul: LocalDate = LocalDate.now(DayWindow.zone),
 ) {
     var resetDialog by rememberSaveable { mutableStateOf(false) }
     val idle = state.foreground && state.phase != ManualDrivePhase.RUNNING
@@ -88,7 +92,11 @@ internal fun ManualDriveUi(
             Text("현재 범위 확인 날짜: ${coverage?.scopeCheckedThrough ?: "확인되지 않음"}")
             Text("현재 범위 업로드 날짜: ${coverage?.scopeUploadedThrough ?: "확인되지 않음"}")
             Text("대기 날짜: ${coverage?.scopePendingCount ?: "확인되지 않음"} · 차단 날짜: ${coverage?.scopeBlockedCount ?: "확인되지 않음"}")
+            Text("마지막 V1 업로드 확인 시각: ${coverage?.lastUploadAt?.atZone(DayWindow.zone)?.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss (한국 시간)")) ?: "확인되지 않음"}")
+            Text("현재 목적지 구성의 모든 범위 중 마지막 업로드 확인 시각입니다. 현재 범위를 다시 확인한 시각은 아닙니다.")
             if (coverage?.lastUploadAt != null) Text("이전 V1 업로드 확인이 있습니다. 현재 누락·차단·최신성과 별도로 확인하세요.")
+            for (line in manualRecentDates(state, todayInSeoul)) Text(line)
+            Text("최근 대상 날짜의 읽기·업로드 확인 기록이며 오늘 다시 갱신되었다는 뜻은 아닙니다. 빈 데이터는 읽기 확인만 있고 업로드 확인은 없을 수 있습니다.")
             TextButton(enabled = idle && state.configured, onClick = { resetDialog = true }) { Text("V1 구성·확인 범위 초기화") }
             Text("자동 동기화와 SAF 저장은 이 화면에서 지원하지 않습니다.")
         }
@@ -100,6 +108,20 @@ internal fun ManualDriveUi(
         dismissButton = { TextButton(onClick = { resetDialog = false }) { Text("초기화 취소") } },
         confirmButton = { TextButton(enabled = idle, onClick = { resetDialog = false; actions.resetConfiguration() }) { Text("V1 초기화 확인") } },
     )
+}
+
+/** 최근 대상 날짜의 증거만 표시하며 연속 확인 날짜나 업로드 시각으로 최신성을 추정하지 않는다. */
+private fun manualRecentDates(state: ManualDriveState, todayInSeoul: LocalDate): List<String> {
+    val enrolled = state.enrolledDay
+    if (!state.configured || enrolled == null) return listOf("최근 대상 날짜: 확인되지 않음 · 구성을 확인해 주세요.")
+    val dates = listOf(todayInSeoul.minusDays(2), todayInSeoul.minusDays(1)).filter { it >= enrolled }
+    if (dates.isEmpty()) return listOf("최근 대상 날짜: 등록일 이후 대상 없음")
+    val coverage = state.coverage
+    return listOf("최근 대상 날짜 · 현재 허용 범위 (제외 항목 수: ${coverage?.excludedTypes?.size ?: "확인되지 않음"})") + dates.map { date ->
+        val checked = if (date in coverage?.recentCheckedDays.orEmpty()) "확인됨" else "미확인"
+        val uploaded = if (date in coverage?.recentUploadedDays.orEmpty()) "확인됨" else "미확인"
+        "최근 대상 $date · 읽기 $checked · 업로드 $uploaded"
+    }
 }
 
 /** 성공 이력과 현재 EMPTY·부분 범위·차단·오래된 결과를 합치지 않는다. */

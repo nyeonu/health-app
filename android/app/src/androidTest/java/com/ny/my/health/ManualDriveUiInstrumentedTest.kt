@@ -52,6 +52,10 @@ class ManualDriveUiInstrumentedTest {
         val scale = mutableStateOf(1f)
         val fixture = mutableStateOf(0)
         val calls = mutableListOf<String>()
+        val today = LocalDate.parse("2026-01-04")
+        val enrolled = LocalDate.parse("2025-12-31")
+        val older = today.minusDays(2)
+        val yesterday = today.minusDays(1)
         val actions = ManualDriveActions(
             changeConsent = { calls += "consent"; state.value = state.value.copy(privateFolderConsent = it) },
             changeCategories = { calls += "categories"; selected.value = it },
@@ -65,7 +69,7 @@ class ManualDriveUiInstrumentedTest {
                 MaterialTheme(colorScheme = if (dark.value) darkColorScheme() else lightColorScheme()) {
                     Surface(Modifier.fillMaxSize()) {
                         key(fixture.value) {
-                            Column(Modifier.verticalScroll(rememberScrollState())) { ManualDriveUi(state.value, actions, selected.value) }
+                            Column(Modifier.verticalScroll(rememberScrollState())) { ManualDriveUi(state.value, actions, selected.value, today) }
                         }
                     }
                 }
@@ -81,6 +85,8 @@ class ManualDriveUiInstrumentedTest {
                 selected.value = DataType.entries.toSet(); calls.clear()
             }
             shown("미구성 · 업로드에 동의하고 Google 계정을 선택해 주세요.")
+            shown("최근 대상 날짜: 확인되지 않음 · 구성을 확인해 주세요.")
+            shown("마지막 V1 업로드 확인 시각: 확인되지 않음")
             button("Google 계정 선택").assertIsNotEnabled()
             button("Google 권한 확인").assertIsNotEnabled()
             button("업로드 계속").assertIsNotEnabled()
@@ -123,16 +129,40 @@ class ManualDriveUiInstrumentedTest {
             button("Google 계정 변경").assertIsNotEnabled()
             compose.runOnIdle {
                 state.value = state.value.copy(grantedCategories = setOf(DataType.STEPS), phase = ManualDrivePhase.AUTHORIZATION_REQUIRED,
-                    outcome = BatchStatus.COMPLETED, coverage = CoverageSummary(null, null, null, LocalDate.parse("2026-01-02"), null,
-                        emptySet(), 0, 0, null, emptySet(), emptySet()))
+                    outcome = BatchStatus.COMPLETED, enrolledDay = enrolled,
+                    coverage = CoverageSummary(null, null, null, enrolled, null,
+                        emptySet(), 0, 0, null, setOf(older), emptySet()))
             }
             shown("현재 범위 확인 완료 · 업로드 확인은 없습니다. 빈 데이터는 업로드 성공이 아닙니다.")
+            shown("최근 대상 $older · 읽기 확인됨 · 업로드 미확인")
+            shown("최근 대상 $yesterday · 읽기 미확인 · 업로드 미확인")
+            shown("마지막 V1 업로드 확인 시각: 확인되지 않음")
             compose.runOnIdle { state.value = state.value.copy(coverage = state.value.coverage!!.copy(
-                scopeUploadedThrough = LocalDate.parse("2026-01-02"), excludedTypes = setOf(DataType.WEIGHT), lastUploadAt = Instant.parse("2026-01-03T00:00:00Z"))) }
+                scopeUploadedThrough = enrolled, excludedTypes = setOf(DataType.WEIGHT),
+                lastUploadAt = Instant.parse("2026-01-03T18:04:05Z"),
+                recentCheckedDays = setOf(older, yesterday), recentUploadedDays = setOf(older, yesterday))) }
             shown("허용된 일부 범위만 확인되었습니다. 전체 항목 완료가 아닙니다.")
             shown("이전 V1 업로드 확인이 있습니다. 현재 누락·차단·최신성과 별도로 확인하세요.")
+            shown("마지막 V1 업로드 확인 시각: 2026-01-04 03:04:05 (한국 시간)")
+            shown("현재 목적지 구성의 모든 범위 중 마지막 업로드 확인 시각입니다. 현재 범위를 다시 확인한 시각은 아닙니다.")
+            shown("최근 대상 날짜 · 현재 허용 범위 (제외 항목 수: 1)")
+            shown("최근 대상 $older · 읽기 확인됨 · 업로드 확인됨")
+            shown("최근 대상 $yesterday · 읽기 확인됨 · 업로드 확인됨")
+            shown("최근 대상 날짜의 읽기·업로드 확인 기록이며 오늘 다시 갱신되었다는 뜻은 아닙니다. 빈 데이터는 읽기 확인만 있고 업로드 확인은 없을 수 있습니다.")
+            // 연속 확인 날짜와 마지막 업로드 시각이 같아도 최근 날짜별 증거는 다를 수 있다.
+            compose.runOnIdle { state.value = state.value.copy(coverage = state.value.coverage!!.copy(
+                recentCheckedDays = emptySet(), recentUploadedDays = emptySet())) }
+            shown("현재 범위 확인 날짜: 2025-12-31")
+            shown("현재 범위 업로드 날짜: 2025-12-31")
+            shown("마지막 V1 업로드 확인 시각: 2026-01-04 03:04:05 (한국 시간)")
+            shown("최근 대상 $older · 읽기 미확인 · 업로드 미확인")
+            shown("최근 대상 $yesterday · 읽기 미확인 · 업로드 미확인")
             compose.runOnIdle { state.value = state.value.copy(outcome = BatchStatus.STALE) }
             shown("현재 결과가 오래되었거나 구성이 바뀌었습니다. 다시 확인하고 인증해 주세요.")
+            shown("최근 대상 $yesterday · 읽기 미확인 · 업로드 미확인")
+            compose.runOnIdle { state.value = state.value.copy(enrolledDay = yesterday) }
+            shown("최근 대상 $yesterday · 읽기 미확인 · 업로드 미확인")
+            compose.onNodeWithText("최근 대상 $older · 읽기 미확인 · 업로드 미확인").assertDoesNotExist()
             shown("자동 동기화와 SAF 저장은 이 화면에서 지원하지 않습니다.")
         }
     }

@@ -30,6 +30,7 @@ import com.ny.my.health.core.HistoryPhase
 import com.ny.my.health.core.HistoryReadStatus
 import com.ny.my.health.core.SyncStatus
 import java.time.Instant
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 internal data class HistoryUiActions(
@@ -48,6 +49,7 @@ internal fun HealthHomeScreen(
     manualState: ManualDriveState? = null,
     manualActions: ManualDriveActions? = null,
     manualCategories: Set<DataType> = manualState?.categories.orEmpty().ifEmpty { DataType.entries.toSet() },
+    todayInSeoul: LocalDate = state.date.plusDays(1),
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val session = state.history
@@ -98,7 +100,7 @@ internal fun HealthHomeScreen(
         Text("Health App · 수동 동기화", style = MaterialTheme.typography.headlineMedium)
         Text("이번 동기화 대상: 어제, ${state.date} (한국 시간)")
         if (manualState != null && manualActions != null) {
-            ManualDriveUi(manualState, manualActions, manualCategories)
+            ManualDriveUi(manualState, manualActions, manualCategories, todayInSeoul)
             Text("이전 동기화 이력 · 읽기 전용 기록", style = MaterialTheme.typography.titleMedium)
             Text("아래 이전 동기화 이력은 과거 기록입니다. V1의 현재 날짜별 확인 범위로 사용하지 않습니다.")
         }
