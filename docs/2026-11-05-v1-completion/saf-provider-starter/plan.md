@@ -126,3 +126,7 @@ SAF production local authority allowlist/background disabled/privacy/probe 계�
 ### T2 복구1 — 실제 runner 줄별 shell 실행
 
 run43428796098 API35 job131896773570은 Native 시작 전 shell end-of-file/expecting fi 오류로 중단됐다. script를 줄마다 별도 shell로 실행하는 runner 계약을 최초 bash-n 검증이 모델링하지 못했다. 단일 bash helper 호출로 교정하고 실제 action 한 줄을 stub 실행해 dispatch starter/full/PR guard/없는 변수/실패 즉시 종료를 확인했다. 변경 workflow+helper2파일만이며 기기/권한/의존성/성공기준은 불변이다. 기존 run43427341555/API35는 UTP Maven dependency resolve 실패로 Native0이며 provider assertion 실패가 아니다. 실제 API35/36 starter는 재실행 전 pending이다.
+
+### T1 복구2 — 별도 test APK 프로세스의 Kotlin 런타임 부재
+
+run43431412244 양API에서 starter1개가 합성제어응답 timeout으로실패했고 provider프로세스 원본crash는 `NoClassDefFoundError: kotlin/io/FilesKt`/`SyntheticDocumentsProvider.reset:230`이다. AGP가 tested APK에있는 Kotlin stdlib를 testAPK에서공유기대로제외해 별도 testAPK UID provider/GrantActivity에서로드할수없다. 생산의존성/프로세스/grant를바꾸지않고 testAPK provider+중첩activity를같은FQCN의프레임워크/Java표준API만쓰는Java파일로기계적이식한다. 기존Kotlin1삭제+Java1추가의2경로만교정하고starter·manifest·UID/실제grant/bytes/denial단언모두보존한다. testAPKprovider하위전체DEX참조에kotlin/androidx/runtime외부호출부재를검사하고 실제API35/36재검증한다. cleanupR1과합산T1복구2이며숨은추가loop금지.
