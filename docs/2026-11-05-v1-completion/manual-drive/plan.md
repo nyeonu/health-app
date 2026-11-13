@@ -781,3 +781,5 @@ T14 actualfocused24/0/0/0(ManualDriveSession9+ManualSyncProfiling6+PhoneProfilin
 210ad8a 독립 적합성은 reset/동의철회 뒤 phone report 폐기/지연재게시금지(P1), 최종hasResolution=true 실패의 collecting 미종결(P2)을 발견했다. 실제 bridge는 중간resolution에는callback하지않으므로 acceptAuthorization으로전달된true는terminal실패로종결한다. 외부동의대기는expectExternalResult/pause로유지하며진단으로우회하지않는다. reset/철회는보고를즉시비우고늦은ownerfinish가다시게시하지않도록 profile identity/generation 무효화를분리한다; 필요시같은4파일내 default-noop invalidationobserver를additive로추가한다. 단순pause는취소요약허용. 신규잘못된테스트의reset/withdraw report-nonnull 기대는원래승인phone spec에따라null/latecallback무재게시로정정하고 terminal실패active0을단언한다.
 
 독립quality는신규Native테스트가unscoped store.load().days(의도적으로empty)에single()을호출하는결함도확인했다. loadForScope(currentgen,today,actualMANUALaccess)로scope를명시해실제EMPTY day를검증한다. production의rawread/쓰기정책을바꾸지않는다. 관련4파일만교정하고 focused단언·Native실제실행·최신head독립재검토까지병합보류한다. 이전24JVM통과와Nativecompile은이누락동작통과증거가아니다.
+
+T14복구1 actualfocused24/0/0/0와testAPK컴파일41초PASS. reset/withdraw는즉시clear하고늦은finish가무효identity를게시못하며단순pause취소보고는보존한다. terminalresolution실패는FAILED/active0, 실제외부pause는callback없이대기유지. NativeEMPTY는actualscopedstate조회로교정했다. root는수정후새source전체검증1회와같은head양API/4독립리뷰를진행하며이전210ad8a의실패예정Native단언을성공증거로쓰지않는다.
