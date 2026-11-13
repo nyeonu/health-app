@@ -636,3 +636,13 @@ T4부여파일4개는유지한다. 기존MOVE_OUTSIDE_TREE/DELETE_SEEDED/DUPLICA
 ### T5 실행 전 SDK-free ports 계약 구체화
 
 T4 구현과 병렬 read-only 실제 API 조사로 기존 ManualDrivePorts 관례와 sealed private SafTreeProof/JVM 경계를 대조했다. 기존 승인된 suspend test ports를 같은 T5 파일 안의 ManualSafPorts로 구체화하며 생성자·문자열 ingress·실제 proof 생성 위치·즉시 picker 왕복 한 번·복원 READY 의미를 상위/하위 §2에 고정했다. 범위/권한/의존성/schema/DTO/기존 테스트 기준을 바꾸지 않으며 T4 product 계약도 그대로다. T5는 여전히 T4 완료 후 실행한다. 같은 tree·범위 재선택은 generation을 재사용해 불명확 결과를 보존한다. 소유자의 기존 V1 자동승인으로 이 구체화를 승인했으며 새로운 기능이나 승인 질문을 추가하지 않는다.
+
+### T4 복구1 — DEX 이름과 초기 소스 검토 지적
+
+첫 meaningful gate는 production/test Kotlin·기존 JVM·lintDebug·assembleDebug 뒤 dexBuilderDebugAndroidTest에서 `Space characters in SimpleName ... are not allowed prior to DEX version 040`로 실패했다(`/workspace/tooling/saf-t4.log`, 3분7초). 이전 성공 task를 전체 APK 성공으로 세지 않는다. initial 독립 소스 리뷰는 Important3(서로 다른 dataset에 동일 canonical ID, SecurityException 이유, encoded handle 경계)를 확인했고 root는 ViewModel main→runPrepared→SafDestination의 ContentResolver 호출에 IO dispatcher 전환이 없는 점도 확인했다. 같은 T4 네 파일 안의 초기 구현 교정 한 묶음으로 복구1/2를 부여한다. 기존 grant/UID/Java-only/SDK28BLOCKED/상태 schema/동의/10초 단언/건강 파일 무삭제/원래 callback·CancellationException 보존은 그대로다.
+
+- Native method 이름은 동일 행동의 camelCase로 바꾼다. SDK/minSdk/DEX 설정을 올리지 않는다. 원래 네 행동/단언을 보존하고 최종 추적성에 실제 이름을 기록한다.
+- provider IO만 기존 SafTreeConfiguration과 같은 Dispatchers.IO 경계로 이동하고 로컬 store/callback 예외는 provider catch 밖에 둔다. SecurityException은 cause 없는 DESTINATION_BLOCKED로 분리한다. snapshot 전체 dataset canonical target 충돌과 기존 core validHandle의 UTF-8 1..4096/whitespace·control 없음/encoder-canEncode 조건을 encoded URI에 적용한다. 기존/adopt/write 전 및 create 반환 직후, 건강 bytes 쓰기와 확인 전 차단한다. opaque ID를 경로로 해석하지 않는다.
+- 같은 기존 Java fixture에 고정 `SECURITY_FAILURE`, `SAME_TARGET_ACROSS_DATASETS`, `OVERSIZED_TARGET_ID` 제어를 추가할 수 있다. synthetic target만 대상으로 실제 query SecurityException·두 dataset의 동일 node/정확 membership·encoded URI 길이 4096/4097 경계를 검증한다. private 숫자 byte-size extra는 이 마지막 고정 제어에만 제한하고 범위를 검증한다. 임의 path/URI/명령 실행·로그는 추가하지 않는다.
+- Native 회귀는 실제 SecurityException의 정확한 BLOCKED/cause·suppressed 없음, alias의 mutation/callback0, handle 4096 허용/4097 차단 및 새 oversized create 후 health write/callback0을 검증한다. 기존 blocked-create 취소 테스트를 Main dispatcher에서 호출하고 실제 Binder 진입 뒤 main heartbeat가 기존10초 내 전달되는지도 검증하여 화면 스레드 점유를 구별한다. 실패해도 finally에서 provider를 release한다. 기존 네 행동을 삭제/skip하거나 단언을 완화하지 않는다.
+- 교정 후 `:app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest`를 exact Python wrapper로 한 번 실행한다. JVM production logic 미변경/기존176 성공 XML은 대조하고 중복 full JVM을 돌리지 않는다. source freeze·absolute paths·edit/build 분리·free500MB를 유지한다. 새 실패는 수정 loop 없이 보고한다. 이후 updated source 독립 재검토와 실제 양API component 및 최종 full gate는 여전히 필수다.
