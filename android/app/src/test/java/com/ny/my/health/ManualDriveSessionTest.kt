@@ -21,7 +21,7 @@ class ManualDriveSessionTest {
         val ports = FakePorts()
         val session = ManualDriveSession(ports, clock)
         session.refresh()
-        assertEquals(0, ports.accesses)
+        assertEquals(1, ports.accesses)
         assertEquals(0, ports.rawReads)
         session.setForeground(true)
         assertNull(session.beginAccountSelection())
@@ -301,6 +301,105 @@ class ManualDriveSessionTest {
         assertEquals(1, ports.rawReads)
     }
 
+    @Test
+    fun `Restored metadata uses current manual grants and Seoul date without raw reads or Drive`() = runBlocking {
+        val ports = FakePorts()
+        val original = ready(ports)
+        val generation = checkNotNull(original.state.value.generation)
+        val today = LocalDate.parse("2026-11-06")
+        val checked = today.minusDays(1)
+        val scope = ReadScopeKey("d".repeat(64))
+        val expected = CoverageSummary(null, null, scope, checked, null, emptySet(), 2, 1,
+            clock.instant(), setOf(checked), emptySet())
+        ports.memory.coverageForAccess = { access ->
+            if (access.granted.isNotEmpty()) expected else coverage().copy(excludedTypes = setOf(DataType.STEPS))
+        }
+        val restored = ManualDriveSession(ports, clock)
+        restored.refresh()
+        assertEquals(expected, restored.state.value.coverage)
+        assertEquals(generation, ports.memory.scopedRequests.last().first)
+        assertEquals(today, ports.memory.scopedRequests.last().second)
+        assertEquals(setOf(DataType.STEPS), restored.state.value.grantedCategories)
+        assertEquals(ManualDrivePhase.AUTHORIZATION_REQUIRED, restored.state.value.phase)
+        ports.grants = emptySet()
+        restored.refreshGrants()
+        val revoked = checkNotNull(restored.state.value.coverage)
+        assertNull(revoked.scopeKey)
+        assertNull(revoked.scopeCheckedThrough)
+        assertNull(revoked.scopePendingCount)
+        assertNull(revoked.scopeBlockedCount)
+        assertTrue(revoked.recentCheckedDays.isEmpty())
+        assertEquals(setOf(DataType.STEPS), revoked.excludedTypes)
+        assertTrue(restored.state.value.grantedCategories.isEmpty())
+        ports.grants = setOf(DataType.STEPS)
+        restored.setForeground(true)
+        restored.setPrivateFolderConsent(true)
+        val selected = configure(restored, ports)
+        assertEquals(generation, selected.generation)
+        assertEquals(expected, restored.state.value.coverage)
+        assertEquals(0, ports.rawReads)
+        assertEquals(0, ports.proofs)
+        assertEquals(0, ports.transports)
+    }
+
+    @Test
+    fun `Delayed metadata success or failure cannot replace newer ticket generation owner or refresh`() = runBlocking {
+        for (change in listOf("ticket", "reset", "owner", "refresh", "grants")) {
+            for (fail in listOf(false, true)) {
+                val ports = FakePorts()
+                val session = ready(ports)
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                ports.memory.duringScoped = {
+                    entered.complete(Unit)
+                    release.await()
+                    if (fail) error("합성 지연 메타데이터 실패")
+                }
+                val delayed = async { session.refresh() }
+                entered.await()
+                val proofEntered = CompletableDeferred<Unit>()
+                val proofRelease = CompletableDeferred<Unit>()
+                var owner: kotlinx.coroutines.Deferred<BatchOutcome?>? = null
+                when (change) {
+                    "ticket" -> {
+                        val ticket = checkNotNull(session.beginAuthorization())
+                        assertTrue(session.acceptAuthorization(ticket, false, "synthetic-memory-only", scopes))
+                    }
+                    "reset" -> assertTrue(session.resetConfiguration())
+                    "owner" -> {
+                        ports.duringProof = { proofEntered.complete(Unit); proofRelease.await() }
+                        owner = async { session.continueManual() }
+                        proofEntered.await()
+                        session.refreshGrants()
+                    }
+                    "refresh" -> {
+                        ports.memory.current = checkNotNull(ports.memory.current).copy(
+                            coverage = coverage().copy(lastUploadAt = clock.instant()))
+                        session.refresh()
+                    }
+                    "grants" -> { ports.grants = emptySet(); session.refreshGrants() }
+                }
+                val newest = session.state.value
+                release.complete(Unit)
+                delayed.await()
+                assertEquals("$change failure=$fail", newest, session.state.value)
+                proofRelease.complete(Unit)
+                owner?.await()
+                assertEquals(if (change == "owner") 1 else 0, ports.rawReads)
+            }
+        }
+        for (failure in listOf("status", "generation")) {
+            val ports = FakePorts()
+            val session = ready(ports)
+            ports.memory.scopedStatus = if (failure == "status") StateStatus.UNAVAILABLE else StateStatus.READY
+            ports.memory.scopedGeneration = if (failure == "generation") DestinationGeneration("stale") else null
+            session.refresh()
+            assertEquals(ManualDrivePhase.BLOCKED, session.state.value.phase)
+            assertEquals(0, ports.rawReads)
+            assertEquals(0, ports.proofs)
+        }
+    }
+
     private suspend fun configure(session: ManualDriveSession, ports: FakePorts): BoundDriveAuthorization.Ticket {
         val picker = checkNotNull(session.beginAccountSelection())
         return checkNotNull(session.selectAccount(true, picker, true, account.name, account.type,
@@ -342,6 +441,7 @@ class ManualDriveSessionTest {
                 val callback = duringAccess
                 duringAccess = {}
                 callback()
+                assertEquals(SyncTrigger.MANUAL, trigger)
                 accesses++
                 return ReadAccess(true, grants, grants.associateWith { ReadScope.EXPLICIT_DAY })
             }
@@ -409,12 +509,17 @@ class ManualDriveSessionTest {
         }
     }
 
-    private class MemoryStore : SyncStateStore {
+    private inner class MemoryStore : SyncStateStore {
         var current: SyncState? = null
         var resetStatus = CommitStatus.COMMITTED
         val resetExpected = mutableListOf<DestinationGeneration?>()
         val resetGeneration = DestinationGeneration("reset-generation")
         var duringLoad: suspend () -> Unit = {}
+        var duringScoped: suspend () -> Unit = {}
+        var scopedStatus = StateStatus.READY
+        var scopedGeneration: DestinationGeneration? = null
+        var coverageForAccess: ((ReadAccess) -> CoverageSummary)? = null
+        val scopedRequests = mutableListOf<Triple<DestinationGeneration, LocalDate, ReadAccess>>()
         override suspend fun load(): SyncStateRead {
             val callback = duringLoad
             duringLoad = {}
@@ -426,7 +531,17 @@ class ManualDriveSessionTest {
             if (resetStatus == CommitStatus.COMMITTED) current = current?.copy(generation = resetGeneration, configuration = null)
             return SyncCommit(resetStatus, resetGeneration)
         }
-        override suspend fun loadForScope(expected: DestinationGeneration, todayInSeoul: LocalDate, access: ReadAccess) = load()
+        override suspend fun loadForScope(expected: DestinationGeneration, todayInSeoul: LocalDate, access: ReadAccess): SyncStateRead {
+            scopedRequests += Triple(expected, todayInSeoul, access)
+            val snapshot = current
+            val callback = duringScoped
+            duringScoped = {}
+            callback()
+            if (scopedStatus != StateStatus.READY) return SyncStateRead(scopedStatus, null)
+            return SyncStateRead(StateStatus.READY, snapshot?.copy(
+                generation = scopedGeneration ?: snapshot.generation,
+                coverage = coverageForAccess?.invoke(access) ?: snapshot.coverage))
+        }
         override suspend fun transact(expected: DestinationGeneration?, mutation: SyncMutation): SyncCommit = error("실행 대역")
         override suspend fun loadDay(expected: DestinationGeneration, date: LocalDate, scopeKey: ReadScopeKey): DayState? = null
         override suspend fun loadUnresolvedCreates(expected: DestinationGeneration, date: LocalDate): Set<Dataset>? = setOf(Dataset.DAILY)

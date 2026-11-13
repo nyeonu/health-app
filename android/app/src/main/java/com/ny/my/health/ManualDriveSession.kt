@@ -69,6 +69,7 @@ internal class ManualDriveSession(
     val state: StateFlow<ManualDriveState> = mutableState.asStateFlow()
     private var sequence = 0L
     private var epoch = 0L
+    private var metadataSequence = 0L
     private var picker: Long? = null
     private var ticket: BoundDriveAuthorization.Ticket? = null
     private var authorization: BoundDriveAuthorization? = null
@@ -110,29 +111,46 @@ internal class ManualDriveSession(
     }
 
     /** 시작·복원은 메타데이터만 읽으며 읽기/인가/업로드를 시작하지 않는다. */
-    suspend fun refresh() = safely {
-        val read = ports.store.load()
-        if (read.status == StateStatus.ABSENT) {
-            mutableState.value = state.value.copy(configured = false, generation = null,
-                categories = emptySet(), enrolledDay = null, coverage = null, phase = ManualDrivePhase.UNCONFIGURED)
-        } else {
-            check(read.status == StateStatus.READY)
-            val current = checkNotNull(read.state)
-            if (current.generation != state.value.generation) { epoch++; clearAuthorization() }
-            val config = current.configuration
-            mutableState.value = state.value.copy(generation = current.generation, configured = config != null,
-                categories = config?.categories.orEmpty(), enrolledDay = config?.enrolledDay, coverage = current.coverage,
-                phase = when {
-                    ownerRunning -> ManualDrivePhase.RUNNING
-                    config == null -> ManualDrivePhase.UNCONFIGURED
-                    authorization != null -> ManualDrivePhase.READY
-                    else -> ManualDrivePhase.AUTHORIZATION_REQUIRED
-                })
+    suspend fun refresh() {
+        if (ownerRunning) return
+        val metadataRequest = ++metadataSequence
+        requestValue(additionalCurrent = { metadataSequence == metadataRequest }) { current ->
+            val read = ports.store.load()
+            requireRequest(current)
+            check(read.status == StateStatus.ABSENT || read.status == StateStatus.READY)
+            val metadataAccess = ports.reader.access(SyncTrigger.MANUAL)
+            requireRequest(current)
+            if (read.status == StateStatus.ABSENT) {
+                clearAuthorization()
+                mutableState.value = state.value.copy(configured = false, generation = null,
+                    categories = emptySet(), enrolledDay = null, coverage = null,
+                    grantedCategories = grantedCategories(metadataAccess), phase = ManualDrivePhase.UNCONFIGURED)
+            } else {
+                check(read.status == StateStatus.READY)
+                val loaded = checkNotNull(read.state)
+                val scoped = ports.store.loadForScope(loaded.generation, today(), metadataAccess)
+                requireRequest(current)
+                check(scoped.status == StateStatus.READY)
+                val latest = checkNotNull(scoped.state)
+                check(latest.generation == loaded.generation)
+                if (latest.generation != state.value.generation) { epoch++; clearAuthorization() }
+                val granted = grantedCategories(metadataAccess)
+                if (granted.isEmpty()) clearAuthorization()
+                val config = latest.configuration
+                mutableState.value = state.value.copy(generation = latest.generation, configured = config != null,
+                    categories = config?.categories.orEmpty(), enrolledDay = config?.enrolledDay,
+                    grantedCategories = granted, coverage = latest.coverage,
+                    phase = when {
+                        config == null -> ManualDrivePhase.UNCONFIGURED
+                        authorization != null -> ManualDrivePhase.READY
+                        else -> ManualDrivePhase.AUTHORIZATION_REQUIRED
+                    })
+            }
         }
     }
 
-    /** 권한 화면 복귀 때 메타데이터 권한만 갱신한다. */
-    suspend fun refreshGrants() = safely { access() }
+    /** 권한 화면 복귀 때 같은 실제 범위의 메타데이터를 다시 투영한다. */
+    suspend fun refreshGrants() = refresh()
 
     suspend fun beginAccountSelection(): Long? {
         if (ownerRunning) return null
@@ -166,7 +184,9 @@ internal class ManualDriveSession(
                 check(commit.status == CommitStatus.COMMITTED)
                 checkNotNull(commit.generation)
             }
-            val refreshed = ports.store.load()
+            val metadataAccess = ports.reader.access(SyncTrigger.MANUAL)
+            requireRequest(current)
+            val refreshed = ports.store.loadForScope(generation, today(), metadataAccess)
             requireRequest(current)
             check(refreshed.status == StateStatus.READY)
             val latest = checkNotNull(refreshed.state)
@@ -177,6 +197,7 @@ internal class ManualDriveSession(
             clearAuthorization()
             mutableState.value = state.value.copy(generation = generation, configured = true,
                 categories = config.categories, enrolledDay = config.enrolledDay, coverage = latest.coverage,
+                grantedCategories = grantedCategories(metadataAccess),
                 phase = ManualDrivePhase.AUTHORIZATION_REQUIRED)
             BoundDriveAuthorization.Ticket(++sequence, generation, selected).also { ticket = it }
         }
@@ -276,13 +297,16 @@ internal class ManualDriveSession(
     private suspend fun access(current: () -> Boolean = { true }): Set<DataType> {
         val access = ports.reader.access(SyncTrigger.MANUAL)
         requireRequest(current)
-        val granted = if (access.available) access.granted.filterTo(mutableSetOf()) {
-            access.scopeByType[it] == ReadScope.EXPLICIT_DAY
-        } else emptySet()
+        val granted = grantedCategories(access)
         mutableState.value = state.value.copy(grantedCategories = granted)
         if (granted.isEmpty()) clearAuthorization()
         return granted
     }
+    private fun grantedCategories(access: ReadAccess): Set<DataType> =
+        if (access.available) access.granted.filterTo(mutableSetOf()) {
+            access.scopeByType[it] == ReadScope.EXPLICIT_DAY
+        } else emptySet()
+
     private suspend fun permitted(current: () -> Boolean = { true }) =
         state.value.foreground && state.value.privateFolderConsent && access(current).isNotEmpty()
 
@@ -290,15 +314,17 @@ internal class ManualDriveSession(
     private fun requireRequest(current: () -> Boolean) {
         if (!current()) throw SupersededRequest()
     }
-    private suspend fun <T> requestValue(action: suspend (() -> Boolean) -> T): T? {
+    private suspend fun <T> requestValue(additionalCurrent: () -> Boolean = { true },
+        action: suspend (() -> Boolean) -> T): T? {
         val requestSequence = sequence
         val requestEpoch = epoch
         val generation = state.value.generation
-        val current = { !ownerRunning && sequence == requestSequence && epoch == requestEpoch &&
+        val current = { additionalCurrent() && !ownerRunning && sequence == requestSequence && epoch == requestEpoch &&
             state.value.generation == generation }
         return safelyValue(current) { action(current) }
     }
-    private fun yesterday() = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))).minusDays(1)
+    private fun today() = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")))
+    private fun yesterday() = today().minusDays(1)
     private fun clearAuthorization() {
         authorization = null
         ticket = null

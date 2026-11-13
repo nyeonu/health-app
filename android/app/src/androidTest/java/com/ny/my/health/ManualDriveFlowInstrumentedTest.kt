@@ -77,6 +77,7 @@ class ManualDriveFlowInstrumentedTest {
             val restored = f.session()
             restored.refresh()
             assertEquals(durable.generation, restored.state.value.generation)
+            assertEquals(scoped.coverage, restored.state.value.coverage)
             assertEquals(ManualDrivePhase.AUTHORIZATION_REQUIRED, restored.state.value.phase)
             assertFalse(restored.state.value.privateFolderConsent)
             assertEquals(1, f.rawReads)
@@ -99,6 +100,90 @@ class ManualDriveFlowInstrumentedTest {
             assertNull(f.reopen().load().state!!.configuration)
             assertEquals(1, f.rawReads)
             assertFalse(session.state.value.toString().contains("memory-only"))
+        } finally { f.close() }
+    }
+
+    @Test fun reopenedSqliteRestoresScopedEmptyConfirmedBlockedAndGrantChangesWithoutHealthOrDrive() = runBlocking {
+        val f = ManualDriveNativeFixture()
+        try {
+            val enrolled = f.today.minusDays(4)
+            val config = SyncConfiguration("private-drive", enrolled, false, f.categories)
+            val registering = SqliteSyncStateStore(SyncStateDatabase(f.file), { enrolled.plusDays(1) })
+            val configured = registering.configure(null, config,
+                PrivateDestinationBinding("DRIVE", f.account.name, f.account.type))
+            assertEquals(CommitStatus.COMMITTED, configured.status)
+            val generation = checkNotNull(configured.generation)
+            val scopes = mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY)
+            val key = checkNotNull(SyncPlanner.scopeKey(config, ReadAccess(true, scopes.keys, scopes)))
+            val dates = (0L..3L).map(enrolled::plusDays)
+            val time = f.clock.instant()
+            val attempt = AttemptState(java.util.UUID.randomUUID().toString(), key, scopes, SyncTrigger.MANUAL,
+                time, time, null, dates, "a".repeat(64), 0, emptySet())
+            suspend fun commit(day: DayState? = null, confirmation: FileConfirmation? = null,
+                start: AttemptState? = null, finish: java.time.Instant? = null) {
+                assertEquals(CommitStatus.COMMITTED, f.reopen().transact(generation,
+                    SyncMutation(attempt.id, start, day, confirmation, null, finish)).status)
+            }
+            commit(start = attempt)
+            for ((index, date) in dates.withIndex()) {
+                if (index == 2) {
+                    commit(day = DayState(date, key, scopes, null, DayPhase.BLOCKED, emptyMap(), null,
+                        emptyMap(), BlockReason.DESTINATION_BLOCKED))
+                    continue
+                }
+                val revision = RevisionKey("b".repeat(64), time)
+                val pending = DayState(date, key, scopes, revision, DayPhase.PENDING, scopes, time, emptyMap(), null)
+                commit(day = pending)
+                if (index == 1) commit(day = pending.copy(phase = DayPhase.EMPTY)) else {
+                    val file = DatasetState(Dataset.DAILY, revision, FilePhase.RUNNING, true, null, time, null, null)
+                    commit(day = pending.copy(phase = DayPhase.RUNNING, datasets = mapOf(Dataset.DAILY to file)))
+                    commit(confirmation = FileConfirmation(FileKey(generation, date, key, Dataset.DAILY, revision.digest),
+                        "synthetic-target-$index", time))
+                }
+            }
+            commit(finish = time)
+            // 새 controller는 원시 기록 없이 실제 재개방한 SQLite의 현재 profile을 복원한다.
+            val restored = f.session()
+            restored.refresh()
+            val coverage = checkNotNull(restored.state.value.coverage)
+            assertEquals(key, coverage.scopeKey)
+            assertEquals(enrolled.plusDays(1), coverage.scopeCheckedThrough)
+            assertEquals(enrolled, coverage.scopeUploadedThrough)
+            assertNull(coverage.checkedThrough)
+            assertNull(coverage.uploadedThrough)
+            assertEquals(1L, coverage.scopePendingCount)
+            assertEquals(1L, coverage.scopeBlockedCount)
+            assertEquals(setOf(f.today.minusDays(1)), coverage.recentCheckedDays)
+            assertEquals(setOf(f.today.minusDays(1)), coverage.recentUploadedDays)
+            assertEquals(f.categories - DataType.STEPS, coverage.excludedTypes)
+            assertEquals(time, coverage.lastUploadAt)
+            assertEquals(ManualDrivePhase.AUTHORIZATION_REQUIRED, restored.state.value.phase)
+            assertFalse(f.reopen().load().state!!.configuration!!.automatic)
+
+            f.grants = setOf(DataType.WEIGHT)
+            restored.refreshGrants()
+            val changed = checkNotNull(restored.state.value.coverage)
+            assertNotEquals(key, changed.scopeKey)
+            assertNull(changed.scopeCheckedThrough)
+            assertNull(changed.scopeUploadedThrough)
+            assertEquals(4L, changed.scopePendingCount)
+            assertEquals(0L, changed.scopeBlockedCount)
+            assertTrue(changed.recentCheckedDays.isEmpty())
+            assertTrue(changed.recentUploadedDays.isEmpty())
+            assertEquals(f.categories - DataType.WEIGHT, changed.excludedTypes)
+            f.grants = emptySet()
+            restored.refreshGrants()
+            val revoked = checkNotNull(restored.state.value.coverage)
+            assertNull(revoked.scopeKey)
+            assertNull(revoked.scopePendingCount)
+            assertNull(revoked.scopeBlockedCount)
+            assertEquals(f.categories, revoked.excludedTypes)
+            f.grants = setOf(DataType.STEPS)
+            restored.refreshGrants()
+            assertEquals(coverage, restored.state.value.coverage)
+            assertEquals(0, f.rawReads)
+            assertEquals(0, f.proofs)
+            assertEquals(0, f.writes)
         } finally { f.close() }
     }
 
