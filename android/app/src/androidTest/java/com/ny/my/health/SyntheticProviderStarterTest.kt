@@ -44,6 +44,7 @@ class SyntheticProviderStarterTest {
         val document = DocumentsContract.buildDocumentUriUsingTree(tree, SyntheticDocumentsProvider.SEEDED_ID)
         val root = DocumentsContract.buildDocumentUriUsingTree(tree, SyntheticDocumentsProvider.TREE_ID)
         // URI·ID·원시 예외가 JUnit 실패 출력에 포함되지 않도록 경계 예외를 고정 문구로 바꾼다.
+        var primaryFailure: Throwable? = null
         try {
             command(SyntheticDocumentsProvider.Control.REVOKE)
             command(SyntheticDocumentsProvider.Control.RESET)
@@ -82,11 +83,27 @@ class SyntheticProviderStarterTest {
             } == true)
             command(SyntheticDocumentsProvider.Control.REVOKE)
             expectSecurityDenial { resolver.query(document, null, null, null, null)?.close() }
-        } catch (_: Exception) {
-            throw AssertionError("합성 SAF 경계 실행 실패")
+        } catch (failure: Throwable) {
+            val reportedFailure = if (failure is AssertionError) failure else AssertionError("합성 SAF 경계 실행 실패")
+            primaryFailure = reportedFailure
+            throw reportedFailure
         } finally {
-            command(SyntheticDocumentsProvider.Control.REVOKE)
-            command(SyntheticDocumentsProvider.Control.RESET)
+            // 한 정리 작업이 실패해도 나머지를 시도하고, 본래 실패를 정리 실패로 덮어쓰지 않는다.
+            var cleanupFailure: AssertionError? = null
+            for (control in listOf(SyntheticDocumentsProvider.Control.REVOKE, SyntheticDocumentsProvider.Control.RESET)) {
+                try {
+                    command(control)
+                } catch (_: Throwable) {
+                    val redacted = AssertionError(if (control == SyntheticDocumentsProvider.Control.REVOKE)
+                        "합성 grant 정리 실패" else "합성 fixture 정리 실패")
+                    val primary = primaryFailure
+                    val previousCleanup = cleanupFailure
+                    if (primary != null) primary.addSuppressed(redacted)
+                    else if (previousCleanup != null) previousCleanup.addSuppressed(redacted)
+                    else cleanupFailure = redacted
+                }
+            }
+            if (primaryFailure == null) cleanupFailure?.let { throw it }
         }
     }
 
