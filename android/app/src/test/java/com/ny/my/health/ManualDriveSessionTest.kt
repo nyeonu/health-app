@@ -400,6 +400,140 @@ class ManualDriveSessionTest {
         }
     }
 
+    @Test
+    fun `Valid ticket profiling keeps external authorization wait and stale busy merged requests cannot finish owner`() = runBlocking {
+        val ports = FakePorts()
+        val profiles = mutableListOf<ManualSyncProfiling>()
+        val finished = mutableListOf<ProfileOutcome>()
+        val session = ManualDriveSession(ports, clock, { ManualSyncProfiling() }, { profiles += it },
+            { _, outcome -> assertFalse(ports.running); finished += outcome })
+        session.setForeground(true)
+        session.setPrivateFolderConsent(true)
+        val ticketA = configure(session, ports)
+        assertEquals(1L, profiles.single().collector.snapshot().stages[ProfileStage.AUTHORIZATION_WAIT]?.started)
+        assertTrue(session.expectExternalResult(ticketA.id))
+        session.setForeground(false)
+        assertTrue(finished.isEmpty())
+        session.setForeground(true)
+        assertFalse(session.acceptAuthorization(ticketA, true, null, emptyList()))
+        assertTrue(profiles.single().collector.snapshot().stages[ProfileStage.AUTHORIZATION_WAIT]!!.active)
+        val ticketB = checkNotNull(session.beginAuthorization())
+        assertEquals(listOf(ProfileOutcome.CANCELLED), finished)
+        assertFalse(session.acceptAuthorization(ticketA, false, "synthetic-memory-only", scopes))
+        assertTrue(session.acceptAuthorization(ticketB, false, "synthetic-memory-only", scopes))
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        ports.duringProof = { entered.complete(Unit); release.await() }
+        val owner = async { session.continueManual() }
+        entered.await()
+        assertNull(session.beginAuthorization())
+        assertNull(session.beginAccountSelection())
+        assertEquals(BatchStatus.MERGED, session.continueManual()!!.status)
+        assertEquals(2, profiles.size)
+        assertEquals(1, finished.size)
+        assertTrue(profiles.last().collector.snapshot().stages[ProfileStage.EXECUTION]!!.active)
+        release.complete(Unit)
+        assertEquals(BatchStatus.COMPLETED, owner.await()!!.status)
+        assertSame(profiles.last().collector, ports.destinationProfiling)
+        assertEquals(listOf(ProfileOutcome.CANCELLED, ProfileOutcome.COMPLETED), finished)
+        val summary = profiles.last().collector.snapshot()
+        assertEquals(1L, summary.stages[ProfileStage.CONTINUE_WAIT]!!.completed)
+        assertEquals(1L, summary.stages[ProfileStage.EXECUTION]!!.completed)
+        assertTrue(summary.requests.isEmpty())
+        assertNull(summary.stages[ProfileStage.AUTHORIZATION_HISTORY])
+        assertNull(summary.stages[ProfileStage.START_HISTORY])
+        assertNull(summary.stages[ProfileStage.TERMINAL_HISTORY])
+    }
+
+    @Test
+    fun `Bound outcomes and proof permission failures finish failed profiles without changing business results`() = runBlocking {
+        for (status in listOf(BatchStatus.COMPLETED, BatchStatus.BLOCKED, BatchStatus.STALE,
+            BatchStatus.RETRYABLE, BatchStatus.PENDING)) {
+            val ports = FakePorts().also { it.batchStatus = status }
+            var finished: ProfileOutcome? = null
+            val session = ManualDriveSession(ports, clock, { ManualSyncProfiling() }, {}, { _, result -> finished = result })
+            session.setForeground(true)
+            session.setPrivateFolderConsent(true)
+            val ticket = configure(session, ports)
+            assertTrue(session.acceptAuthorization(ticket, false, "synthetic-memory-only", scopes))
+            assertEquals(status, session.continueManual()!!.status)
+            assertEquals(if (status == BatchStatus.COMPLETED) ProfileOutcome.COMPLETED else ProfileOutcome.FAILED, finished)
+        }
+        for (failure in listOf("proof", "permission", "drive")) {
+            val ports = FakePorts()
+            var finished: ProfileOutcome? = null
+            val session = ManualDriveSession(ports, clock, { ManualSyncProfiling() }, {}, { _, result -> finished = result })
+            session.setForeground(true)
+            session.setPrivateFolderConsent(true)
+            val ticket = configure(session, ports)
+            assertTrue(session.acceptAuthorization(ticket, false, "synthetic-memory-only", scopes))
+            when (failure) {
+                "proof" -> ports.proofBody = "{}"
+                "permission" -> ports.grants = emptySet()
+                "drive" -> ports.duringRun = { error("합성 목적지 실패") }
+            }
+            assertNull(session.continueManual())
+            assertEquals(ProfileOutcome.FAILED, finished)
+            assertEquals(0, ports.rawReads)
+        }
+    }
+
+    @Test
+    fun `Pause reset and withdrawal cancel waiting and running profiles after structured owner cleanup`() = runBlocking {
+        for (running in listOf(false, true)) for (action in listOf("pause", "reset", "withdraw")) {
+            val ports = FakePorts()
+            var finished: ProfileOutcome? = null
+            val session = ManualDriveSession(ports, clock, { ManualSyncProfiling() }, {},
+                { _, result -> assertFalse(ports.running); finished = result })
+            session.setForeground(true)
+            session.setPrivateFolderConsent(true)
+            val ticket = configure(session, ports)
+            kotlinx.coroutines.supervisorScope {
+                val entered = CompletableDeferred<Unit>()
+                ports.duringProof = { entered.complete(Unit); CompletableDeferred<Unit>().await() }
+                val owner = if (running) {
+                    assertTrue(session.acceptAuthorization(ticket, false, "synthetic-memory-only", scopes))
+                    async { session.continueManual() }.also { entered.await() }
+                } else null
+                when (action) {
+                    "pause" -> session.setForeground(false)
+                    "reset" -> assertTrue(session.resetConfiguration())
+                    "withdraw" -> session.setPrivateFolderConsent(false)
+                }
+                if (running) assertNull(finished)
+                if (owner != null) {
+                    runCatching { owner.await() }
+                    assertTrue(owner.isCancelled)
+                }
+            }
+            assertEquals(ProfileOutcome.CANCELLED, finished)
+            assertEquals(0, ports.rawReads)
+        }
+    }
+
+    @Test
+    fun `Null throwing factory and throwing observers preserve successful execution and actual cancellation`() = runBlocking {
+        for (factory in listOf<() -> ManualSyncProfiling?>({ null }, { error("합성 factory 실패") }, { ManualSyncProfiling() })) {
+            val ports = FakePorts()
+            val session = ManualDriveSession(ports, clock, factory,
+                { throw kotlinx.coroutines.CancellationException("합성 관찰 실패") }, { _, _ -> error("합성 관찰 실패") })
+            session.setForeground(true)
+            session.setPrivateFolderConsent(true)
+            val ticket = configure(session, ports)
+            assertTrue(session.acceptAuthorization(ticket, false, "synthetic-memory-only", scopes))
+            assertEquals(BatchStatus.COMPLETED, session.continueManual()!!.status)
+            assertEquals(1, ports.rawReads)
+            val next = checkNotNull(session.beginAuthorization())
+            assertTrue(session.acceptAuthorization(next, false, "synthetic-memory-only", scopes))
+            ports.duringRun = { throw kotlinx.coroutines.CancellationException("합성 실제 취소") }
+            try {
+                session.continueManual()
+                fail("실제 취소가 전파되어야 한다")
+            } catch (_: kotlinx.coroutines.CancellationException) { }
+            assertFalse(ports.running)
+        }
+    }
+
     private suspend fun configure(session: ManualDriveSession, ports: FakePorts): BoundDriveAuthorization.Ticket {
         val picker = checkNotNull(session.beginAccountSelection())
         return checkNotNull(session.selectAccount(true, picker, true, account.name, account.type,
@@ -424,6 +558,8 @@ class ManualDriveSessionTest {
         var batches = 0
         var transports = 0
         var running = false
+        var batchStatus = BatchStatus.COMPLETED
+        var destinationProfiling: SyncProfiling? = null
         var boundAccount: BoundDriveAuthorization.AccountSelection? = null
         var lastTicket: BoundDriveAuthorization.Ticket? = null
         var duringProof: suspend () -> Unit = {}
@@ -480,7 +616,7 @@ class ManualDriveSessionTest {
                 events += "raw"
                 rawReads++
                 batches++
-                return BatchOutcome(BatchStatus.COMPLETED, 0, null)
+                return BatchOutcome(batchStatus, 0, null)
             } finally { running = false }
         }
         override fun transport(token: String): DriveTransport {
@@ -498,6 +634,11 @@ class ManualDriveSessionTest {
                     return DriveResponse(200, proofBody)
                 }
             }
+        }
+        override fun profiledDestination(transport: DriveTransport, generation: DestinationGeneration,
+            profiling: SyncProfiling?): StorageDestination {
+            destinationProfiling = profiling
+            return destination(transport, generation)
         }
         override fun destination(transport: DriveTransport, generation: DestinationGeneration): StorageDestination {
             events += "destination"

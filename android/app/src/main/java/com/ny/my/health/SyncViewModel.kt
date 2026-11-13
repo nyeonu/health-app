@@ -68,14 +68,24 @@ internal fun SyncUiState.invalidateCurrentAttempt(): SyncUiState = copy(
     message = "로컬 동의와 현재 시도 표시를 지웠습니다. 저장된 기록을 확인해 주세요.",
 )
 
-class SyncViewModel(application: Application) : AndroidViewModel(application) {
+class SyncViewModel internal constructor(application: Application,
+    sessionFactory: ((() -> ManualSyncProfiling?, (ManualSyncProfiling) -> Unit,
+        (ManualSyncProfiling, ProfileOutcome) -> Unit) -> ManualDriveSession)?,
+) : AndroidViewModel(application) {
+    constructor(application: Application) : this(application, null)
+
+    private val debugEnabled = application.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+    private val phoneProfilingSession = PhoneProfilingSession(debugEnabled)
+    private val mutableState = MutableStateFlow(SyncUiState(phoneProfiling = phoneProfilingSession.state))
     private val reader = HealthConnectReader(application)
     private val clock = Clock.systemUTC()
     private val syncStore = SqliteSyncStateStore(application)
     private val execution = SyncExecutionSession.get(application) {
         SyncExecutionSession(syncStore, reader, null, clock, { java.util.UUID.randomUUID().toString() })
     }
-    internal val manual = ManualDriveSession(syncStore, reader, execution, clock)
+    internal val manual = sessionFactory?.invoke(::newBoundProfiling, ::boundProfileStarted, ::boundProfileFinished)
+        ?: ManualDriveSession(syncStore, reader, execution, clock,
+            ::newBoundProfiling, ::boundProfileStarted, ::boundProfileFinished)
     private val mutableCategories = MutableStateFlow(DataType.entries.toSet())
     private var categoriesEdited = false
     internal val manualCategories = mutableCategories.asStateFlow()
@@ -139,9 +149,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private val debugEnabled = application.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-    private val phoneProfilingSession = PhoneProfilingSession(debugEnabled)
-    private val mutableState = MutableStateFlow(SyncUiState(phoneProfiling = phoneProfilingSession.state))
     internal val state = mutableState.asStateFlow()
     private var foreground = false
     private var syncJob: Job? = null
@@ -460,6 +467,19 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     internal fun copyPhoneProfiling(write: (String) -> Unit) {
         phoneProfilingSession.copy(write)
+        mutableState.value = mutableState.value.copy(phoneProfiling = phoneProfilingSession.state)
+    }
+
+    private fun newBoundProfiling(): ManualSyncProfiling? = if (debugEnabled) ManualSyncProfiling() else null
+
+    private fun boundProfileStarted(profile: ManualSyncProfiling) {
+        phoneProfilingSession.begin(profile)
+        mutableState.value = mutableState.value.copy(phoneProfiling = phoneProfilingSession.state)
+    }
+
+    private fun boundProfileFinished(profile: ManualSyncProfiling, @Suppress("UNUSED_PARAMETER") outcome: ProfileOutcome) {
+        profile.publish(debugEnabled) { Log.d("SyncProfiling", it) }
+        phoneProfilingSession.complete(profile)
         mutableState.value = mutableState.value.copy(phoneProfiling = phoneProfilingSession.state)
     }
 

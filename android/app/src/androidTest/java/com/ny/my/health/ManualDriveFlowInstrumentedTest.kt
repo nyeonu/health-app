@@ -270,6 +270,142 @@ class ManualDriveFlowInstrumentedTest {
         }
     }
 
+    @Test fun boundViewModelPublishesRealSqliteSuccessFailureCancellationAndDiscardsPreviousReportOnNewAttempt() = runBlocking {
+        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        val application = instrumentation.targetContext.applicationContext as android.app.Application
+        for (scenario in listOf("empty", "proof", "permission", "drive", "pause", "reset", "withdraw")) {
+            val f = ManualDriveNativeFixture()
+            val models = androidx.lifecycle.ViewModelStore()
+            var finishedAfterCleanup = false
+            var cleanupObserved = false
+            var captured: ManualSyncProfiling? = null
+            var uploaderCollector: SyncProfiling? = null
+            val entered = CompletableDeferred<Unit>()
+            val execution = SyncExecutionSession(f.store, f.reader, null, f.clock,
+                { java.util.UUID.randomUUID().toString() }, { if (it == SyncSessionPhase.CLEANUP) cleanupObserved = true })
+            val syntheticReader = object : ScopedHealthReader {
+                override suspend fun access(trigger: SyncTrigger) = f.reader.access(trigger)
+                override suspend fun readScoped(date: java.time.LocalDate, requestedScopes: Map<DataType, ReadScope>): ScopedSnapshot {
+                    val snapshot = f.reader.readScoped(date, requestedScopes)
+                    return if (scenario == "drive") snapshot.copy(snapshot = snapshot.snapshot.copy(steps = 0L)) else snapshot
+                }
+            }
+            val ports = object : ManualDrivePorts {
+                override val store: SyncStateStore = f.store
+                override val reader: ScopedHealthReader = syntheticReader
+                override suspend fun binding(generation: DestinationGeneration) = f.account
+                override suspend fun configure(expected: DestinationGeneration?, configuration: SyncConfiguration,
+                    account: BoundDriveAuthorization.AccountSelection) = f.store.configure(expected, configuration,
+                        PrivateDestinationBinding("DRIVE", account.name, account.type))
+                override suspend fun reopen(generation: DestinationGeneration) = f.store.reopenManualBlockers(generation)
+                override suspend fun runPrepared(generation: DestinationGeneration, prepare: suspend () -> DestinationSync) =
+                    execution.runPrepared(SyncTrigger.MANUAL, generation, prepare)
+                override fun transport(token: String) = object : DriveTransport {
+                    override suspend fun execute(method: String, url: String, contentType: String?, body: ByteArray?): DriveResponse {
+                        if (url == BoundDriveAuthorization.ABOUT_URL) {
+                            entered.complete(Unit)
+                            if (scenario in setOf("pause", "reset", "withdraw")) CompletableDeferred<Unit>().await()
+                            return DriveResponse(200, if (scenario == "proof") "{}" else f.proofBody)
+                        }
+                        assertEquals("drive", scenario)
+                        return DriveResponse(503, "")
+                    }
+                }
+                override fun destination(transport: DriveTransport, generation: DestinationGeneration): StorageDestination =
+                    profiledDestination(transport, generation, null)
+                override fun profiledDestination(transport: DriveTransport, generation: DestinationGeneration,
+                    profiling: SyncProfiling?): StorageDestination {
+                    uploaderCollector = profiling
+                    return DriveApiDestination(PrivateDriveUploader(transport, profiling, f.clock), generation, f.store, f.clock)
+                }
+            }
+            try {
+                val model = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    val factory = object : ViewModelProvider.Factory {
+                        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                            @Suppress("UNCHECKED_CAST")
+                            return SyncViewModel(application) { create, begin, finish ->
+                                ManualDriveSession(ports, f.clock,
+                                    { create().also { captured = it } }, begin,
+                                    { profile, outcome -> finishedAfterCleanup = cleanupObserved; finish(profile, outcome) })
+                            } as T
+                        }
+                    }
+                    ViewModelProvider(models, factory)[SyncViewModel::class.java]
+                }
+                instrumentation.waitForIdleSync()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    val ticket = f.configure(model.manual)
+                    assertTrue(model.state.value.phoneProfiling.collecting)
+                    assertNull(model.state.value.phoneProfiling.report)
+                    assertTrue(model.manual.acceptAuthorization(ticket, false, "synthetic-memory-only", f.scopes))
+                    if (scenario == "permission") f.grants = emptySet()
+                    model.continueManual()
+                }
+                if (scenario in setOf("pause", "reset", "withdraw")) {
+                    entered.await()
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        assertNull(model.state.value.phoneProfiling.report)
+                        when (scenario) {
+                            "pause" -> model.pause()
+                            "reset" -> model.resetManualConfiguration()
+                            "withdraw" -> model.manual.setPrivateFolderConsent(false)
+                        }
+                    }
+                }
+                kotlinx.coroutines.withTimeout(10_000) {
+                    while (model.state.value.phoneProfiling.collecting) kotlinx.coroutines.delay(10)
+                }
+                val report = checkNotNull(model.state.value.phoneProfiling.report)
+                val summary = checkNotNull(captured).collector.snapshot()
+                assertTrue(finishedAfterCleanup)
+                assertEquals(24, report.safeText.trim().lines().size)
+                val outcome = summary.stages.getValue(ProfileStage.EXECUTION)
+                when (scenario) {
+                    "empty" -> {
+                        assertEquals(1L, outcome.completed)
+                        assertEquals(1L, summary.stages.getValue(ProfileStage.HEALTH_READ).completed)
+                        assertEquals(2L, summary.stages.getValue(ProfileStage.NORMALIZE).completed)
+                        assertEquals(2L, summary.stages.getValue(ProfileStage.CSV_EXPORT).completed)
+                        val durable = f.reopen().load().state!!
+                        assertNotNull(durable.attempt!!.finishedAt)
+                        assertEquals(DayPhase.EMPTY, durable.days.values.single().phase)
+                    }
+                    "pause", "reset", "withdraw" -> assertEquals(1L, outcome.cancelled)
+                    else -> assertEquals(1L, outcome.failed)
+                }
+                if (scenario == "drive") {
+                    assertSame(checkNotNull(captured).collector, uploaderCollector)
+                    assertTrue(summary.requests.values.sumOf { it.started } > 0L)
+                    assertTrue(summary.operations.values.sumOf { it.started } > 0L)
+                    assertEquals(1L, summary.stages.getValue(ProfileStage.DRIVE_TOTAL).failed)
+                } else assertTrue(summary.requests.isEmpty())
+                for (stage in listOf(ProfileStage.AUTHORIZATION_HISTORY, ProfileStage.START_HISTORY, ProfileStage.TERMINAL_HISTORY))
+                    assertNull(summary.stages[stage])
+                assertFalse(report.safeText.contains("memory-only"))
+                assertFalse(report.safeText.contains(f.account.name))
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    var copied: String? = null
+                    model.copyPhoneProfiling { copied = it }
+                    assertEquals(report.safeText, copied)
+                    assertEquals(PhoneCopyState.COPIED, model.state.value.phoneProfiling.copyState)
+                    f.grants = setOf(DataType.STEPS)
+                    if (scenario == "reset") f.configure(model.manual) else {
+                        model.manual.setForeground(true)
+                        model.manual.setPrivateFolderConsent(true)
+                        assertNotNull(model.manual.beginAuthorization())
+                    }
+                    assertTrue(model.state.value.phoneProfiling.collecting)
+                    assertNull(model.state.value.phoneProfiling.report)
+                    assertEquals(PhoneCopyState.NONE, model.state.value.phoneProfiling.copyState)
+                }
+            } finally {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { models.clear() }
+                f.close()
+            }
+        }
+    }
+
     private class SyntheticBridge : ManualDriveBridge {
         var pickerResult: ((Boolean, Boolean, String?, String?) -> Unit)? = null
         var authorizationResult: ((Boolean, String?, List<String>) -> Unit)? = null

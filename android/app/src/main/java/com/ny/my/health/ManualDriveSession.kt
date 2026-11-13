@@ -38,15 +38,24 @@ internal interface ManualDrivePorts {
     suspend fun runPrepared(generation: DestinationGeneration, prepare: suspend () -> DestinationSync): BatchOutcome
     fun transport(token: String): DriveTransport
     fun destination(transport: DriveTransport, generation: DestinationGeneration): StorageDestination
+    fun profiledDestination(transport: DriveTransport, generation: DestinationGeneration,
+        profiling: SyncProfiling?): StorageDestination = destination(transport, generation)
 }
 
 /** 외부 동의 복귀와 실행을 분리하고 전경의 명시 계속만 gate owner에게 전달한다. */
 internal class ManualDriveSession(
     private val ports: ManualDrivePorts,
     private val clock: Clock,
+    private val newProfiling: () -> ManualSyncProfiling? = { null },
+    private val onProfileStarted: (ManualSyncProfiling) -> Unit = {},
+    private val onProfileFinished: (ManualSyncProfiling, ProfileOutcome) -> Unit = { _, _ -> },
 ) {
     constructor(sqliteStore: SqliteSyncStateStore, healthReader: ScopedHealthReader,
-        execution: SyncExecutionSession, clock: Clock = Clock.systemUTC()) : this(object : ManualDrivePorts {
+        execution: SyncExecutionSession, clock: Clock = Clock.systemUTC(),
+        newProfiling: () -> ManualSyncProfiling? = { null },
+        onProfileStarted: (ManualSyncProfiling) -> Unit = {},
+        onProfileFinished: (ManualSyncProfiling, ProfileOutcome) -> Unit = { _, _ -> },
+    ) : this(object : ManualDrivePorts {
         override val store: SyncStateStore = sqliteStore
         override val reader: ScopedHealthReader = healthReader
         override suspend fun binding(generation: DestinationGeneration): BoundDriveAuthorization.AccountSelection? {
@@ -63,7 +72,10 @@ internal class ManualDriveSession(
         override fun transport(token: String): DriveTransport = GoogleDriveTransport(token)
         override fun destination(transport: DriveTransport, generation: DestinationGeneration): StorageDestination =
             DriveApiDestination(PrivateDriveUploader(transport, clock = clock), generation, sqliteStore, clock)
-    }, clock)
+        override fun profiledDestination(transport: DriveTransport, generation: DestinationGeneration,
+            profiling: SyncProfiling?): StorageDestination =
+            DriveApiDestination(PrivateDriveUploader(transport, profiling = profiling, clock = clock), generation, sqliteStore, clock)
+    }, clock, newProfiling, onProfileStarted, onProfileFinished)
 
     private val mutableState = MutableStateFlow(ManualDriveState())
     val state: StateFlow<ManualDriveState> = mutableState.asStateFlow()
@@ -76,6 +88,7 @@ internal class ManualDriveSession(
     private var ownerRunning = false
     private var ownerJob: Job? = null
     private var externalRequest: Long? = null
+    private var profile: ManualSyncProfiling? = null
 
     fun setForeground(foreground: Boolean) {
         if (state.value.foreground != foreground) epoch++
@@ -85,7 +98,10 @@ internal class ManualDriveSession(
             externalRequest = null
             ownerJob?.cancel()
             authorization = null
-            if (ticket?.id != retained) ticket = null
+            if (ticket?.id != retained) {
+                if (!ownerRunning) finishProfile(ProfileOutcome.CANCELLED)
+                ticket = null
+            }
             if (picker != retained) picker = null
             if (!ownerRunning && state.value.configured)
                 mutableState.value = state.value.copy(phase = ManualDrivePhase.AUTHORIZATION_REQUIRED)
@@ -199,7 +215,7 @@ internal class ManualDriveSession(
                 categories = config.categories, enrolledDay = config.enrolledDay, coverage = latest.coverage,
                 grantedCategories = grantedCategories(metadataAccess),
                 phase = ManualDrivePhase.AUTHORIZATION_REQUIRED)
-            BoundDriveAuthorization.Ticket(++sequence, generation, selected).also { ticket = it }
+            BoundDriveAuthorization.Ticket(++sequence, generation, selected).also { ticket = it; startProfile() }
         }
     }
 
@@ -215,7 +231,7 @@ internal class ManualDriveSession(
             requireRequest(current)
             checkNotNull(selected)
             clearAuthorization()
-            BoundDriveAuthorization.Ticket(++sequence, generation, selected).also { ticket = it }
+            BoundDriveAuthorization.Ticket(++sequence, generation, selected).also { ticket = it; startProfile() }
         }
     }
 
@@ -228,6 +244,10 @@ internal class ManualDriveSession(
             hasResolution, token, grantedScopes)
         externalRequest = null
         authorization = accepted
+        if (!hasResolution) {
+            observe { profile?.authorizationReturned(accepted != null) }
+            if (accepted == null) finishProfile(ProfileOutcome.FAILED)
+        }
         mutableState.value = state.value.copy(phase = if (accepted != null) ManualDrivePhase.READY
             else ManualDrivePhase.AUTHORIZATION_REQUIRED)
         return accepted != null
@@ -236,12 +256,14 @@ internal class ManualDriveSession(
     suspend fun continueManual(): BatchOutcome? = safelyValue {
         val generation = checkNotNull(state.value.generation)
         var ownsPreparation = false
+        var outcome = ProfileOutcome.FAILED
         try {
             ports.runPrepared(generation) {
                 ownsPreparation = true
                 ownerRunning = true
                 epoch++
                 ownerJob = currentCoroutineContext()[Job]
+                observe { profile?.executionStarted() }
                 mutableState.value = state.value.copy(phase = ManualDrivePhase.RUNNING, outcome = null)
                 val currentTicket = checkNotNull(ticket)
                 val credential = checkNotNull(authorization)
@@ -252,13 +274,24 @@ internal class ManualDriveSession(
                     checkCurrent(currentTicket, capturedEpoch)
                     check(ports.reopen(generation).status == CommitStatus.COMMITTED)
                     checkCurrent(currentTicket, capturedEpoch)
-                    DestinationSync(ports.store, ports.reader, ports.destination(transport, generation), clock)
+                    DestinationSync(ports.store, ports.reader,
+                        ports.profiledDestination(transport, generation, profile?.collector), clock, profile?.collector)
                 }
-            }.also { outcome ->
-                mutableState.value = state.value.copy(outcome = outcome.status, coverage = outcome.coverage ?: state.value.coverage)
+            }.also { result ->
+                outcome = if (result.status == BatchStatus.COMPLETED) ProfileOutcome.COMPLETED else ProfileOutcome.FAILED
+                if (!ownsPreparation && !ownerRunning && result.status != BatchStatus.MERGED) finishProfile(outcome)
+                mutableState.value = state.value.copy(outcome = result.status, coverage = result.coverage ?: state.value.coverage)
             }
+        } catch (cancelled: CancellationException) {
+            outcome = ProfileOutcome.CANCELLED
+            if (!ownsPreparation && !ownerRunning) finishProfile(outcome)
+            throw cancelled
+        } catch (failure: Throwable) {
+            if (!ownsPreparation && !ownerRunning) finishProfile(ProfileOutcome.FAILED)
+            throw failure
         } finally {
             if (ownsPreparation) {
+                finishProfile(outcome)
                 ownerRunning = false
                 ownerJob = null
                 clearAuthorization()
@@ -325,7 +358,29 @@ internal class ManualDriveSession(
     }
     private fun today() = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")))
     private fun yesterday() = today().minusDays(1)
+    private fun startProfile() {
+        profile = try { newProfiling() } catch (_: Throwable) { null }
+        profile?.let { current ->
+            observe { current.authorizationStarted() }
+            observe { onProfileStarted(current) }
+        }
+    }
+
+    private fun finishProfile(outcome: ProfileOutcome) {
+        val current = profile ?: return
+        profile = null
+        observe { current.finish(outcome) }
+        observe { onProfileFinished(current, outcome) }
+    }
+
+    private inline fun observe(action: () -> Unit) {
+        try { action() } catch (_: Throwable) {
+            // 진단 관찰 실패는 업무 결과와 실제 취소를 바꾸지 않는다.
+        }
+    }
+
     private fun clearAuthorization() {
+        if (!ownerRunning) finishProfile(ProfileOutcome.CANCELLED)
         authorization = null
         ticket = null
         externalRequest = null
