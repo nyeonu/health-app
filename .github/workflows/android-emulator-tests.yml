@@ -6,6 +6,14 @@ on:
       - 'android/**'
       - '.github/workflows/android-emulator-tests.yml'
   workflow_dispatch:
+    inputs:
+      test_scope:
+        description: '테스트 범위: starter는 기반 기동 진단이며 전체 회귀 검증이 아님'
+        type: choice
+        default: full
+        options:
+          - full
+          - saf-provider-starter
 
 permissions:
   contents: read
@@ -63,6 +71,8 @@ jobs:
 
       - name: Run account-free Android UI and lifecycle instrumentation
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          TEST_SCOPE: ${{ inputs.test_scope }}
         with:
           api-level: ${{ matrix.api-level }}
           target: google_apis
@@ -78,9 +88,14 @@ jobs:
             if adb shell pm list packages com.google.android.googlesdksetup | tr -d '\r' | grep -Fxq 'package:com.google.android.googlesdksetup'; then adb shell am force-stop com.google.android.googlesdksetup; fi
             # 테스트 전 기존 launcher 종료를 유지하며 ANR 대화상자 해소는 보장하지 않는다.
             adb shell am force-stop com.google.android.apps.nexuslauncher
-            (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.ny.my.health.HistoryProcessRecoveryInstrumentedTest,com.ny.my.health.SyncStateProcessRecoveryInstrumentedTest)
-            bash android/ci/verify-history-process-recovery.sh
-            bash android/ci/verify-sync-state-process-recovery.sh
+            if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$TEST_SCOPE" = "saf-provider-starter" ]; then
+              # 기반 기동 진단 전용이며 전체 회귀 통과를 뜻하지 않는다.
+              (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SyntheticProviderStarterTest)
+            else
+              (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.ny.my.health.HistoryProcessRecoveryInstrumentedTest,com.ny.my.health.SyncStateProcessRecoveryInstrumentedTest)
+              bash android/ci/verify-history-process-recovery.sh
+              bash android/ci/verify-sync-state-process-recovery.sh
+            fi
 
       - name: Upload instrumentation evidence
         if: always()
