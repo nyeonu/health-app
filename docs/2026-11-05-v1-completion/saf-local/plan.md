@@ -315,7 +315,7 @@ runner script는현재 단일bashhelper호출그대로; API35/36/permissions/버
   | `A/SafDestination.kt` | 신규 | read-only exact-target reconcile와 one-batch wt/readback confirmation |
   | `AI/SafDestinationInstrumentedTest.kt` | 신규 | target identity/짧은 write/불완전 조회/중단/오류 통합 |
   | `AI/SafJournalInstrumentedTest.kt` | 신규 | 실제 DestinationSync+SQLite 재열기·다른 scope unknown create·callback failure |
-  | `AI/SyntheticDocumentsProvider.java` | 수정 | explicit Document.FLAG_PARTIAL fixture enum과 열만 추가하여 실제 partial-document 차단 검증 |
+  | `AI/SyntheticDocumentsProvider.java` | 수정 | explicit Document.FLAG_PARTIAL 및 선택된 합성 target의 move/delete/duplicate 제어로 실제 차단 검증 |
 
 - **인터페이스**: §2 `StorageDestination`, `SafDestination`, `SafKnownTargets`, `SafTargetProtocol` 참조.
 - **결정 로직**:
@@ -603,3 +603,7 @@ T3는소유자기존V1자동수정위임에따라누적3으로보정한다. app 
 ### T3/T9/T8 actual source 체크포인트 완료
 
 source086b5b3의provider1/capability2/pureUI1각양API failure/error/skip/duplicate0을root가6ZIPsha/원본XML exactclass+method로독립대조했다. combinedlint/APK/testAPK2분52초PASS와UI소스리뷰086 APPROVE/제안해결및capability source차단0을대조했다. 이전eac provider36의UTP해석실패(테스트0)는새source 양API실제PASS로해소했다. T3실제Binder취소/cleanupfail suppressed/unknowncreate삭제0과11분기, T9 light/dark/font1/1.8·capturedgen reset/retryguards가실제실행됐다. T3/T9/T8done이며T2와함께T4착수gate충족이다. 전체SAF/실제Activity/실기기/TalkBack/background수용은미완료다. 원본ZIP는watcher추출dir/artifact.zip이며root첫경로오인읽기실패는검증성공으로세지않고정정후실제대조했다.
+
+### T4 fixture 사용 계약 보정 — 실제 선택 target 제어
+
+T4부여파일4개는유지한다. 기존MOVE_OUTSIDE_TREE/DELETE_SEEDED/DUPLICATE control은seed에고정돼실제adapter가만든날짜CSV의변경을검증하기에부족하다. 같은기존control의private 합성target-id extra를추가할수있게하며미지정은기존seed동작을그대로유지한다. ID는provider가만든nodes map의opaque key로만조회하고실제filesystem경로로해석하거나URI/ID/body를로그·오류메시지에넣지않는다. 권한/authority/UID/원래grants·10초단언/Java-only/binding/schema불변. partial은silentPARTIAL cursor와다른고정DOCUMENT_PARTIAL enum/Column_FLAGS의명시bit로구분한다. 테스트필요한합성target에대한제어뿐이고production능력/새UI동작이아니다.
