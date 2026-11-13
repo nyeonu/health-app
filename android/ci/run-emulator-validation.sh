@@ -81,7 +81,10 @@ cp -a android/app/build/reports/androidTests/connected "$critical_evidence/repor
 if [ -d android/app/build/outputs/connected_android_test_additional_output ]; then
   cp -a android/app/build/outputs/connected_android_test_additional_output "$critical_evidence/additional-output"
 fi
-# 기존 host 전용 2개와 완료한 핵심 4개만 제외하고 나머지 전체를 실행한다.
-(cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.ny.my.health.HistoryProcessRecoveryInstrumentedTest,com.ny.my.health.SyncStateProcessRecoveryInstrumentedTest,com.ny.my.health.HealthAppInstrumentedTest,com.ny.my.health.ManualDriveFlowInstrumentedTest,com.ny.my.health.ManualDriveUiInstrumentedTest,com.ny.my.health.DestinationConfigurationInstrumentedTest)
+# helper 설치 테스트와 일반 probe를 별도 프로세스에서 검증한다.
+source android/ci/verify-workmanager-isolation.sh
+verify_workmanager_isolation
+# 기존 host 전용 2개와 완료한 핵심 4개, 격리 테스트만 제외한다.
+(cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.ny.my.health.HistoryProcessRecoveryInstrumentedTest,com.ny.my.health.SyncStateProcessRecoveryInstrumentedTest,com.ny.my.health.HealthAppInstrumentedTest,com.ny.my.health.ManualDriveFlowInstrumentedTest,com.ny.my.health.ManualDriveUiInstrumentedTest,com.ny.my.health.DestinationConfigurationInstrumentedTest,${workmanager_isolation_exclusions})
 bash android/ci/verify-history-process-recovery.sh
 bash android/ci/verify-sync-state-process-recovery.sh
