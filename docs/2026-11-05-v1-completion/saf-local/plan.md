@@ -15,7 +15,7 @@ tasks:
   - {id: T1, title: 실제 합성 DocumentsProvider와 grant starter, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 목적지 공통 known-target 조회와 재열기, depends_on: [], status: done, tier: standard}
   - {id: T3, title: 전경 local tree 동의와 실제 capability probe, depends_on: [T1], status: done, tier: standard}
-  - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: in_progress, tier: standard}
+  - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: done, tier: standard}
   - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: done, tier: standard}
   - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9, T10], status: pending, tier: standard}
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
@@ -698,3 +698,7 @@ T4원래ID누적복구2/2로같은SafJournalInstrumentedTest.kt한파일만교�
 ### T4 복구2 환경 확인 — AndroidTest incremental visibility
 
 R2첫packaging은20초에기존cross-file internal SafDestinationFixture접근을모두거부했다. 기존선언은internal이며R1에서동일선언이실제컴파일/Native3method에사용됐다. 수정한운동시간/사전조건의syntax오류는아니다. 직전에root가완료build를/tmp로이동하고같은경로symlink를만들었으므로기존AndroidTest incremental metadata가남아있다는환경가설을한정한다(원인으로단정하지않음). source변경없이지정한두생성출력build/kotlin/compileDebugAndroidTestKotlin 및build/tmp/kotlin-classes/debugAndroidTest만제거하고동일assembleDebugAndroidTest를한번재검증한다. test-results/reports/APK/source·sharedGradlecache는보존한다. 환경준비1/확인1이며실패시추가삭제/재시도없이보고한다. 소스변경회차T4 2/2는그대로이고기대값/테스트판정/visibility modifier를바꾸지않는다.
+
+### T4 복구2 소스·환경 검증 완료와 실제 재실행 준비
+
+AndroidTest생성cache/classes두경로만제거한뒤source수정없이동일assembleDebugAndroidTest가41초/exit0으로통과했다. 따라서이전internalvisibility오류는cache환경준비로해소됐고visibility modifier를바꾸지않았다. 실제이동과오류사이정확한compiler원인까지증명한것은아니다. 독립R2delta APPROVE와새fileSHA40960015aac4ed43db809a7129284cc8839dec0c1173ba71f5899ed1f7914c9a를root가대조해현재source에통합했다. 다른세T4파일/T5완료source는불변이다. T4sourcegate done, T10의두고정mode는이새source에서양API재실행한다. 기존Native3PASS와provider1PASS는증거로보존하지만새composite전체통과를대체하지않는다. T4원래복구2/2·T6실제gate는유지한다.

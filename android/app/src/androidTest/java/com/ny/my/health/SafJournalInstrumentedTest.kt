@@ -60,6 +60,7 @@ class SafJournalInstrumentedTest {
             f.prepare()
             f.scopes = mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY, DataType.EXERCISE to ReadScope.EXPLICIT_DAY)
             f.workouts = true
+            f.assertPartialFailureSetup()
             f.failAfterDaily = true
             var partialAttempt = f.start()
             assertEquals(BatchStatus.BLOCKED, f.run(partialAttempt).status)
@@ -194,12 +195,23 @@ private class JournalFixture {
         }
         val reader = object : ScopedHealthReader {
             override suspend fun access(trigger: SyncTrigger) = ReadAccess(true, scopes.keys, scopes)
-            override suspend fun readScoped(date: java.time.LocalDate, requestedScopes: Map<DataType, ReadScope>) =
-                ScopedSnapshot(HealthSnapshot(date, steps, emptyList(), emptyList(), emptyList(),
-                    if (workouts) listOf(ExerciseSession("synthetic-exercise", "synthetic-source", saf.time.minusSeconds(7200),
-                        saf.time.minusSeconds(3600), 1)) else emptyList(), scopes.keys), scopes, emptySet())
+            override suspend fun readScoped(date: java.time.LocalDate, requestedScopes: Map<DataType, ReadScope>) = snapshot(date)
         }
         return DestinationSync(store(), reader, destination, saf.clock).run(SyncTrigger.MANUAL, saf.generation, attempt.id)
+    }
+    private fun snapshot(date: java.time.LocalDate) = ScopedSnapshot(
+        HealthSnapshot(date, steps, emptyList(), emptyList(), emptyList(),
+            if (workouts) listOf(ExerciseSession("synthetic-exercise", "synthetic-source",
+                DayWindow.start(saf.date).plusSeconds(3600), DayWindow.start(saf.date).plusSeconds(7200), 1))
+            else emptyList(), scopes.keys), scopes, emptySet())
+    fun assertPartialFailureSetup() {
+        val source = snapshot(saf.date)
+        val workout = source.snapshot.exerciseSessions.single()
+        assertTrue("부분 실패 준비: 운동 시작은 대상 날짜 안", workout.start >= DayWindow.start(saf.date))
+        assertTrue("부분 실패 준비: 운동 종료는 대상 날짜 안", workout.end <= DayWindow.end(saf.date))
+        assertTrue("부분 실패 준비: 운동 구간은 양수", workout.start < workout.end)
+        assertEquals("부분 실패 준비: 실제 정규화 결과는 daily와 workouts 두 파일",
+            setOf(Dataset.DAILY, Dataset.WORKOUTS), SyncRevision.identify(source, null, saf.time).files.keys)
     }
     fun close() { saf.close(); SQLiteDatabase.deleteDatabase(file) }
 }
