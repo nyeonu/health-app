@@ -61,7 +61,7 @@ initializeTestWorkManager(context, configuration, WorkManagerTestInitHelper.Exec
 getTestDriver(context)는 nullable이므로 non-null 단언; driver.setInitialDelayMet(request.id).
 서로다른worker/task ExecutorService를쓰며task는Roomqueryexecutor이기도하므로2threads이상pool필수.
 Instrumentation thread의 runBlocking/withTimeout에서getWorkInfoByIdFlow(id).first{terminal}로관찰하며mainthread차단금지.
-finally는cancelAllWork().result boundedawait→closeWorkDatabase()→두executor shutdown 모두시도/원래실패보존.
+finally는cancelAllWork()의공개Operation.state terminalSUCCESS boundedawait→closeWorkDatabase()→두executor shutdown 모두시도/원래실패보존.
 closeWorkDatabase는testscope/DB를닫지만defaultdelegate를복원하지않는다. 다음testhelper초기화가delegate교체하며현재production에는WM호출이없다.
 생산Application/manifest초기화코드변경없이test-only WorkerFactory가합성worker만생성한다.
 테스트 전체에 timeout; arbitrary sleep/polling 성공 판정, skip, mock TestDriver 금지.
@@ -183,3 +183,7 @@ assemble_brief의명시참조 EarlyStarterContracts가heading만으로는해소�
 ### T1 실제 완료와 검증기 보정1
 
 root는4실제graph/155OSV응답/0vulnerability·error와13Gradle rawlog SHA256을직접대조했다. baseline19초/integration3분8초119tasks PASS, 실제AAR source/javap21 signatures확인. 기본initializer/component/normalpermissions 및DUMP-protected DiagnosticsReceiver의privileged enqueue부수효과를감사JSON에기록했고backup/process변경없다. OSV초기자동검토거부는공개Maven좌표만전송한다는allowlist증거로한정한후승인된조회로완료됐다. 읽기전용마지막검증기의임의commands길이16예상이실제15(13Gradle+OSV+javap)와달랐다. 임의길이대신필수명령집합/성공증거검증으로교정1회했으며source/build재시도없다. T1done, T2actualNative완료전전체done아님.
+
+### T2 복구1 — 실제 compile classpath의 Future 타입 부재
+
+첫전체gate2분24초는JVM176/0/0/0뒤AndroidTest컴파일에서Operation.result/getWorkInfoById의ListenableFuture타입을해석하지못했다. main/testedruntimeGuava존재를androidTestcompile공개타입가용성으로잘못확장한전제다. 실제2.11Operation.java의공개getState():LiveData<State> terminal API와이미승인된getWorkInfoByIdFlow로같은enqueue/cancel성공과workstate를bounded관찰한다. Operation.await는inline으로result타입을다시노출하므로우회보장으로추정하지않는다. 새dependency/버전/manifest없이test+report2파일만교정하며mainthread에Observer등록/제거, off-main coroutine boundedwait, finally observer해제·cancel성공·DB/2executors정리·primaryfailure보존을유지한다. counter0/driver/정확SUCCESS·output·counter1단언불변. 최초실패원본log/XML보존뒤영향compile/lint확인하고이미통과한동일176JVM중복실행은생략한다. actualAPI35/36仍pending.
