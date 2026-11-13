@@ -45,10 +45,10 @@
     }
   },
   "limits": [
-    "Component diagnostic omits full/host gate by explicit dispatch; final both-API full Native and host mandatory",
-    "Synthetic target UID ContentResolver proof is not actual Galaxy/localprovider capability",
-    "Raw ActivityResult delivered via actual launcher remains T6 pending",
-    "T3 capability, T4 destination, controller/UI and final acceptance pending"
+    "Component diagnostics do not replace final both-API full Native and host gates.",
+    "Synthetic provider is not Galaxy/local provider/background/reboot/TalkBack acceptance.",
+    "Actual ActivityResult launcher and routing remain T6 pending after T10 passes.",
+    "T4 stable source and T5 JVM passed; T4 actual Native component is blocked BEFOREtests by Actions capacity; final integration/PR review/merge pending."
   ],
   "capability_ui_checkpoint": {
     "source": "086b5b35148a6cf946e71917c66e5377e821494f",
@@ -153,5 +153,25 @@
     "status": "BLOCKED_BEFORE_TESTS",
     "code_failure": false,
     "next": "Owner restores Actions capacity, then execute both fixed modes on both APIs; retain all final full gates."
+  },
+  "controller_local_checkpoint": {
+    "source": "d51fde4",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "duplicates": 0,
+    "methods": [
+      "SAF intended category snapshots reject edited picker or stored scope mismatches and zero grants without shrinking partial grants",
+      "SAF selection and restore never export without explicit foreground continue",
+      "SAF recovery reopens blockers without clearing unknown creation or remote stale",
+      "SAF pause reset stale picker and double continue preserve journal and reject delayed results"
+    ],
+    "build": "assembleDebug PASS1m26s",
+    "source_review": "APPROVE exacttwoSHA256checkedroot",
+    "limits": [
+      "JVM ports do not prove actual SQLite, provider, canonical gate or Activity integration.",
+      "T10 actual component blocked before tests; T6 remains pending."
+    ]
   }
 }

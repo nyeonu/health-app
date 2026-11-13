@@ -6,7 +6,11 @@
 
 core-store PR16과 수동 Drive PR17의 소프트웨어 구현·검증·독립 검토·개발 병합을 완료했다. PR17 merge는 `57da82514e8483f5f32f2ad34ae0111c7f1dc431`, 검증 source는 `b35c11c8b4651cf9b12b004a7fc4ae3d52a4d3ee`다. JVM176/실패·오류·skip0 및 APK/lint, API35/36 각각 Native120/실패·오류·skip·중복0, 각 history host20과 SyncState verifier17+cleanup17/killed holds PASS0을 원본으로 대조했다. 별도 수동 slice 스펙 PASS·품질 APPROVE·보안/성능 추가 차단0과 수정/재검토는 [최종 검증](manual-drive/final-verification.md) 및 PR17 한글 댓글에 있다.
 
-현재 SAF 로컬 목적지 계획을 실제 merge head에 통합하고 있다. 독립 합성 provider는 별도 test APK UID/실제 target resolver grant를 사용하며 API36 starter는 PASS, API35의 두 번째 철회 command 응답 timeout은 조사 중이다. 전체 SAF capability나 실제 provider 수용을 완료 처리하지 않는다. 병렬 WorkManager 기반은 초기 네 graph/155공개Maven좌표 OSV0취약점·오류, 실제 debug/release metadata/manifest/API/build 감사를 마쳤다. 실제 starter와 최종 통합·회귀/PR 검토는 별도 단계다.
+SAF는 별도 test APK UID/target resolver 기반 provider·실제 capability·순수 화면의 API35/36 검증을 완료했다(source086b5b3). 같은 대상 wt/readback·journal 복구 adapter는 초기 독립 지적을 수정해 lint/APK/testAPK 및 소스 재검토를 통과했고(cb274caf), controller도 별도4 JVM 테스트/오류·실패·skip0 및 APK·소스 독립 검토를 통과했다(d51fde4). 실제 Activity 연결·최종 전체 gate·SAF PR 검토/merge는 미완료다.
+
+새 SAF adapter/component 양API 실행 두 건(43459510333/43459516911)은 GitHub Actions 결제/지출한도 제한으로 네 runner가 모두 시작되지 않았다(steps/tests/artifact0). 코드 테스트 실패가 아니며 T10 actual checkpoint는 blocked, 의존 T6는 pending이다. 소유자에게 Actions 사용 가능 상태 확인을 요청했고 billing 변경/credential 요청/무한 재실행은 하지 않는다. 검증 범위를 줄이거나 실제 실행 없는 PASS로 우회하지 않는다. [현재 계획](saf-local/plan.md)과 [원본 checkpoint](saf-local/checkpoint-native.json)에 재개 지점을 보존했다.
+
+병렬 WorkManager 기반은 초기 네 graph/155공개Maven좌표 OSV0취약점·오류 및 metadata/manifest/API/build 감사 뒤, sourceea21e9d/run43453138754의 양API 전체 Native121/오류·실패·skip·중복0과 기존host20/SyncState17+cleanup17/killed holds PASS0까지 root가 ZIP hash/원본XML/host결과로 대조했다. 이 branch는 아직 SAF 통합이나 PR merge를 마치지 않았고 customApplication/자동실행을 구현했다는 뜻이 아니다. 자동화 초안에는 helper process 격리를 production 초기화보다 먼저 수행하고 retry/store lane과 summary/HC lane을 독립 병렬화하는 순서를 준비했다. 최종 자동화·보안 재감사·실기기 수용은 별도 gate다.
 
 전체 V1 SAF·자동화·최종 UI는 진행 중이다. 실제 Galaxy/Google/provider/Doze·재부팅·TalkBack, 남은 P0 및 복구 가능한 개인 서명키 백업 확인은 pending이다. 성능72관측과 이전 Drive benchmark를 새 reconciliation·전체 admission 비용이나 실기기 개선율의 증거로 사용하지 않는다. 아래 기록은 시점별 이력을 보존하며 이 현재 상태와 계획 frontmatter가 우선한다.
 
