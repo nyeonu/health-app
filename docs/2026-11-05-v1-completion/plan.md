@@ -28,7 +28,7 @@ work_plans:
     title: 자동 실행과 통합 상태 화면
     path: automation-ui/plan.md
     depends_on: [saf-local]
-    status: pending
+    status: in_progress
 ---
 
 # V1 날짜별 복구·목적지·자동 실행 에픽 계획
