@@ -13,13 +13,13 @@ source_base: 57da82514e8483f5f32f2ad34ae0111c7f1dc431
 execution_gate: PR17-merged-and-parent-integration-repinned
 tasks:
   - {id: T1, title: 실제 합성 DocumentsProvider와 grant starter, depends_on: [], status: done, tier: standard}
-  - {id: T2, title: 목적지 공통 known-target 조회와 재열기, depends_on: [], status: in_progress, tier: standard}
+  - {id: T2, title: 목적지 공통 known-target 조회와 재열기, depends_on: [], status: done, tier: standard}
   - {id: T3, title: 전경 local tree 동의와 실제 capability probe, depends_on: [T1], status: in_progress, tier: standard}
   - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: pending, tier: standard}
   - {id: T5, title: 명시적 전경 SAF controller와 화면 조각, depends_on: [T4], status: pending, tier: standard}
   - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5], status: pending, tier: standard}
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
-  - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: in_progress, tier: standard}
+  - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: done, tier: standard}
 ---
 
 # 검증된 local tree 전경 내보내기
@@ -494,3 +494,7 @@ source4c7ed4392ce800c0c81615113e93f78640bbe226/run43439218159 양API각Synthetic
 ### T3 브리프 표기 보정1
 
 조립된SafGrantProtocol table-only조각을root대조하니같은§2불변식의test-constructor주입허용문장이빠져있었다. 기존원문한문장만명시참조table로옮겨같은producer/consumer계약을전달한다. allowlist/새authority/기기수용/constructor businesspolicy 변경없다. 재조립해명시참조0미해소와해당문장Shared design포함확인후T3배정한다.
+
+### 체크포인트1 실제 완료
+
+같은source4c7ed43에서T1/run43439218159 양API1/0/0/0 및T2/run43439224531 양API2/0/0/0을ZIP해시/원본XML/정확class·method대조했다. genericURI actualtree/current/prior/dedup/4096·4097/오류경계·Drive호환과실제grant/query/read를각각증명해T1/T2done이다. T8의static실제singleline/stub·fullbody동등성과실제두dispatch모드양API기동을확인해done으로표시하며최종전체Native/host검증은전체계획gate로여전히필수다. sourcecheckpoint rawID/digest는checkpoint-native.json에보존했다. T3만실행중이며T4는T3실제capability양API통과뒤시작한다.

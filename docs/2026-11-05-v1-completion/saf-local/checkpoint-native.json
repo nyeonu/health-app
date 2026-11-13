@@ -24,7 +24,25 @@
   },
   "store": {
     "run": 43439224531,
-    "status": "pending_final_raw_results"
+    "status": "PASS_component_only",
+    "apis": {
+      "35": {
+        "artifact": 14044363222,
+        "sha256": "109e68d6b18329fe14154648ee7bd74a36e4e89f57bb5792a40b3354270f143c",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "36": {
+        "artifact": 14045722497,
+        "sha256": "e52ab652889ad236221f6153ac531b4d2b4b67a6bf7b97e25ccc79152e9bbf5b",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    }
   },
   "limits": [
     "Component diagnostic omits full/host gate by explicit dispatch; final both-API full Native and host mandatory",
