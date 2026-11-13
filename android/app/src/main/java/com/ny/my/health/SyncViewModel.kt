@@ -17,6 +17,9 @@ import com.ny.my.health.core.ProfileOutcome
 import com.ny.my.health.core.ProfileStage
 import com.ny.my.health.core.SyncCoordinator
 import com.ny.my.health.core.SyncDiagnostics
+import com.ny.my.health.core.ScopedHealthReader
+import com.ny.my.health.core.DestinationGeneration
+import com.ny.my.health.core.StateStatus
 import com.ny.my.health.core.SyncStatus
 import com.ny.my.health.core.VersionedCsvExporter
 import java.time.Clock
@@ -68,24 +71,96 @@ internal fun SyncUiState.invalidateCurrentAttempt(): SyncUiState = copy(
     message = "로컬 동의와 현재 시도 표시를 지웠습니다. 저장된 기록을 확인해 주세요.",
 )
 
+internal enum class ManualDestination { DRIVE, LOCAL }
+internal data class CommittedDestination(val generation: DestinationGeneration? = null,
+    val kind: ManualDestination? = null, val selectionAllowed: Boolean = false)
+
 class SyncViewModel internal constructor(application: Application,
+    dependencies: ManualDestinationDependencies?,
     sessionFactory: ((() -> ManualSyncProfiling?, (ManualSyncProfiling) -> Unit,
         (ManualSyncProfiling, ProfileOutcome) -> Unit, () -> Unit) -> ManualDriveSession)?,
 ) : AndroidViewModel(application) {
-    constructor(application: Application) : this(application, null)
+    internal class ManualDestinationDependencies(
+        val store: SqliteSyncStateStore, val reader: ScopedHealthReader,
+        val execution: SyncExecutionSession, val configuration: SafTreeConfiguration, val clock: Clock,
+    )
+    constructor(application: Application) : this(application, null, null)
+    internal constructor(application: Application, sessionFactory: ((() -> ManualSyncProfiling?, (ManualSyncProfiling) -> Unit,
+        (ManualSyncProfiling, ProfileOutcome) -> Unit, () -> Unit) -> ManualDriveSession)?) : this(application, null, sessionFactory)
 
     private val debugEnabled = application.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     private val phoneProfilingSession = PhoneProfilingSession(debugEnabled)
     private val mutableState = MutableStateFlow(SyncUiState(phoneProfiling = phoneProfilingSession.state))
     private val reader = HealthConnectReader(application)
-    private val clock = Clock.systemUTC()
-    private val syncStore = SqliteSyncStateStore(application)
-    private val execution = SyncExecutionSession.get(application) {
+    private val clock = dependencies?.clock ?: Clock.systemUTC()
+    private val syncStore = dependencies?.store ?: SqliteSyncStateStore(application)
+    private val scopedReader = dependencies?.reader ?: reader
+    private val execution = dependencies?.execution ?: SyncExecutionSession.get(application) {
         SyncExecutionSession(syncStore, reader, null, clock, { java.util.UUID.randomUUID().toString() })
     }
     internal val manual = sessionFactory?.invoke(::newBoundProfiling, ::boundProfileStarted, ::boundProfileFinished, ::boundProfileInvalidated)
-        ?: ManualDriveSession(syncStore, reader, execution, clock,
+        ?: ManualDriveSession(syncStore, scopedReader, execution, clock,
             ::newBoundProfiling, ::boundProfileStarted, ::boundProfileFinished, ::boundProfileInvalidated)
+    internal val saf = ManualSafSession(syncStore, scopedReader, execution, application.contentResolver,
+        dependencies?.configuration ?: SafTreeConfiguration(application.contentResolver), clock)
+    private val mutableDestination = MutableStateFlow(ManualDestination.DRIVE)
+    internal val selectedDestination = mutableDestination.asStateFlow()
+    private var destinationEdited = false
+    private val mutableCommittedDestination = MutableStateFlow(CommittedDestination())
+    internal val committedDestination = mutableCommittedDestination.asStateFlow()
+    private var destinationRead = 0L
+    internal fun changeDestination(destination: ManualDestination) {
+        if (mutableDestination.value == destination) return
+        destinationEdited = true
+        manual.setPrivateFolderConsent(false)
+        saf.setPrivacyConsent(false)
+        mutableDestination.value = destination
+    }
+    private suspend fun refreshCommittedDestination() {
+        val request = ++destinationRead
+        mutableCommittedDestination.value = CommittedDestination()
+        val result = try {
+            val read = syncStore.load()
+            val state = read.state
+            if (read.status == StateStatus.ABSENT) CommittedDestination(selectionAllowed = true)
+            else if (read.status != StateStatus.READY || state == null) CommittedDestination()
+            else if (state.configuration == null) CommittedDestination(state.generation, selectionAllowed = true)
+            else {
+                val binding = syncStore.readBinding(state.generation)
+                val kind = when {
+                    binding?.kind == "LOCAL" && binding.treeUri != null && binding.accountName == null && binding.accountType == null -> ManualDestination.LOCAL
+                    binding?.kind == "DRIVE" && binding.treeUri == null && binding.accountName != null && binding.accountType != null &&
+                        BoundDriveAuthorization.pickerCandidate(true, 1, 1, true, binding.accountName, binding.accountType) != null -> ManualDestination.DRIVE
+                    else -> null
+                }
+                val verified = syncStore.load()
+                if (verified.status == StateStatus.READY && verified.state?.generation == state.generation)
+                    CommittedDestination(state.generation, kind, kind != null) else CommittedDestination()
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { CommittedDestination() }
+        if (request == destinationRead) mutableCommittedDestination.value = result
+    }
+    private suspend fun refreshDestinations() {
+        manual.refresh()
+        saf.refresh()
+        refreshCommittedDestination()
+        if (!destinationEdited) mutableCommittedDestination.value.kind?.let { mutableDestination.value = it }
+    }
+    internal fun selectSafTree(bridge: ManualSafBridge) {
+        if (bridge.isBusy()) return
+        viewModelScope.launch {
+            val ticket = saf.beginTreeSelection() ?: return@launch
+            bridge.selectTree(ticket) { uri, flags ->
+                viewModelScope.launch { saf.acceptTree(ticket, uri, flags); refreshDestinations() }
+            }
+        }
+    }
+    internal fun continueSaf() { viewModelScope.launch { saf.continueExport(); manual.refresh() } }
+    internal fun retrySaf() { viewModelScope.launch { saf.retry(); manual.refresh() } }
+    internal fun resetSaf(expected: DestinationGeneration) {
+        viewModelScope.launch { saf.reset(expected); refreshDestinations() }
+    }
     private val mutableCategories = MutableStateFlow(DataType.entries.toSet())
     private var categoriesEdited = false
     internal val manualCategories = mutableCategories.asStateFlow()
@@ -113,8 +188,10 @@ class SyncViewModel internal constructor(application: Application,
                 viewModelScope.launch {
                     // 계정 선택을 시작할 때의 범위만 명시적 구성 변경으로 저장한다.
                     val ticket = manual.selectAccount(ok, picker, extras, name, type, categories)
-                    if (ticket != null && mutableCategories.value == manual.state.value.categories)
+                    if (ticket != null) {
                         authorizeManualTicket(bridge, ticket)
+                        refreshDestinations()
+                    }
                 }
             }
         }
@@ -129,11 +206,23 @@ class SyncViewModel internal constructor(application: Application,
         }
     }
 
+    private var dispatchingTicket: BoundDriveAuthorization.Ticket? = null
+    internal fun mayDispatchManualAuthorization(ticket: BoundDriveAuthorization.Ticket): Boolean {
+        val current = manual.state.value
+        return dispatchingTicket === ticket && mutableDestination.value == ManualDestination.DRIVE &&
+            current.foreground && current.privateFolderConsent && current.generation == ticket.generation &&
+            current.grantedCategories.isNotEmpty() && mutableCategories.value == current.categories
+    }
+
     private fun authorizeManualTicket(bridge: ManualDriveBridge, ticket: BoundDriveAuthorization.Ticket) {
-        bridge.authorize(ticket) { resolution, token, scopes ->
-            if (mutableCategories.value == manual.state.value.categories)
-                manual.acceptAuthorization(ticket, resolution, token, scopes)
-        }
+        dispatchingTicket = ticket
+        try {
+            if (!mayDispatchManualAuthorization(ticket) || bridge.isBusy()) return
+            bridge.authorize(ticket) { resolution, token, scopes ->
+                if (mutableCategories.value == manual.state.value.categories)
+                    manual.acceptAuthorization(ticket, resolution, token, scopes)
+            }
+        } finally { dispatchingTicket = null }
     }
 
     internal fun continueManual() {
@@ -145,7 +234,10 @@ class SyncViewModel internal constructor(application: Application,
     internal fun resetManualConfiguration() {
         categoriesEdited = true
         viewModelScope.launch {
-            if (manual.resetConfiguration()) mutableCategories.value = DataType.entries.toSet()
+            if (manual.resetConfiguration()) {
+                mutableCategories.value = DataType.entries.toSet()
+                refreshDestinations()
+            }
         }
     }
 
@@ -172,7 +264,7 @@ class SyncViewModel internal constructor(application: Application,
 
     init {
         viewModelScope.launch {
-            manual.refresh()
+            refreshDestinations()
             if (manual.state.value.configured) restoreInitialManualCategories(manual.state.value.categories)
         }
         viewModelScope.launch {
@@ -197,9 +289,10 @@ class SyncViewModel internal constructor(application: Application,
     internal fun resume(onManualRefreshed: () -> Unit = {}) {
         foreground = true
         manual.setForeground(true)
+        saf.setForeground(true)
         resumeJob?.cancel()
         resumeJob = viewModelScope.launch {
-            manual.refresh()
+            refreshDestinations()
             manual.refreshGrants()
             if (foreground && manual.state.value.foreground) onManualRefreshed()
         }
@@ -210,6 +303,7 @@ class SyncViewModel internal constructor(application: Application,
         foreground = false
         resumeJob?.cancel()
         manual.setForeground(false)
+        saf.setForeground(false)
         if (mutableState.value.syncing) {
             syncJob?.cancel()
             accessToken = null
@@ -222,7 +316,7 @@ class SyncViewModel internal constructor(application: Application,
     }
 
     internal fun refreshPermissions() {
-        viewModelScope.launch { manual.refreshGrants() }
+        viewModelScope.launch { manual.refreshGrants(); saf.refresh() }
         refreshJob?.cancel()
         mutableState.value = mutableState.value.copy(refreshing = true)
         refreshJob = viewModelScope.launch {
@@ -503,6 +597,7 @@ class SyncViewModel internal constructor(application: Application,
 
     override fun onCleared() {
         manual.setForeground(false)
+        saf.setForeground(false)
         if (!mutableState.value.syncing) finishProfiling(manualProfiling, ProfileOutcome.CANCELLED)
         super.onCleared()
     }

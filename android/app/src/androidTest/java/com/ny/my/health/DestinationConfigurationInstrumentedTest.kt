@@ -18,6 +18,64 @@ import org.junit.runner.RunWith
 /** 합성 식별자와 실제 SQLite를 사용하며 계정·원격 서비스에는 접속하지 않는다. */
 @RunWith(AndroidJUnit4::class)
 class DestinationConfigurationInstrumentedTest {
+    @Test fun localConfigurationFailureRestoreAndResetPreserveDriveBindingAndHistory() = runBlocking {
+        val f = ManualDriveNativeFixture()
+        val provider = SafDestinationFixture()
+        try {
+            val drive = f.session()
+            val driveTicket = f.configure(drive)
+            assertTrue("현재 Drive 인증 수락", drive.acceptAuthorization(driveTicket, false, "synthetic-memory-only", f.scopes))
+            val history = SyncHistory(1, null, HistorySuccess(f.today.minusDays(2), f.clock.instant(), setOf(DataType.STEPS), 1))
+            val historyStore = SqliteHistoryStore(HistoryDatabase(f.historyFile))
+            historyStore.replace(history)
+            provider.prepare()
+            val configuration = SyncConfiguration("local-tree", f.today.minusDays(1), false, setOf(DataType.STEPS))
+            val binding = PrivateDestinationBinding("LOCAL", treeUri = provider.proof.treeUri.toString())
+            val driveBinding = f.reopen().readBinding(driveTicket.generation)
+            assertTrue("기존 Drive binding 존재", driveBinding != null)
+            val failuresBefore = f.failedCommitCallbacks
+            f.failCommit = true
+            val failed = f.store.configure(driveTicket.generation, configuration, binding)
+            assertEquals(CommitStatus.UNAVAILABLE, failed.status)
+            assertTrue("커밋 실패 주입 도달", f.failedCommitCallbacks == failuresBefore + 1)
+            val preserved = f.reopen().load().state!!
+            assertTrue("Drive 세대 보존", preserved.generation == driveTicket.generation)
+            assertTrue("Drive binding 보존", f.reopen().readBinding(driveTicket.generation) == driveBinding)
+            assertTrue("기존 이력 보존", historyStore.load().history == history)
+            f.failCommit = false
+            val committed = f.store.configure(driveTicket.generation, configuration, binding)
+            assertEquals(CommitStatus.COMMITTED, committed.status)
+            val localGeneration = committed.generation!!
+            assertTrue("새 로컬 세대", localGeneration != driveTicket.generation)
+            val saved = f.reopen().load().state!!
+            assertTrue("로컬 구성 복원", saved.generation == localGeneration && saved.configuration == configuration)
+            assertTrue("로컬 binding 복원", f.reopen().readBinding(localGeneration) == binding)
+            val execution = SyncExecutionSession(f.store, f.reader, null, f.clock, { UUID.randomUUID().toString() })
+            val session = ManualSafSession(f.store, f.reader, execution, provider.resolver,
+                SafTreeConfiguration.forTesting(provider.resolver, SyntheticDocumentsProvider.AUTHORITY), f.clock)
+            session.refresh()
+            assertTrue("controller 로컬 구성 복원", session.state.value.configured && session.state.value.generation == localGeneration &&
+                session.state.value.categories == configuration.categories)
+            assertFalse("이전 세대 초기화 거부", session.reset(driveTicket.generation))
+            assertTrue("현재 세대 초기화", session.reset(localGeneration))
+            val reset = f.reopen().load().state!!
+            assertTrue("초기화 뒤 새 세대와 빈 구성", reset.generation != localGeneration && reset.configuration == null)
+            assertTrue("초기화 뒤 binding 없음", f.reopen().readBinding(reset.generation) == null)
+            assertTrue("초기화 뒤 이력 보존", historyStore.load().history == history)
+            val proofsBefore = f.proofs
+            val readsBefore = f.rawReads
+            val writesBefore = f.writes
+            val historyBefore = historyStore.load().history
+            assertEquals(BatchStatus.STALE, drive.continueManual()?.status)
+            assertTrue("이전 세대 실행은 proof·읽기·쓰기 없음", f.proofs == proofsBefore &&
+                f.rawReads == readsBefore && f.writes == writesBefore)
+            assertTrue("이전 세대 실행 뒤 초기화 상태 보존", f.reopen().load().state == reset)
+            assertTrue("이전 세대 실행 뒤 이력 보존", historyStore.load().history == historyBefore)
+            drive.refresh()
+            assertFalse("복원 뒤 이전 Drive 인증 거부", drive.acceptAuthorization(driveTicket, false, "synthetic-memory-only", f.scopes))
+        } finally { provider.close(); f.close() }
+    }
+
     @Test fun cancelledSelectionAndFailedConfigurationPreserveDurableBindingAndResetOnlyV1Coverage() = runBlocking {
         val f = ManualDriveNativeFixture()
         try {
@@ -80,6 +138,7 @@ internal class ManualDriveNativeFixture {
     val categories = DataType.entries.toSet()
     val scopes = listOf(BoundDriveAuthorization.DRIVE_FILE_SCOPE)
     var failCommit = false
+    var failedCommitCallbacks = 0
     var grants = setOf(DataType.STEPS)
     var rawReads = 0
     var proofs = 0
@@ -88,7 +147,10 @@ internal class ManualDriveNativeFixture {
     var duringProof: suspend () -> Unit = {}
     var duringRead: suspend () -> Unit = {}
     val store = SqliteSyncStateStore(SyncStateDatabase(file), { today }) {
-        check(!failCommit) { "합성 저장 실패" }
+        if (failCommit) {
+            failedCommitCallbacks++
+            error("합성 저장 실패")
+        }
     }
     val reader = object : ScopedHealthReader {
         override suspend fun access(trigger: SyncTrigger) = ReadAccess(true, grants,

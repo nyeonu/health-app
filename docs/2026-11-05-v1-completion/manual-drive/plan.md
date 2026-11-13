@@ -1,7 +1,7 @@
 ---
 plan_id: manual-drive
 title: 계정에 연결된 전경 수동 복구
-status: in_progress
+status: done
 author: Codex task-breakdown
 created: 2026-11-12
 parent: ../plan.md
@@ -48,17 +48,17 @@ tasks:
   - id: T8
     title: 수동 구성과 복구 화면 합성
     depends_on: [T7]
-    status: in_progress
+    status: done
     tier: standard
   - id: T9
     title: 실제 Activity의 bound 경로와 통합 회귀
     depends_on: [T8]
-    status: in_progress
+    status: done
     tier: standard
   - id: T10
     title: 기존 강제종료 host 검증의 bound UI 호환
     depends_on: [T9]
-    status: pending
+    status: done
     tier: light
   - id: T11
     title: 복원 시 실제 권한 범위 coverage 투영
@@ -68,7 +68,7 @@ tasks:
   - id: T12
     title: 마지막 업로드와 최근 대상 날짜 표시
     depends_on: [T8]
-    status: in_progress
+    status: done
     tier: standard
   - id: T13
     title: 실제 core 처리 단계 성능 계측 복원
@@ -78,15 +78,15 @@ tasks:
   - id: T14
     title: bound 실행의 휴대폰 진단 수명 연결
     depends_on: [T11, T13]
-    status: pending
+    status: done
     tier: standard
   - id: T15
     title: 양 API 에뮬레이터 userdata 디스크 확보
     depends_on: []
-    status: pending
+    status: done
     tier: light
-  - {id: T16, title: 실제 제목을 유일하게 지정하는 UI 회귀 선택자, depends_on: [T12], status: pending, tier: light}
-  - {id: T17, title: 동일 전체 검증의 핵심 화면 fail-fast 분할, depends_on: [], status: pending, tier: standard}
+  - {id: T16, title: 실제 제목을 유일하게 지정하는 UI 회귀 선택자, depends_on: [T12], status: done, tier: light}
+  - {id: T17, title: 동일 전체 검증의 핵심 화면 fail-fast 분할, depends_on: [], status: done, tier: standard}
 ---
 
 # 계정에 연결된 전경 수동 복구
@@ -822,3 +822,7 @@ c334/API35 artifact14037199934 SHA256cafa66bccc634b32ac6b68b9e673868f061073f8b75
 ### T17 복구1 — emulator-runner 줄별 shell 계약
 
 SAF focused run43428796098 API35 job131896773570 실제로그는 `/usr/bin/sh: 1: Syntax error: end of file unexpected (expecting "fi")`이며 Native 시작 전 중단이다. runner가 script 각 줄을 별도 shell로 실행하므로 T17 최초 여러 줄 if/변수도 같은 위험이 있다. 기존 전체 gate와 명령을 단일 신규 bash helper로 옮기고 workflow script는 bash helper 호출 한 줄로 고정한다. 변경2파일, 테스트·권한·버전·재시도 불변. bash -n뿐 아니라 runner처럼 줄별 실행하는 stub smoke로 실제 명령 순서·실패 즉시 종료를 검증한다. 같은 원인의 SAF T2도 별도 branch에서 동일 제한 교정한다.
+
+### 수동 Drive 최종 완료 — 2026-11-13
+
+검토·검증head b35c11c8b4651cf9b12b004a7fc4ae3d52a4d3ee의JVM176/0/0/0+APK/lint와Native API35/36 각각120/0/0/0/중복0, 각host20+17verifier+17cleanup/killedholds PASS0을root와독립spec검증자가원본해시/XML/host대조했다. 수동slice적합성PASS, 코드품질APPROVE/추가보안·성능차단0, PR17최종댓글6854608943에기록후57da82514e8483f5f32f2ad34ae0111c7f1dc431로개발병합했다. T8/T9/T10/T12/T14/T15/T16/T17는이실제실행으로done이며전체V1/실기기수용은완료아니다. 상세원본식별자는checkpoint-native.json/final-verification.md에보존한다. 후속SAF계획통합에서이상태기록을반영하며제품/테스트/CI는검증head와동일하다.

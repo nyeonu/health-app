@@ -2,11 +2,17 @@
 
 이 문서는 진행 증거이며 V1 수용 완료나 출시 승인이 아니다. 소유자의 자동승인 범위에서 구현·독립 검토·개발 병합을 진행한다. 실제 Galaxy/Google/SAF provider/Doze·재부팅·TalkBack의 미실행 항목은 pending이다.
 
-## 현재 상태 (2026-11-12)
+## 현재 상태 (2026-11-13)
 
-core-store의 소프트웨어 구현·검증은 완료했고 PR #16의 최종 문서 head 대조/개발 병합 단계다. 검증한 코드 source는 `764cc6916c4c6231beb9c9a13b6ab152f33159ac`이며 root 전체 JVM145(core71/app74)/실패0·오류0·skip0, APK/lint/testAPK와 CI43158298603이 통과했다. Native43158298634는 API35·36 각각106/0/0/0, 기존 host20 및 새 복구17/정리17·죽인 hold PASS0, 같은72관측/API다. 별도 스펙 검증은 **core-store 배정 기준 PASS**, 품질 APPROVE, 보안·성능 차단 지적 없음이며 원본 XML/정형 host/metrics를 독립 대조했다. Q1 실제 spill 복구와 Q3/Q4 미확인 create의 동일/교차 scope·SQLite 재열기 회귀가 포함된다.
+core-store PR16과 수동 Drive PR17의 소프트웨어 구현·검증·독립 검토·개발 병합을 완료했다. PR17 merge는 `57da82514e8483f5f32f2ad34ae0111c7f1dc431`, 검증 source는 `b35c11c8b4651cf9b12b004a7fc4ae3d52a4d3ee`다. JVM176/실패·오류·skip0 및 APK/lint, API35/36 각각 Native120/실패·오류·skip·중복0, 각 history host20과 SyncState verifier17+cleanup17/killed holds PASS0을 원본으로 대조했다. 별도 수동 slice 스펙 PASS·품질 APPROVE·보안/성능 추가 차단0과 수정/재검토는 [최종 검증](manual-drive/final-verification.md) 및 PR17 한글 댓글에 있다.
 
-수정 전후 실패·fixture/환경 문제·추가 복구 회차는 아래 시점별 기록으로 보존한다. `plan.md` frontmatter와 위 현재 상태가 이전 진행 중 문구보다 우선한다. Drive 계정 연결·SAF·WorkManager·통합 UI는 후속이며 전체 V1는 진행 중이다. P0/Galaxy/실계정/provider/Doze/TalkBack·물리 ENOSPC/EIO 주입·생성 거부 환경의 실제 hardlinked admission은 완료 처리하지 않는다. 성능72관측은 새 engine uncertainty query의 독립 비용이나 실기기 전체 업로드 효과를 측정하지 않는다.
+SAF는 별도 test APK UID/target resolver 기반 provider·실제 capability·순수 화면의 API35/36 검증을 완료했다(source086b5b3). 같은 대상 wt/readback·journal 복구 adapter는 초기 독립 지적을 수정해 lint/APK/testAPK 및 소스 재검토를 통과했고(cb274caf), controller도 별도4 JVM 테스트/오류·실패·skip0 및 APK·소스 독립 검토를 통과했다(d51fde4). 실제 Activity 연결·최종 전체 gate·SAF PR 검토/merge는 미완료다.
+
+새 SAF adapter/component 양API 실행 두 건(43459510333/43459516911)은 GitHub Actions 결제/지출한도 제한으로 네 runner가 모두 시작되지 않았다(steps/tests/artifact0). 당시 코드 테스트 실패가 아니었으며, 소유자 Public 전환을 root가 직접 확인한 뒤 latesta1598b2의 새 실행43478573782/43478579503 네 runner가 실제 시작됐다. 현재 T10은 in_progress이고 의존 T6는 실제 결과 대조 전까지 pending이다. 소유자에게 Actions 사용 가능 상태 확인을 요청했고 billing 변경/credential 요청/무한 재실행은 하지 않는다. 검증 범위를 줄이거나 실제 실행 없는 PASS로 우회하지 않는다. [현재 계획](saf-local/plan.md)과 [원본 checkpoint](saf-local/checkpoint-native.json)에 재개 지점을 보존했다.
+
+병렬 WorkManager 기반은 초기 네 graph/155공개Maven좌표 OSV0취약점·오류 및 metadata/manifest/API/build 감사 뒤, sourceea21e9d/run43453138754의 양API 전체 Native121/오류·실패·skip·중복0과 기존host20/SyncState17+cleanup17/killed holds PASS0까지 root가 ZIP hash/원본XML/host결과로 대조했다. 이 branch는 아직 SAF 통합이나 PR merge를 마치지 않았고 customApplication/자동실행을 구현했다는 뜻이 아니다. 자동화 초안에는 helper process 격리를 production 초기화보다 먼저 수행하고 retry/store lane과 summary/HC lane을 독립 병렬화하는 순서를 준비했다. 최종 자동화·보안 재감사·실기기 수용은 별도 gate다.
+
+전체 V1 SAF·자동화·최종 UI는 진행 중이다. 실제 Galaxy/Google/provider/Doze·재부팅·TalkBack, 남은 P0 및 복구 가능한 개인 서명키 백업 확인은 pending이다. 성능72관측과 이전 Drive benchmark를 새 reconciliation·전체 admission 비용이나 실기기 개선율의 증거로 사용하지 않는다. 아래 기록은 시점별 이력을 보존하며 이 현재 상태와 계획 frontmatter가 우선한다.
 
 ## 선행 작업
 

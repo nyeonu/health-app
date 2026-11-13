@@ -1,0 +1,337 @@
+{
+  "status": "component_checkpoint_not_final_SAF_acceptance",
+  "source": "4c7ed4392ce800c0c81615113e93f78640bbe226",
+  "provider": {
+    "run": 43439218159,
+    "apis": {
+      "35": {
+        "artifact": 14044508628,
+        "sha256": "88cd6884944f09c732b5271ef94c303dffc9424722b7363fbd1ff86d0f55a062",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "36": {
+        "artifact": 14045022951,
+        "sha256": "fd374dbf40ce7c7500e497fb73bb86da6407927d80a88f5bb8e00d83f6188b43",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    }
+  },
+  "store": {
+    "run": 43439224531,
+    "status": "PASS_component_only",
+    "apis": {
+      "35": {
+        "artifact": 14044363222,
+        "sha256": "109e68d6b18329fe14154648ee7bd74a36e4e89f57bb5792a40b3354270f143c",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "36": {
+        "artifact": 14045722497,
+        "sha256": "e52ab652889ad236221f6153ac531b4d2b4b67a6bf7b97e25ccc79152e9bbf5b",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    }
+  },
+  "limits": [
+    "Component diagnostics do not replace final both-API full Native and host gates.",
+    "Synthetic provider is not Galaxy/local provider/background/reboot/TalkBack acceptance.",
+    "Actual ActivityResult launcher and routing remain T6 pending after T10 passes.",
+    "T4 stable source and T5 JVM passed; T4 actual Native component is blocked BEFOREtests by Actions capacity; final integration/PR review/merge pending."
+  ],
+  "capability_ui_checkpoint": {
+    "source": "086b5b35148a6cf946e71917c66e5377e821494f",
+    "status": "PASS_components_not_final_SAF_acceptance",
+    "checks": [
+      {
+        "run": 43453399119,
+        "api": 35,
+        "artifact": 14053237165,
+        "sha256": "80883948b58a85f4be4a3722a4aeac7cc9cfe6452daf964961bb4a31279b62d0",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0,
+        "test_class": "SafManualUiInstrumentedTest"
+      },
+      {
+        "run": 43453399119,
+        "api": 36,
+        "artifact": 14052972358,
+        "sha256": "96f688e47fe80b56c6810a7838407f7a1fbd7a66342ff5b5b622e4860fe11ca8",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0,
+        "test_class": "SafManualUiInstrumentedTest"
+      },
+      {
+        "run": 43453406485,
+        "api": 35,
+        "artifact": 14051789861,
+        "sha256": "b88980df1c4958154c328823bcf40ee84bd7d70d2ac847af31a99155953d29bd",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0,
+        "test_class": "SafTreeConfigurationInstrumentedTest"
+      },
+      {
+        "run": 43453406485,
+        "api": 36,
+        "artifact": 14053697261,
+        "sha256": "bc17ebe34911cdac0718b2a816c9029a4d0778e62ee33b1470632126b8b8c438",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0,
+        "test_class": "SafTreeConfigurationInstrumentedTest"
+      },
+      {
+        "run": 43453413298,
+        "api": 35,
+        "artifact": 14052597338,
+        "sha256": "736c67324e93b45041a33383b6c783605c0b6d8c0cafa711ac403fab4ef5579a",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0,
+        "test_class": "SyntheticProviderStarterTest"
+      },
+      {
+        "run": 43453413298,
+        "api": 36,
+        "artifact": 14053547722,
+        "sha256": "a186e699ccaa65d90945af81dd1ddb6063b4db05f0416af7b47a3095c342b5a1",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0,
+        "test_class": "SyntheticProviderStarterTest"
+      }
+    ],
+    "combined_local": "lintDebug+assembleDebug+assembleDebugAndroidTest PASS2m52",
+    "limits": [
+      "SDK28 LOCAL blocks before persistence/probe; appmin28 unchanged",
+      "PureCompose is notactualActivity/TalkBack acceptance",
+      "Final bothAPIfullNative+host remainsmandatory"
+    ]
+  },
+  "destination_checkpoint_infrastructure_block": {
+    "source": "cb274caf5f2f5e4e75c439f0506251affcbfaf37",
+    "run_ids": [
+      43459510333,
+      43459516911
+    ],
+    "requested_modes": [
+      "saf-destination",
+      "saf-provider-starter"
+    ],
+    "actual_scope": "unverified: runner not started",
+    "jobs": 4,
+    "runner_allocated": 0,
+    "tests_executed": 0,
+    "artifacts": 0,
+    "reason": "ACTIONS_ACCOUNT_BILLING_OR_SPENDING_LIMIT",
+    "status": "BLOCKED_BEFORE_TESTS",
+    "code_failure": false,
+    "next": "Owner restores Actions capacity, then execute both fixed modes on both APIs; retain all final full gates."
+  },
+  "controller_local_checkpoint": {
+    "source": "d51fde4",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "duplicates": 0,
+    "methods": [
+      "SAF intended category snapshots reject edited picker or stored scope mismatches and zero grants without shrinking partial grants",
+      "SAF selection and restore never export without explicit foreground continue",
+      "SAF recovery reopens blockers without clearing unknown creation or remote stale",
+      "SAF pause reset stale picker and double continue preserve journal and reject delayed results"
+    ],
+    "build": "assembleDebug PASS1m26s",
+    "source_review": "APPROVE exacttwoSHA256checkedroot",
+    "limits": [
+      "JVM ports do not prove actual SQLite, provider, canonical gate or Activity integration.",
+      "T10 actual component blocked before tests; T6 remains pending."
+    ]
+  },
+  "latest_pending_source": "f863887001e788a11f31bff563905751830266f7",
+  "first_destination_runtime_attempt": {
+    "source": "a1598b22051066ed7066f9a78ddec76b8eb1ef3c",
+    "root_verified": [
+      {
+        "run": 43478573782,
+        "api": 35,
+        "artifact": 14064586718,
+        "sha256": "6bc35a0bcd96a89e1a4e4e3d5db834c1c4cf5bc9bda4abc3f63b01ffb789f12b",
+        "tests": 4,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      },
+      {
+        "run": 43478573782,
+        "api": 36,
+        "artifact": 14064477269,
+        "sha256": "13be3fb319f3332df3b97240fd0b28dd13bf7bcb8a49b836d349082f5dc0f7e9",
+        "tests": 4,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      },
+      {
+        "run": 43478579503,
+        "api": 35,
+        "artifact": 14063978181,
+        "sha256": "f30ad86b6831b93d1e4b37ff85074c6b12229a428e43cea061b4939d547898e3",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      },
+      {
+        "run": 43478579503,
+        "api": 36,
+        "artifact": 14063284923,
+        "sha256": "427ecad614ee47c7629433dd27365ee1131cf40429908bb6d598df0674dfb773",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      }
+    ],
+    "result": "Destination3PASS1FAIL eachAPI; provider1PASS eachAPI",
+    "failure": "SafJournalInstrumentedTest.kt65 expectedBLOCKED actualCOMPLETED",
+    "cause": "Synthetic workout outside KST target day; input fixed inR2, originalassertionsunchanged",
+    "next_runs": [
+      43480662382,
+      43480668622
+    ],
+    "next_status": "RUNNING_NOT_YET_PASS"
+  },
+  "destination_checkpoint_pass": {
+    "source": "f863887001e788a11f31bff563905751830266f7",
+    "status": "PASS_components_only",
+    "root_verified": [
+      {
+        "run": 43480662382,
+        "source": "f863887001e788a11f31bff563905751830266f7",
+        "api": 35,
+        "artifact_id": 14066015820,
+        "sha256": "33e239f6f58295c06b0007050cd5b1304c54197a4c1272c957c7d0c412ca5524",
+        "tests": 4,
+        "cases": [
+          [
+            "com.ny.my.health.SafDestinationInstrumentedTest",
+            "safReconciliationPerformsNoWritesAndReservationsRejectChangedOrReusedInputs"
+          ],
+          [
+            "com.ny.my.health.SafDestinationInstrumentedTest",
+            "safShorterOverwriteReadsBackExactBytesAndAmbiguousRevokedMovedDeletedInterruptedTargetsRequireRecovery"
+          ],
+          [
+            "com.ny.my.health.SafJournalInstrumentedTest",
+            "afterPartialFailureCancellationOrUnknownCreateReconciliationRetriesOnlyPendingFiles"
+          ],
+          [
+            "com.ny.my.health.SafJournalInstrumentedTest",
+            "safEncodedOpaqueDocumentUrisRetainTargetResolverIdentityAfterSQLiteReopen"
+          ]
+        ],
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      },
+      {
+        "run": 43480662382,
+        "source": "f863887001e788a11f31bff563905751830266f7",
+        "api": 36,
+        "artifact_id": 14064639071,
+        "sha256": "821f0f6c2865ffe5b041c5ca30064482fe429f571ae588a05886329d7d4c0222",
+        "tests": 4,
+        "cases": [
+          [
+            "com.ny.my.health.SafDestinationInstrumentedTest",
+            "safReconciliationPerformsNoWritesAndReservationsRejectChangedOrReusedInputs"
+          ],
+          [
+            "com.ny.my.health.SafDestinationInstrumentedTest",
+            "safShorterOverwriteReadsBackExactBytesAndAmbiguousRevokedMovedDeletedInterruptedTargetsRequireRecovery"
+          ],
+          [
+            "com.ny.my.health.SafJournalInstrumentedTest",
+            "afterPartialFailureCancellationOrUnknownCreateReconciliationRetriesOnlyPendingFiles"
+          ],
+          [
+            "com.ny.my.health.SafJournalInstrumentedTest",
+            "safEncodedOpaqueDocumentUrisRetainTargetResolverIdentityAfterSQLiteReopen"
+          ]
+        ],
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      },
+      {
+        "run": 43480668622,
+        "source": "f863887001e788a11f31bff563905751830266f7",
+        "api": 35,
+        "artifact_id": 14065437101,
+        "sha256": "047c2c9a73df61ca3b1ccf6d9bea3d95b58352da9537dbd99db144c1f9b54676",
+        "tests": 1,
+        "cases": [
+          [
+            "com.ny.my.health.SyntheticProviderStarterTest",
+            "syntheticProviderGrantsTargetUidTreeAccessAndResolverReadsTheSeededDocument"
+          ]
+        ],
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      },
+      {
+        "run": 43480668622,
+        "source": "f863887001e788a11f31bff563905751830266f7",
+        "api": 36,
+        "artifact_id": 14063649947,
+        "sha256": "26b1aea7910014151b88cd6e1a002792deb7579dbd51b55a5378733c039cbcbe",
+        "tests": 1,
+        "cases": [
+          [
+            "com.ny.my.health.SyntheticProviderStarterTest",
+            "syntheticProviderGrantsTargetUidTreeAccessAndResolverReadsTheSeededDocument"
+          ]
+        ],
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duplicates": 0
+      }
+    ]
+  }
+}

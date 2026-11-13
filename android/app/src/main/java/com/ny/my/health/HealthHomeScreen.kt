@@ -50,7 +50,12 @@ internal fun HealthHomeScreen(
     manualActions: ManualDriveActions? = null,
     manualCategories: Set<DataType> = manualState?.categories.orEmpty().ifEmpty { DataType.entries.toSet() },
     todayInSeoul: LocalDate = state.date.plusDays(1),
+    safState: ManualSafState? = null,
+    safActions: SafManualActions? = null,
+    selectedDestination: ManualDestination = ManualDestination.DRIVE,
+    changeDestination: ((ManualDestination) -> Unit)? = null,
 ) {
+    val hasV1 = (manualState != null && manualActions != null) || (safState != null && safActions != null)
     var expanded by rememberSaveable { mutableStateOf(false) }
     val session = state.history
     val readable = session?.read?.status in setOf(HistoryReadStatus.READY, HistoryReadStatus.ABSENT)
@@ -99,14 +104,25 @@ internal fun HealthHomeScreen(
     ) {
         Text("Health App · 수동 동기화", style = MaterialTheme.typography.headlineMedium)
         Text("이번 동기화 대상: 어제, ${state.date} (한국 시간)")
-        if (manualState != null && manualActions != null) {
-            ManualDriveUi(manualState, manualActions, manualCategories, todayInSeoul)
+        if (hasV1) {
+            if (changeDestination != null) Row {
+                TextButton(onClick = { changeDestination(ManualDestination.DRIVE) }) { Text("Google Drive 선택") }
+                TextButton(onClick = { changeDestination(ManualDestination.LOCAL) }) { Text("로컬 폴더 선택") }
+            }
+            if (selectedDestination == ManualDestination.DRIVE && manualState != null && manualActions != null)
+                ManualDriveUi(manualState, manualActions, manualCategories, todayInSeoul)
+            if (selectedDestination == ManualDestination.LOCAL && safState != null && safActions != null)
+                SafManualUi(safState, safActions)
+            if (selectedDestination == ManualDestination.LOCAL && manualState?.configured == true)
+                Text("활성 Drive 확인 날짜: ${manualState.coverage?.checkedThrough ?: "확인되지 않음"} · 업로드 날짜: ${manualState.coverage?.uploadedThrough ?: "확인되지 않음"}")
+            if (selectedDestination == ManualDestination.DRIVE && safState?.configured == true)
+                Text("활성 로컬 확인 날짜: ${safState.coverage?.checkedThrough ?: "확인되지 않음"} · 업로드 날짜: ${safState.coverage?.uploadedThrough ?: "확인되지 않음"}")
             Text("이전 동기화 이력 · 읽기 전용 기록", style = MaterialTheme.typography.titleMedium)
             Text("아래 이전 동기화 이력은 과거 기록입니다. V1의 현재 날짜별 확인 범위로 사용하지 않습니다.")
         }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (manualState != null && manualActions != null) "이전 기록의 상태" else "현재 상태", style = MaterialTheme.typography.titleMedium)
+                Text(if (hasV1) "이전 기록의 상태" else "현재 상태", style = MaterialTheme.typography.titleMedium)
                 Text(status, color = if (storageError || session?.deleteFailed == true || attempt?.phase == HistoryPhase.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                 if (session?.error == HistoryError.RECOVERY_WRITE && readable && recoveredOutcome != null) {
                     Text(recoveredOutcome)
@@ -142,7 +158,7 @@ internal fun HealthHomeScreen(
                 }
             }
         }
-        if (manualState == null || manualActions == null) {
+        if (!hasV1) {
             Text("수동 동기화", style = MaterialTheme.typography.titleMedium)
             Text("Health Connect: ${when (state.availability) {
                 HealthConnectClient.SDK_AVAILABLE -> "사용 가능"

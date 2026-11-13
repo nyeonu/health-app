@@ -6,6 +6,19 @@ on:
       - 'android/**'
       - '.github/workflows/android-emulator-tests.yml'
   workflow_dispatch:
+    inputs:
+      test_scope:
+        description: 실행할 검증 범위
+        type: choice
+        default: full
+        options:
+          - full
+          - saf-provider-starter
+          - saf-store
+          - saf-capability
+          - saf-destination
+          - saf-ui
+          - saf-flow
 
 permissions:
   contents: read
@@ -63,6 +76,8 @@ jobs:
 
       - name: Run account-free Android UI and lifecycle instrumentation
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          TEST_SCOPE: ${{ inputs.test_scope }}
         with:
           api-level: ${{ matrix.api-level }}
           target: google_apis
