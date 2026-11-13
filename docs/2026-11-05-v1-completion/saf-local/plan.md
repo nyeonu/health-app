@@ -21,7 +21,7 @@ tasks:
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T6], status: pending, tier: standard}
   - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: done, tier: standard}
   - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: done, tier: standard}
-  - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: blocked, tier: standard}
+  - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: in_progress, tier: standard}
 ---
 
 # 검증된 local tree 전경 내보내기
@@ -684,3 +684,7 @@ sourcecb274caf의두고정mode dispatch(run43459510333/43459516911)는GitHub Act
 ### T6 외부 gate 대기 중 실제 연결 seam 준비
 
 read-only실제Activity/ViewModel/Home/기존Native호출자조사로필요한instancefactory/rawresultbridge/동일store-reader-gate주입/legacyreader보존/기존trailing-lambda오버로드/LOCALhasV1/draft와active표시차이를상위/하위§2에구체화했다. 기존T6네파일및동의·권한·generation·단일목적지정책만사용하며새dependency/schema/생산testallowlist/staticglobal을추가하지않는다. 이는실행전준비이며T10실제양APIgate가외부한도로blocked인동안T6제품구현은시작하지않는다. root는소유자기존V1자동승인범위로이기술적구체화를승인한다.
+
+### T10 Public 전환 후 실제 실행 재개
+
+소유자가저장소를Public으로변경했으며root가GitHub에서isPrivate=false/visibility=PUBLIC을직접확인했다. latesta1598b22051066ed7066f9a78ddec76b8eb1ef3c에두고정component를새로dispatch(run43478573782/43478579503)했고네API job모두nonzero runner와실제단계실행을확인했다. 이전두run의결제한도/테스트0기록은역사로보존하되현재T10을in_progress로올린다. Native실제결과는아직pending이며완료원본대조전T6를시작하지않는다. T4네파일은cb274caf와동일하고T5두신규파일/d51fde4가추가된통합source임을고정했다. Public전환은소유자가수행했고assistant는visibility/billing설정을변경하지않았다.
