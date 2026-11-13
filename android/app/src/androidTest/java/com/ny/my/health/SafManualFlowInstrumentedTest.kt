@@ -6,6 +6,8 @@ import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -13,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -48,15 +51,19 @@ class SafManualFlowInstrumentedTest {
             assertTrue("일부 권한 보존", selected.grantedCategories == setOf(DataType.STEPS))
             assertTrue("선택만으로 건강 읽기 없음", f.native.rawReads == 0)
             val generation = requireNotNull(selected.generation) { "구성 세대 없음" }
-            val before = f.provider.counts()
+            val before = f.observeAfterRoundTrip()
             assertTrue("선택 probe 정리", SyntheticDocumentsProvider.createCount(before) == 1 &&
                 SyntheticDocumentsProvider.deleteCount(before) == 1)
             val durable = runBlocking { f.native.reopen().load() }
             assertTrue("재개방한 구성 세대 일치", durable.state?.generation == generation)
             assertTrue("재개방한 전체 범위 일치", durable.state?.configuration?.categories == selected.categories)
             assertTrue("자동 실행 비활성", durable.state?.configuration?.automatic == false)
-            compose.onNodeWithText("로컬 업로드 계속").performScrollTo().performClick()
-            compose.waitUntil(10_000) { f.model.saf.state.value.outcome == BatchStatus.COMPLETED }
+            assertTrue("계속 전 로컬 준비: ${f.diagnostic()}",
+                f.model.saf.state.value.phase == ManualSafPhase.READY &&
+                    f.model.committedDestination.value.kind == ManualDestination.LOCAL &&
+                    f.model.committedDestination.value.generation == generation)
+            f.continueFromUi()
+            assertTrue("명시 계속 완료: ${f.diagnostic()}", f.model.saf.state.value.outcome == BatchStatus.COMPLETED)
             assertTrue("명시적 계속 뒤 건강 읽기", f.native.rawReads > 0)
             val confirmed = runBlocking { f.native.reopen().load() }.state
             assertTrue("완료 세대 유지", confirmed?.generation == generation)
@@ -198,6 +205,8 @@ class SafManualFlowInstrumentedTest {
         val application = instrumentation.targetContext.applicationContext as Application
         val provider = SafDestinationFixture()
         val native = ManualDriveNativeFixture()
+        @Volatile var pauses = 0
+        @Volatile var resumes = 0
         var driveCalls = 0
         var authorizeCalls = 0
         var allowDrive = false
@@ -255,8 +264,8 @@ class SafManualFlowInstrumentedTest {
             }
             override fun onActivityCreated(a: Activity, s: Bundle?) {}
             override fun onActivityStarted(a: Activity) {}
-            override fun onActivityResumed(a: Activity) {}
-            override fun onActivityPaused(a: Activity) {}
+            override fun onActivityResumed(a: Activity) { if (a is MainActivity && a === activity) resumes++ }
+            override fun onActivityPaused(a: Activity) { if (a is MainActivity && a === activity) pauses++ }
             override fun onActivityStopped(a: Activity) {}
             override fun onActivitySaveInstanceState(a: Activity, s: Bundle) {}
             override fun onActivityDestroyed(a: Activity) {}
@@ -276,6 +285,48 @@ class SafManualFlowInstrumentedTest {
         }
         fun pick() { compose.onAllNodesWithText("로컬 폴더 선택")[1].performScrollTo().performClick() }
         fun onMain(block: () -> Unit) { instrumentation.runOnMainSync { block() } }
+        fun diagnostic(): String {
+            val state = model.saf.state.value
+            val committed = model.committedDestination.value
+            return "phase=${state.phase}, outcome=${state.outcome}, foreground=${state.foreground}, " +
+                "configured=${state.configured}, kind=${committed.kind}, reads=${native.rawReads}"
+        }
+        fun observeAfterRoundTrip(): Bundle {
+            var oldPauses = 0
+            var oldResumes = 0
+            var baseline: Set<Job> = emptySet()
+            onMain {
+                oldPauses = pauses
+                oldResumes = resumes
+                baseline = model.viewModelScope.coroutineContext[Job]!!.children.toSet()
+            }
+            val observed = provider.counts()
+            try {
+                compose.waitUntil(10_000) { pauses > oldPauses && resumes > oldResumes }
+            } catch (_: Exception) {
+                throw AssertionError("observer 복귀 대기 실패: ${diagnostic()}")
+            }
+            var children: List<Job> = emptyList()
+            var resumed = false
+            onMain {
+                resumed = activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && model.saf.state.value.foreground
+                children = model.viewModelScope.coroutineContext[Job]!!.children.filter { it !in baseline }.toList()
+            }
+            assertTrue("observer 실제 전경 복귀: ${diagnostic()}", resumed)
+            runBlocking { withTimeout(10_000) { children.joinAll() } }
+            return observed
+        }
+        fun continueFromUi() {
+            var jobs: List<Job> = emptyList()
+            compose.onNodeWithText("로컬 업로드 계속").performScrollTo().assertIsEnabled()
+                .performSemanticsAction(SemanticsActions.OnClick) { click ->
+                    val parent = model.viewModelScope.coroutineContext[Job]!!
+                    val before = parent.children.toSet()
+                    assertTrue("실제 계속 버튼 실행: ${diagnostic()}", click())
+                    jobs = parent.children.filter { it !in before }.toList()
+                }
+            runBlocking { withTimeout(10_000) { jobs.joinAll() } }
+        }
         fun moveToState(state: Lifecycle.State) {
             var before: Set<Job> = emptySet()
             onMain { before = model.viewModelScope.coroutineContext[Job]!!.children.toSet() }
