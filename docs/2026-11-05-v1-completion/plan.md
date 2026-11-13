@@ -403,7 +403,7 @@ internal fun SafManualUi(state: ManualSafState, actions: SafManualActions)
 - BoundDriveAuthorization.kt의 IO 없는 결과 판정: mode/hasResolution/token/scope/ticket/generation/account 유효성. raw SDK 예외는 allowlist 오류로 바꾼다.
 - SafTreeConfiguration.kt companion의 IO 없는 consent/flags/local capability 판정; grant/persist/probe Android IO는 같은 adapter가 소유한다.
 - SafDestination.kt companion의 IO 없는 relativePath/known handle/identity/중복/byte 판정; 실제 tree 조회·RUNNING 뒤 write/readback IO는 같은 destination이 소유한다.
-- ManualSafSession.kt의 generation/ticket/동의/전경 수명과 공용 gate 호출, SafManualUi.kt pure projection의 표시·허용 동작. SQL validation은 기존 decode/transaction 경계를 재사용한다.
+- `ManualSafSession`.kt의 generation/ticket/동의/전경 수명과 공용 gate 호출, SafManualUi.kt pure projection의 표시·허용 동작. SQL validation은 기존 decode/transaction 경계를 재사용한다.
 - SyncWorkScheduler.kt의 IO 없는 retry 결정: durable batch/revision budget과 오류 종류에 따라 retry/blocked 판정. runAttemptCount만 쓰지 않는다.
 - SyncCoverageUi.kt의 pure projection: 과거 성공/현재 stale/EMPTY/partial grants/gap/recent freshness/queued/blocked와 다음 허용 동작을 따로 계산한다.
 
@@ -436,11 +436,11 @@ internal interface ManualSafPorts {
 }
 ```
 
-- ManualSafSession의 주 생성자는 `(ports: ManualSafPorts, clock: Clock)`이며 실제 보조 생성자는 `(sqliteStore: SqliteSyncStateStore, healthReader: ScopedHealthReader, execution: SyncExecutionSession, resolver: ContentResolver, configuration: SafTreeConfiguration = SafTreeConfiguration(resolver), clock: Clock = Clock.systemUTC())`다. T6에서 기존 Drive와 같은 store/reader/execution을 전달한다. test용 configuration 주입은 기존 forTesting만 사용하며 생산 allowlist는 바꾸지 않는다.
-- ManualSafSession의 `refresh`, `beginTreeSelection`, `acceptTree`, `continueExport`, `retry`, `reset`은 ports IO가 있는 suspend 메서드다. `acceptTree(requestId, Uri?, flags)`는 내부 `acceptTreeValue(requestId, String?, flags)`로만 위임한다. JVM은 문자열 ingress와 generic fake StorageDestination을 사용하고 Uri 실행·가짜 SafTreeProof·reflection을 쓰지 않는다.
-- ManualSafPorts.binding은 LOCAL private binding의 treeUri만 반환한다. validateSelection은 실제 `configuration.select(Uri.parse(treeUri), flags, consent)` 후 proof를 보관하지 않는다. configure는 기존 `PrivateDestinationBinding("LOCAL", treeUri = treeUri)`와 전체 intended 범위를 저장한다. 같은 tree·같은 범위는 generation/enrollment/journal을 재사용하며 다른 목적지·범위만 기존 configure CAS로 바꾼다.
-- ManualSafPorts.destination은 **runPrepared의 owner prepare 안에서만** 실제 `configuration.restore(treeUri, consent)` 후 `SafDestination(resolver, proof, generation, sqliteStore::loadKnownTargets, clock)`를 만든다. 성공 proof는 이 engine 수명에만 있고 StateFlow/saved state에는 없다. fresh store/binding/scope/grants 재확인 → destination/probe → 재확인 → reopenManualBlockers → 재확인 → DestinationSync 순서다. busy MERGED는 factory/probe/reopen/read를 호출하지 않는다.
-- ManualSafSession.beginTreeSelection은 즉시 launch할 picker ticket에 **외부 왕복 한 번만** 허용한다. T6는 bridge idle 확인 뒤 begin→즉시 launch하며 launch 실패/cancel은 null로 accept한다. 첫 pause는 owner를 취소하고 실행 proof를 없애되 그 ticket만 보존하고, 두 번째 pause/입력·동의·generation·reset 변경은 ticket도 폐기한다. 결과는 session foreground+Activity RESUMED 뒤 actual flags 그대로 전달한다. stale 결과는 새 ticket을 소모하지 않는다.
+- `ManualSafSession`의 주 생성자는 `(ports: ManualSafPorts, clock: Clock)`이며 실제 보조 생성자는 `(sqliteStore: SqliteSyncStateStore, healthReader: ScopedHealthReader, execution: SyncExecutionSession, resolver: ContentResolver, configuration: SafTreeConfiguration = SafTreeConfiguration(resolver), clock: Clock = Clock.systemUTC())`다. T6에서 기존 Drive와 같은 store/reader/execution을 전달한다. test용 configuration 주입은 기존 forTesting만 사용하며 생산 allowlist는 바꾸지 않는다.
+- `ManualSafSession`의 `refresh`, `beginTreeSelection`, `acceptTree`, `continueExport`, `retry`, `reset`은 ports IO가 있는 suspend 메서드다. `acceptTree(requestId, Uri?, flags)`는 내부 `acceptTreeValue(requestId, String?, flags)`로만 위임한다. JVM은 문자열 ingress와 generic fake StorageDestination을 사용하고 Uri 실행·가짜 SafTreeProof·reflection을 쓰지 않는다.
+- `ManualSafPorts`.binding은 LOCAL private binding의 treeUri만 반환한다. validateSelection은 실제 `configuration.select(Uri.parse(treeUri), flags, consent)` 후 proof를 보관하지 않는다. configure는 기존 `PrivateDestinationBinding("LOCAL", treeUri = treeUri)`와 전체 intended 범위를 저장한다. 같은 tree·같은 범위는 generation/enrollment/journal을 재사용하며 다른 목적지·범위만 기존 configure CAS로 바꾼다.
+- `ManualSafPorts`.destination은 **runPrepared의 owner prepare 안에서만** 실제 `configuration.restore(treeUri, consent)` 후 `SafDestination(resolver, proof, generation, sqliteStore::loadKnownTargets, clock)`를 만든다. 성공 proof는 이 engine 수명에만 있고 StateFlow/saved state에는 없다. fresh store/binding/scope/grants 재확인 → destination/probe → 재확인 → reopenManualBlockers → 재확인 → DestinationSync 순서다. busy MERGED는 factory/probe/reopen/read를 호출하지 않는다.
+- `ManualSafSession`.beginTreeSelection은 즉시 launch할 picker ticket에 **외부 왕복 한 번만** 허용한다. T6는 bridge idle 확인 뒤 begin→즉시 launch하며 launch 실패/cancel은 null로 accept한다. 첫 pause는 owner를 취소하고 실행 proof를 없애되 그 ticket만 보존하고, 두 번째 pause/입력·동의·generation·reset 변경은 ticket도 폐기한다. 결과는 session foreground+Activity RESUMED 뒤 actual flags 그대로 전달한다. stale 결과는 새 ticket을 소모하지 않는다.
 - ManualSafSession 복원 refresh는 metadata-only다. 초기 intended는 저장된 전체 범위로 복원하되 뒤늦은 metadata가 편집을 덮지 않는다. 복원된 binding에 새 privacy consent·전경·같은 intended/stored 범위·grant 교집합이 충족되면 READY는 **명시 계속을 요청할 수 있음**만 뜻한다. provider capability/이번 업로드 성공을 뜻하지 않고 실제 실행은 fresh gate-time probe 통과 전 health read/write를 하지 않는다. pause·동의 철회·입력 변경은 이 readiness를 무효화한다.
 
 ## 3. 추적성
@@ -521,3 +521,7 @@ SAF capability 오판은 truncate 실패나 suffix 중복을 만들 수 있으�
 실행 중 검증 배치 보정(2026-11-05): 공용session의 실제SQLite concurrency tests를 별도 SyncExecutionSessionInstrumentedTest.kt에 둔다. 기존 SQLstore fixture와 성공기준을 삭제하지 않으며, 측정된 metadata N+1 보정과 session 구현의 파일 충돌을 피한다. 별도 Android synthetic store 측정은 full/partial·30/365/3650행에서 실제 비용을 확인했고, 그 근거에 따라 core-store 안에서 streaming bulk 조회를 보정한다. 기존4개PR/WorkManager·실계정·SAF 범위와 승인 spec은 바꾸지 않는다. 계정없는CI의 GoogleSdkSetup ANR은 image/permission/assertion을 바꾸지 않고 해당 setup package의 시작 간섭만 제거해 재검증한다.
 
 PR16 Important Q1 보정: SQLite hot rollback journal은 정상원자복구에도쓰기권한이필요하다. 정상 READONLY fast path는 유지하되 typed readonly 실패에서만 noBackup raw DB/journal pair를보존하고별도work pair의native rollback·schema/binding/모든active행검증·원본불변확인뒤에만original native rollback을허용한다. unknown/corrupt 입력을자동repair/reset하지않고raw생바이트를보관한다. 정상읽기=항상원본불변이라는절대문구만이한정crash-recovery 예외로보완하며모델/schema/권한/외부서비스범위는불변이다. ADR009 Proposed가ADR006의나머지결정을승계한다. 실제Android cache-spill 미수정실패→수정후같은assertions PASS와최종독립재검토전완료가아니다.
+
+### SAF component 대기 병렬화 승인
+
+소유자의 병렬 진행 지시와 기존 V1 자동승인 범위에서 saf-local의 T4 안정 source 검증 뒤 T5 두 파일 작성과 T10 actual component 검증을 병렬 진행한다. T10은 원래 T4 양API provider/destination gate를 소유하고 T6 actual Activity 연결의 필수 선행조건이다. full Native/host/독립 최종 검토/PR 댓글/머지 기준은 그대로 유지한다. shared DTO·외부 계약·권한·데이터·의존성·schema 변경은 없다.
