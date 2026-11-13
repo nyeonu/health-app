@@ -79,7 +79,7 @@ PRAGMA cache_size=1 및 cache_spill=1은 db.beginTransaction 뒤 동일 transact
 page_size/page_count/cache_size/cache_spill/journal_mode/synchronous를 같은 writer에서 조회하여 고정 bool/enum/numeric 진단만 기록.
 UPDATE후 main bytes changed 증거·8byte hot-journal magic·journal>512·실제 typed readonly exception 및 모든 원본byte보존/복구assertions은그대로필수.
 원본을 fake patch하거나 journal header를써서만들기/skip/timeout상향/재시도/payload·URI·pathdump/production설정수정금지.
-동일96-row 유효합성데이터/공개schema와 기존4개test body 유지; 변화는 testwriter의connection-boundcache 준비/관측뿐.
+기존host가실제spill을증명한bounded4096-row/4096-byte 유효합성데이터와공개schema, 기존4개test body 유지; 변화는 testwriter의connection-boundcache 준비/관측뿐.
 ```
 
 ## 3. 추적성
@@ -221,3 +221,7 @@ T2복구1 공개Operation.state observer와WorkInfoFlow로교정한뒤lint/APK/t
 ### T2 전체 gate 복구2 / T3 파일 소유 — 실제 hot-journal 준비 실패
 
 run43435616205 source d07284f 양API121 tests중117PASS/4FAIL/0skip. newWorkManagerstarter는양API1PASS이며실패4개는기존HotFixture.dirty:1116 before==dirtyDb로hotpair생성전같은지점이다. API35 artifact14044461973 sha35f5d7e614daeada102c02ff2c412b67256807976fa5495a91d80be5d8f0a2b4; API36 artifact14044991845 shadd6ab646456b8043b178b391ee0c123a88235e622e3b50a180db5e1f48e47680을root원본대조했다. prod store/database/testsource는b35와동일이고새explicithelper기동은실패뒤에실행되어원인아니다. 기본initializer/Room간접효과나PRAGMA실효연결/threshold중정확원인은현재관측부재로미확정이다. 기존transaction밖cache설정을실제writer transaction안에서pin·조회하는제한가설로T3를분리하되T2복구는기존Future보정1뒤누적2이며리셋하지않는다. 소유자기존V1자동수정·병렬승인범위의testfixture1파일이며모든실제증거assertion·전체gate를유지한다. 새로운실패시실측보고뒤중단한다.
+
+### T3 복구2 / T2 전체 gate 누적3 — 실효 cache 가설 기각 및 proven working set
+
+cdde62b/run43441031207 양API는같은4fixture지점에서여전히실패했다. API35 artifact14046362252 SHA3c7f7c1cd1887430252dbc797848912b02fd9a7ab4455008534da56e37093510 원본에서 writer_in_transaction=true/page_size4096/page_count153/cache_size1/cache_spill1/DELETE/FULL2를확인했다. 따라서connection pin만으로고쳐졌다는가설은기각하며동일조정재시도하지않는다. 원인은아직불명이나96rows가실제mainspill을만들지못한것은측정됐다. 기존b35 양APIhost가실제증명한 SyncStateProcessRecoveryInstrumentedTest.spillRows4096/spillHandleBytes4096/enrolled=today-rows의bounded유효workingSet을이작은fixture에도적용하는새가설을승인한다. 4096-rows/enrollment를같이맞추고각DayState기존isValid단언을유지하며schema/핸들규칙/production캐시를바꾸지않는다. native rowcount/변경행수·실제main/journal크기·magic 여부는고정수치/boolean만관측하고기존changed-main·8magic·typedReadonly·원본보존/모든4testbody단언불변이다. marker/header/fake bytes수정/commit/skip/불제한seed루프금지. 소유자의기존V1자동수정위임에따라기존2회뒤누적3임을명시하며새실측근거가있는test1파일만부분교정한다. compile뒤실제양API전체Native/host통과전수정완료아니다.
