@@ -61,6 +61,7 @@ internal class ManualSafSession(private val ports: ManualSafPorts, private val c
     private var sequence = 0L
     private var metadataSequence = 0L
     private var categoriesEdited = false
+    private var metadataBinding: String? = null
     private var picker: Picker? = null
     private var selectionJob: Job? = null
     private var ownerRunning = false
@@ -81,7 +82,7 @@ internal class ManualSafSession(private val ports: ManualSafPorts, private val c
     fun setPrivacyConsent(consent: Boolean) {
         if (state.value.privacyConsent == consent) return
         invalidateInput()
-        mutableState.value = state.value.copy(privacyConsent = consent, outcome = null)
+        mutableState.value = state.value.copy(privacyConsent = consent, outcome = null, phase = ManualSafPhase.UNCONFIGURED)
         projectPhase()
     }
 
@@ -90,7 +91,7 @@ internal class ManualSafSession(private val ports: ManualSafPorts, private val c
         val copied = categories.toSet()
         if (state.value.intendedCategories == copied) return
         invalidateInput()
-        mutableState.value = state.value.copy(intendedCategories = copied, outcome = null)
+        mutableState.value = state.value.copy(intendedCategories = copied, outcome = null, phase = ManualSafPhase.UNCONFIGURED)
         projectPhase()
     }
 
@@ -105,7 +106,8 @@ internal class ManualSafSession(private val ports: ManualSafPorts, private val c
             val access = ports.reader.access(SyncTrigger.MANUAL)
             requireCurrent(current)
             val loaded = read.state
-            val local = loaded?.configuration != null && ports.binding(loaded.generation) != null
+            val binding = loaded?.takeIf { it.configuration != null }?.let { ports.binding(it.generation) }
+            val local = binding != null
             requireCurrent(current)
             val latest = if (loaded != null) {
                 val scoped = ports.store.loadForScope(loaded.generation, today(), access)
@@ -119,11 +121,19 @@ internal class ManualSafSession(private val ports: ManualSafPorts, private val c
                 input++
                 picker = null
             }
-            mutableState.value = state.value.copy(generation = latest?.generation,
-                configured = config != null, categories = config?.categories?.toSet().orEmpty(),
+            val previous = state.value
+            val newCategories = config?.categories?.toSet().orEmpty()
+            val newGrants = granted(access)
+            val sameScope = previous.generation == latest?.generation && previous.configured == (config != null) &&
+                previous.categories == newCategories && metadataBinding == binding &&
+                previous.categories.intersect(previous.grantedCategories) == newCategories.intersect(newGrants)
+            metadataBinding = binding
+            mutableState.value = previous.copy(generation = latest?.generation,
+                phase = if (sameScope) previous.phase else ManualSafPhase.UNCONFIGURED,
+                configured = config != null, categories = newCategories,
                 intendedCategories = if (categoriesEdited) state.value.intendedCategories else config?.categories?.toSet().orEmpty(),
-                grantedCategories = granted(access), enrolledDay = config?.enrolledDay,
-                coverage = latest?.coverage.takeIf { local }, outcome = null)
+                grantedCategories = newGrants, enrolledDay = config?.enrolledDay,
+                coverage = latest?.coverage.takeIf { local }, outcome = if (sameScope) previous.outcome else null)
             if (config?.automatic == true) mutableState.value = state.value.copy(phase = ManualSafPhase.BLOCKED)
             else projectPhase()
         }
@@ -131,6 +141,8 @@ internal class ManualSafSession(private val ports: ManualSafPorts, private val c
 
     suspend fun beginTreeSelection(): Long? {
         if (ownerRunning) return null
+        mutableState.value = state.value.copy(outcome = null, phase = ManualSafPhase.UNCONFIGURED)
+        projectPhase()
         return requestValue { current ->
             check(state.value.foreground && state.value.privacyConsent && state.value.intendedCategories.isNotEmpty())
             freshAccess(current)
@@ -188,7 +200,9 @@ internal class ManualSafSession(private val ports: ManualSafPorts, private val c
                 val configured = checkNotNull(latest.configuration)
                 check(configured.categories == selected.categories)
                 epoch++
+                metadataBinding = treeUri
                 mutableState.value = state.value.copy(generation = generation, configured = true,
+                    phase = ManualSafPhase.UNCONFIGURED,
                     categories = selected.categories, grantedCategories = granted(access),
                     enrolledDay = configured.enrolledDay, coverage = latest.coverage, outcome = null)
                 projectPhase()
@@ -203,6 +217,7 @@ internal class ManualSafSession(private val ports: ManualSafPorts, private val c
         if (ownerRunning) return safelyValue({ false }) {
             ports.runPrepared(generation) { error("중복 실행 준비는 허용되지 않습니다") }
         }
+        mutableState.value = state.value.copy(outcome = null)
         var owns = false
         var ownerCurrent: (() -> Boolean)? = null
         val beforeEpoch = epoch
@@ -258,6 +273,7 @@ internal class ManualSafSession(private val ports: ManualSafPorts, private val c
             check(commit.status == CommitStatus.COMMITTED)
             mutableState.value = ManualSafState(generation = commit.generation, foreground = state.value.foreground)
             categoriesEdited = false
+            metadataBinding = null
             true
         } ?: false
     }
@@ -284,7 +300,11 @@ internal class ManualSafSession(private val ports: ManualSafPorts, private val c
     private suspend fun freshAccess(current: () -> Boolean) {
         val access = ports.reader.access(SyncTrigger.MANUAL)
         requireCurrent(current)
-        mutableState.value = state.value.copy(grantedCategories = granted(access))
+        val previous = state.value
+        val newGrants = granted(access)
+        val scopeChanged = previous.categories.intersect(previous.grantedCategories) != previous.categories.intersect(newGrants)
+        mutableState.value = previous.copy(grantedCategories = newGrants,
+            outcome = if (scopeChanged) null else previous.outcome)
     }
     private fun granted(access: ReadAccess) = if (!access.available) emptySet() else
         access.granted.filterTo(mutableSetOf()) { access.scopeByType[it] == ReadScope.EXPLICIT_DAY }
@@ -292,6 +312,7 @@ internal class ManualSafSession(private val ports: ManualSafPorts, private val c
         if (ownerRunning) return
         val s = state.value
         mutableState.value = s.copy(phase = when {
+            s.phase == ManualSafPhase.BLOCKED -> ManualSafPhase.BLOCKED
             !s.configured -> ManualSafPhase.UNCONFIGURED
             s.foreground && s.privacyConsent && s.intendedCategories == s.categories &&
                 s.intendedCategories.any { it in s.grantedCategories } -> ManualSafPhase.READY

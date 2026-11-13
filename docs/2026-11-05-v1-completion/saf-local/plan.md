@@ -17,13 +17,13 @@ tasks:
   - {id: T3, title: 전경 local tree 동의와 실제 capability probe, depends_on: [T1], status: done, tier: standard}
   - {id: T4, title: journal 이후 동일 대상 SAF upsert와 reconciliation, depends_on: [T2, T3], status: done, tier: standard}
   - {id: T5, title: 명시적 전경 SAF controller, depends_on: [T4, T9], status: done, tier: standard}
-  - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9, T10], status: in_progress, tier: standard}
+  - {id: T6, title: 목적지 선택과 실제 Activity 수동 경로 연결, depends_on: [T5, T9, T10], status: done, tier: standard}
   - {id: T7, title: 실패 복구와 접근성 통합 회귀, depends_on: [T11], status: pending, tier: standard}
   - {id: T8, title: 기본 전체 gate를 유지하는 명시 component 진단, depends_on: [], status: in_progress, tier: standard}
   - {id: T9, title: URI 없는 SAF 상태와 pure 화면 semantics, depends_on: [], status: done, tier: standard}
   - {id: T10, title: 동일 source provider와 destination 실제 checkpoint, depends_on: [T4], status: done, tier: standard}
-  - {id: T11, title: 실제 Activity SAF 선택과 전경 수동 실행 검증, depends_on: [T6, T12], status: pending, tier: standard}
-  - {id: T12, title: 같은 구성의 metadata refresh 결과 보존, depends_on: [T5], status: in_progress, tier: standard}
+  - {id: T11, title: 실제 Activity SAF 선택과 전경 수동 실행 검증, depends_on: [T6, T12], status: in_progress, tier: standard}
+  - {id: T12, title: 같은 구성의 metadata refresh 결과 보존, depends_on: [T5], status: done, tier: standard}
 ---
 
 # 검증된 local tree 전경 내보내기
@@ -530,7 +530,7 @@ internal interface ManualSafPorts {
 
   ```bash
   cd android
-  ./gradlew :app:assembleDebugAndroidTest
+  ./gradlew :app:testDebugUnitTest :app:assembleDebugAndroidTest
   ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SafManualFlowInstrumentedTest,com.ny.my.health.ManualDriveFlowInstrumentedTest
   ```
 
@@ -791,3 +791,7 @@ T6제품3파일은generation과맞는실제privatebinding의kind를내부state�
 R3 제품3파일은3분23초/exit0으로컴파일·appJVM/lint/APK/testAPK를통과했으나독립source검토가새인가race를확정했다. selectManualAccount가받은ticket뒤refreshDestinations를await하는동안모드/동의가무효화돼도이후bridge.authorize가category만보고Google요청을시작할수있다. 소유자의기존V1자동수정범위에서이새근거를교정하며원래T6누적4를숨기거나리셋하지않는다. 이전세대표시·R2/R3수정은보존한다. MainActivity/SyncViewModel의인가직전live foreground/consent/Drive draft/currentgeneration/category를검사하고유효ticket반환과요청사이에새suspend공백을두지않는다. 새외부왕복allowance를단순검사용으로미리arm하지않는다. 실제UI권한확대/새OAuth흐름이아닌기존동의철회거부보강이다. Home파일은보존한다. T11같은두행동에늦은picker/metadata복귀뒤모드·동의무효화시새인가요청이없음을검증한다.
 
 T12첫gate는targeted5JVM/실패·오류·skip0 및APK1분52초PASS이며root가원본XML을대조했다. 독립Terra는새순서반례를확정했다: COMPLETED→선택grant전부철회→continue preflight의freshAccess가grants만갱신하고실패→refresh가이미갱신된scope를비교해옛COMPLETED를보존한다. 같은controller/test두파일에서freshAccess의실효scope변경과명시새owner실행시작(preflight실패포함)에옛outcome을무효화하고busyMERGED가진행중owner결과를지우지않게한다. 같은5번째회귀에이순서를추가하고기존same-generation/foreground BLOCKED보존·새scope/세대승격금지·4기존행동을유지한다. 이T12부분도원래T6통합교정의누적이력에연결하며새가설없이무한수정하지않는다. 두실행자는각각1회교정/검증후결과를보고하고updated독립재검토·T11실제8method/최종full gate는그대로다.
+
+### T6/T12 source gate 실제 완료와 T11 시작
+
+T6R4 source3파일은app96JVM/lint/APK/testAPK2분19초PASS와독립updatedTerra APPROVE(실제T12/T11조건부)를받았다. T12수정2파일은targeted5JVM/APK44초PASS와독립updatedTerra APPROVE로처음finding을해결했다. root가두원본XML집합(96+5중4공통=app97)·실패/오류/skip0·다섯sourceSHA를직접대조해통합했다. core84는불변기존검증을보존한다. 통합source의app97는T11신규Native파일compile때같이실행하고최종full에서는core84+app97=181및전체Native/host를검증한다. T6/T12done은source/unitgate만이며T11actualVM/Activity/SQLite/provider검증은아직미완료다. T11은두선행gate완료뒤한파일의두실제행동을작성한다. 원래T6교정이력1~4및T12추가순서교정은숨기거나리셋하지않는다.

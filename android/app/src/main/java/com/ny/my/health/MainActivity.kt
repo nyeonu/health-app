@@ -1,6 +1,8 @@
 package com.ny.my.health
 
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
 import android.accounts.Account
 import android.accounts.AccountManager
 import com.google.android.gms.common.AccountPicker
@@ -41,7 +43,47 @@ internal interface ManualDriveBridge {
     fun authorize(ticket: BoundDriveAuthorization.Ticket, result: (Boolean, String?, List<String>) -> Unit)
 }
 
+internal interface ManualSafBridge {
+    fun isBusy(): Boolean
+    fun selectTree(requestId: Long, result: (Uri?, Int) -> Unit)
+}
+
 class MainActivity : ComponentActivity() {
+    internal var viewModelFactory: ViewModelProvider.Factory? = null
+    internal var safTreeIntent: () -> Intent = {
+        Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
+        ).putExtra(Intent.EXTRA_LOCAL_ONLY, true)
+    }
+    private class SafRequest(val id: Long, val callback: (Uri?, Int) -> Unit) { var valid = true }
+    private var safRequest: SafRequest? = null
+    private var pendingSafResult: (() -> Unit)? = null
+    private fun invalidateSafRequest() { safRequest?.valid = false; pendingSafResult = null }
+    private fun finishSaf(request: SafRequest, uri: Uri?, flags: Int) {
+        if (safRequest !== request) return
+        safRequest = null
+        if (request.valid) request.callback(uri, flags)
+    }
+    internal var safBridge: ManualSafBridge = object : ManualSafBridge {
+        override fun isBusy() = bridgeBusy()
+        override fun selectTree(requestId: Long, result: (Uri?, Int) -> Unit) {
+            if (bridgeBusy()) { result(null, 0); return }
+            val request = SafRequest(requestId, result)
+            safRequest = request
+            try { safPicker.launch(safTreeIntent()) }
+            catch (_: Exception) { finishSaf(request, null, 0) }
+        }
+    }
+    private val safPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { returned ->
+        val request = safRequest ?: return@registerForActivityResult
+        val uri = if (returned.resultCode == RESULT_OK) returned.data?.data else null
+        val flags = if (returned.resultCode == RESULT_OK) returned.data?.flags ?: 0 else 0
+        val apply = { finishSaf(request, uri, flags) }
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && model.saf.state.value.foreground) apply()
+        else pendingSafResult = apply
+    }
+
     private lateinit var model: SyncViewModel
     private val authorizationClient by lazy { Identity.getAuthorizationClient(this) }
 
@@ -61,7 +103,7 @@ class MainActivity : ComponentActivity() {
     private var consentRequest: BridgeRequest? = null
     private var pickerResult: ((Boolean, Boolean, String?, String?) -> Unit)? = null
     private var authorizationResult: ((Boolean, String?, List<String>) -> Unit)? = null
-    private fun bridgeBusy() = pickerRequest != null || activeAuthorization != null || consentRequest != null
+    private fun bridgeBusy() = pickerRequest != null || activeAuthorization != null || consentRequest != null || safRequest != null
     private fun current(request: BridgeRequest): Boolean = request.valid &&
         request.generation == model.manual.state.value.generation && model.manual.state.value.privateFolderConsent &&
         model.manual.state.value.grantedCategories.isNotEmpty() &&
@@ -114,7 +156,7 @@ class MainActivity : ComponentActivity() {
 
         override fun authorize(ticket: BoundDriveAuthorization.Ticket,
             result: (Boolean, String?, List<String>) -> Unit) {
-            if (bridgeBusy() || ticket.generation != model.manual.state.value.generation) return
+            if (bridgeBusy() || !model.mayDispatchManualAuthorization(ticket)) return
             val owner = BridgeRequest(ticket.id, ticket.generation)
             activeAuthorization = owner
             try {
@@ -191,13 +233,24 @@ class MainActivity : ComponentActivity() {
         // edge-to-edge 초기화 전에 보존된 Window의 inset 처리를 맞춘다.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         enableEdgeToEdge()
-        model = ViewModelProvider(this)[SyncViewModel::class.java]
+        model = (viewModelFactory?.let { ViewModelProvider(this, it) } ?: ViewModelProvider(this))[SyncViewModel::class.java]
         setContent {
             val owner = LocalView.current
             val initialInsetsDispatched = remember(owner) { mutableStateOf(false) }
             val state by model.state.collectAsState()
             val manual by model.manual.state.collectAsState()
             val categories by model.manualCategories.collectAsState()
+            val saf by model.saf.state.collectAsState()
+            val destination by model.selectedDestination.collectAsState()
+            val committed by model.committedDestination.collectAsState()
+            val driveCurrent = committed.kind == ManualDestination.DRIVE && committed.generation == manual.generation
+            val safCurrent = committed.kind == ManualDestination.LOCAL && committed.generation == saf.generation
+            val projectedDrive = if (driveCurrent) manual else manual.copy(
+                phase = ManualDrivePhase.UNCONFIGURED, configured = false, categories = emptySet(),
+                enrolledDay = null, coverage = null, outcome = null)
+            val projectedSaf = if (safCurrent) saf else saf.copy(
+                phase = ManualSafPhase.UNCONFIGURED, configured = false, categories = emptySet(),
+                enrolledDay = null, coverage = null, outcome = null)
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Box(
@@ -227,13 +280,14 @@ class MainActivity : ComponentActivity() {
                             copyPhoneProfiling = {
                                 model.copyPhoneProfiling { text -> writePhoneProfilingClipboard(this@MainActivity, text) }
                             },
-                        ), manual, ManualDriveActions(
+                        ), projectedDrive, ManualDriveActions(
                             changeConsent = {
-                                if (!it) invalidateBridgeRequests()
+                                if (!it) { invalidateBridgeRequests(); invalidateSafRequest() }
                                 model.manual.setPrivateFolderConsent(it)
                             },
                             changeCategories = {
                                 invalidateBridgeRequests()
+                                invalidateSafRequest()
                                 model.changeManualCategories(it)
                             },
                             requestHealthConsent = {
@@ -242,14 +296,29 @@ class MainActivity : ComponentActivity() {
                                 } catch (_: Exception) { model.healthConsentLaunchFailed() }
                             },
                             refreshGrants = model::refreshPermissions,
-                            selectAccount = { model.selectManualAccount(manualBridge) },
-                            authorize = { model.authorizeManual(manualBridge) },
-                            continueManual = model::continueManual,
+                            selectAccount = { if (model.committedDestination.value.selectionAllowed) model.selectManualAccount(manualBridge) },
+                            authorize = { if (driveCurrent) model.authorizeManual(manualBridge) },
+                            continueManual = { if (driveCurrent) model.continueManual() },
                             resetConfiguration = {
                                 invalidateBridgeRequests()
-                                model.resetManualConfiguration()
+                                invalidateSafRequest()
+                                if (driveCurrent) model.resetManualConfiguration()
                             },
-                        ), categories)
+                        ), categories, safState = projectedSaf, safActions = SafManualActions(
+                            changeConsent = { if (!it) { invalidateSafRequest(); invalidateBridgeRequests() }; model.saf.setPrivacyConsent(it) },
+                            changeCategories = { invalidateSafRequest(); invalidateBridgeRequests(); model.saf.setCategories(it) },
+                            requestHealthConsent = {
+                                if (model.beginHealthConsent()) try { healthConsent.launch(HealthConnectReader.permissions) }
+                                catch (_: Exception) { model.healthConsentLaunchFailed() }
+                            },
+                            refreshGrants = model::refreshPermissions,
+                            selectTree = { if (model.committedDestination.value.selectionAllowed) model.selectSafTree(safBridge) },
+                            continueManual = { if (safCurrent) model.continueSaf() },
+                            retry = { if (safCurrent) model.retrySaf() },
+                            resetConfiguration = { if (safCurrent) { invalidateSafRequest(); invalidateBridgeRequests(); model.resetSaf(it) } },
+                        ), selectedDestination = destination, changeDestination = {
+                            if (it != destination) { invalidateSafRequest(); invalidateBridgeRequests(); model.changeDestination(it) }
+                        })
                     }
                 }
             }
@@ -268,6 +337,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         model.resume {
+            val safPending = pendingSafResult
+            pendingSafResult = null
+            if (model.saf.state.value.foreground) safPending?.invoke()
             val pending = pendingExternalResult
             pendingExternalResult = null
             if (model.manual.state.value.phase != ManualDrivePhase.BLOCKED) pending?.apply?.invoke()
@@ -277,6 +349,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         invalidateBridgeRequests()
+        invalidateSafRequest()
         super.onDestroy()
     }
 
