@@ -51,7 +51,7 @@ class SafManualFlowInstrumentedTest {
             assertTrue("일부 권한 보존", selected.grantedCategories == setOf(DataType.STEPS))
             assertTrue("선택만으로 건강 읽기 없음", f.native.rawReads == 0)
             val generation = requireNotNull(selected.generation) { "구성 세대 없음" }
-            val before = f.observeAfterRoundTrip()
+            val before = f.afterRoundTrip { f.provider.counts() }
             assertTrue("선택 probe 정리", SyntheticDocumentsProvider.createCount(before) == 1 &&
                 SyntheticDocumentsProvider.deleteCount(before) == 1)
             val durable = runBlocking { f.native.reopen().load() }
@@ -105,7 +105,7 @@ class SafManualFlowInstrumentedTest {
             compose.onNodeWithText("Google 권한 확인").performScrollTo().assertIsNotEnabled()
             f.onMain { f.model.changeDestination(ManualDestination.LOCAL); f.model.saf.setPrivacyConsent(true) }
             assertTrue("Drive 호출 없음", f.driveCalls == 0)
-            f.provider.command(SyntheticDocumentsProvider.Control.REVOKE)
+            f.afterRoundTrip { f.provider.command(SyntheticDocumentsProvider.Control.REVOKE) }
             val reads = f.native.rawReads
             f.action { f.model.continueSaf() }
             compose.waitUntil(10_000) { f.model.saf.state.value.phase == ManualSafPhase.BLOCKED }
@@ -164,10 +164,10 @@ class SafManualFlowInstrumentedTest {
             compose.waitUntil(10_000) { f.model.saf.state.value.phase == ManualSafPhase.BLOCKED }
             assertTrue("읽기 전용 결과 구성 거부", !f.model.saf.state.value.configured)
             assertTrue("읽기 전용 결과 건강 읽기 없음", f.native.rawReads == 0)
-            assertTrue("읽기 전용 결과 probe 없음", SyntheticDocumentsProvider.createCount(f.provider.counts()) == 0)
+            assertTrue("읽기 전용 결과 probe 없음", SyntheticDocumentsProvider.createCount(f.afterRoundTrip { f.provider.counts() }) == 0)
             f.control = SyntheticDocumentsProvider.Control.GRANT_READ_WRITE
             f.hold = true
-            val editedBefore = f.provider.counts()
+            val editedBefore = f.afterRoundTrip { f.provider.counts() }
             f.pick()
             compose.waitUntil(10_000) { f.pending != null }
             f.onMain { f.model.saf.setCategories(setOf(DataType.STEPS)) }
@@ -176,7 +176,7 @@ class SafManualFlowInstrumentedTest {
             assertTrue("편집된 결과 SQLite 구성 없음", runBlocking { f.native.reopen().load() }.state?.configuration == null)
             f.assertNoProviderMutation(editedBefore)
             f.onMain { f.model.saf.setCategories(setOf(DataType.STEPS, DataType.WEIGHT)) }
-            val pausedBefore = f.provider.counts()
+            val pausedBefore = f.afterRoundTrip { f.provider.counts() }
             f.pick()
             compose.waitUntil(10_000) { f.pending != null }
             f.moveToState(Lifecycle.State.CREATED)
@@ -189,8 +189,8 @@ class SafManualFlowInstrumentedTest {
             f.hold = false
             f.native.grants = emptySet()
             f.action { f.model.refreshPermissions() }
-            assertTrue("권한 철회 반영", f.model.saf.state.value.grantedCategories.isEmpty())
-            val before = f.provider.counts()
+            assertTrue("권한 철회 반영: ${f.diagnostic()}", f.model.saf.state.value.grantedCategories.isEmpty())
+            val before = f.afterRoundTrip { f.provider.counts() }
             f.action { f.model.selectSafTree(f.activity.safBridge) }
             assertTrue("권한 없음 구성 거부", !f.model.saf.state.value.configured)
             assertTrue("권한 없음 SQLite 구성 없음", runBlocking { f.native.reopen().load() }.state?.configuration == null)
@@ -291,7 +291,7 @@ class SafManualFlowInstrumentedTest {
             return "phase=${state.phase}, outcome=${state.outcome}, foreground=${state.foreground}, " +
                 "configured=${state.configured}, kind=${committed.kind}, reads=${native.rawReads}"
         }
-        fun observeAfterRoundTrip(): Bundle {
+        fun <T> afterRoundTrip(operation: () -> T): T {
             var oldPauses = 0
             var oldResumes = 0
             var baseline: Set<Job> = emptySet()
@@ -300,7 +300,7 @@ class SafManualFlowInstrumentedTest {
                 oldResumes = resumes
                 baseline = model.viewModelScope.coroutineContext[Job]!!.children.toSet()
             }
-            val observed = provider.counts()
+            val observed = operation()
             try {
                 compose.waitUntil(10_000) { pauses > oldPauses && resumes > oldResumes }
             } catch (_: Exception) {
@@ -347,7 +347,7 @@ class SafManualFlowInstrumentedTest {
         }
         fun release() { action { val callback = pending; pending = null; callback?.invoke() } }
         fun assertNoProviderMutation(before: Bundle) {
-            val after = provider.counts()
+            val after = afterRoundTrip { provider.counts() }
             assertTrue("provider 생성·쓰기·삭제 불변", SyntheticDocumentsProvider.createCount(before) == SyntheticDocumentsProvider.createCount(after) &&
                 SyntheticDocumentsProvider.writeCount(before) == SyntheticDocumentsProvider.writeCount(after) &&
                 SyntheticDocumentsProvider.deleteCount(before) == SyntheticDocumentsProvider.deleteCount(after))
