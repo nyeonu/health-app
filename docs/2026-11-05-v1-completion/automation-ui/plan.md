@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 7d373d2f355246c33d47e85115241b025d3c94b2
+parent_rev: ac0a43269b3c817cbed05fea440d5afb795e5312
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-auto-infra
@@ -682,3 +682,7 @@ T19는earlystarter의옛script가아닌실제mergedSAF의진단earlyexit·critic
 ### 실행 승인·T19 시작
 
 소유자의 기존 V1 자동 승인 위임과 독립 계획 재검토 APPROVE(f5ab721, auto-integrated-plan-readiness-rereview.md)에 따라 실행을 시작한다. 준비 교정1·2는 누적 보존한다. T19는 새로운 Terra 세션에 조립 브리프로 위임하며 실제 양 API 격리/full 증거 전 T1 생산 초기화를 시작하지 않는다. 새로운 근거가 필요한 추가 교정은 기존 V1 범위의 소유자 위임을 적용하되 원래 작업 ID와 회차를 이어 기록한다.
+
+### T19 교정3 — 독립 소스 검토의 네 국소 지적
+
+기준3510bee, 보고 auto-t19-independent-review.md의 APK 재설치/runner 확인·private raw allowlist·다중 class별 inventory·실패/timeout 정리를 기존 verify-workmanager-isolation.sh 안에서 교정한다. 기존 probe와 모든 기존 suite/assertion·source는 보존한다. 교정1·2 및 이번 교정3을 원래T19에 누적하며 AGENTS.md의 같은V1 자동 승인으로 새 근거를 가진 가역 수정을 진행한다. 원문 공개를 검증된 합성 protocol에 한정하는 부모 계약을 재고정했다. bash-n·정상/누락APK/실패/skip/duplicate/timeout을 구별하는 private fake-adb 검증과 fresh 독립 재검토 후 실제 양API full을 수행한다. fake-adb 통과는 실제 기기/process 검증을 대신하지 않는다.
