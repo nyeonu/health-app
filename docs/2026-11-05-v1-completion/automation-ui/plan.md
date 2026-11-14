@@ -776,3 +776,7 @@ T3 첫실행 전 source로 확인한 v2 store capacity/reset/ledger 전체valida
 ### T3 준비 교정2 — 통합 층 표기와 실제 실행 증거 경계
 
 실행자가 공통 Android 통합 층 SQLite/WorkManager/프로세스 병기를 T3의 신규 WorkManager 및 host kill test 의무로 읽어 편집 전 중단했다. T3 작업의 명시 대상과 named test/completion은 실제 DB staged migration·reopen·중단 fault 경계이며 새 worker/host 파일은 지정하지 않았다. 해당 의미를 명확히 하고 실제 SQLite fault 주입과 별도 실제 기존hostprocess 증거를 구분한다. 기존full양API/host 명령·기존process fixture는유지하며 새migrationphase의 kernelkill증거를 수행없이추정하지않는다. 새제품기능·gate축소없이 원래5파일내최초구현을이어가며 prep1뒤이번2를누적한다.
+
+### T3 실행자 인계 — 미구현 산출물 보존
+
+첫 T3 실행자는 준비교정1·2의 파일소유와검증층문제해소후에도 staged migration/recovery를 자신있게 완성하지못했다고 보고하고 재배정을 요청했다. 제품파일편집·빌드·Native수행은0이며 기존T2/T20 source는그대로다. 다른새Terra 실행자에게동일T3와현재조립brief를인계한다. 모델·세션교체로 기존공통prep회차및T3prep1·2를초기화하지않으며상태는in_progress다.
