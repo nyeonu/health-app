@@ -190,6 +190,7 @@ tasks:
 - **교정6 검증**: 고정 DDL은 retry_budget parent, 기존 attempt의 nullable automatic_lineage_id FK, 기존 ACTIVE partial index다. 기존 계획의 SyncRetryBudgetMigrationInstrumentedTest에서 v1 legacy NULL, 원본 보존, FK ON reset 순서, migrated/fresh v2 실제 sqlite_master 및 foreign_key_list parity, reopen/FK/quick checks를 검증한다. v1/v2 exact schema map을 구분한다. 기존 hot-journal fixture의 의미를 보존하며 새 test 파일이나 기존 hot-journal 테스트 수정은 요구하지 않는다. API28은 source 호환성 판단이며 실제 migration 미수행, 기존 API35/36 gate는 유지한다.
 - **준비 교정1**: 원래4파일에 기존 store 연결1파일을 더한5파일이며 T4와 순차 인계한다. 기존 session future-version fixture는 별도 T20 한파일이 소유한다.
 - **준비 교정2·증거 층**: 위 Android 통합 층의 SQLite/WorkManager/프로세스 병기는 테스트 층 분류이며 T3에 새 worker/host를 도입하라는 요구가 아니다. T3 새 테스트는 실제 SQLite v1/v2·재열기·injected interruption 단계와 원본 보존을 실제 검증한다. 기존 full runner의 실제 process recovery/cleanup host gate는 그대로 모두 수행한다. 새 migration 단계의 실제 kill/restart를 수행했다고 주장하지 않으며 exception fault와 명확히 구분한다.
+- **검토 교정3~6**: Os static class 직접 호출(3), copy 이전 durable exclusive owner 및 준비중 중단의 known-state resume/unknown preserve BLOCKED(4), source/stage inode·device·size·digest를 manifest와 모든 rename 경계에서 검증(5), linked finished attempt의 created/started/finished/updated/due 일관성(6)을 같은 기존파일에서 보완한다. 새 migration test의 실제 DB reopen/fault/corruption으로 확인한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -788,3 +789,7 @@ T3 첫실행 전 source로 확인한 v2 store capacity/reset/ledger 전체valida
 ### T3 사전 기여 컴파일 확인
 
 전체generation validator·엄격v1/v2 schema maps·모든ledger/양방향link검증·capacity/reset연결을작성후source를동결해root가offline :app:assembleDebugAndroidTest를직접실행했다. auto-t3-preparatory-compile.log에서1m22s BUILD SUCCESSFUL이다. 이는아직v1fresh기본의준비기여컴파일이며stagedmigration/freshv2전환/실제새Native검증이나T3완료가아니다. 이어같은실행자의부분기여로durablepublish/wiring과실제migrationfixture를순차완성한다.
+
+### T3 독립 원문 검토 교정3·4·5·6
+
+원래prep1/2를보존한첫부분기여들을컴파일한뒤새staging기여를동결해독립Terra원문검토를받았다. 새기여는아직build/test전이며검토에서Java Os class를Kotlin값으로사용한컴파일문제(3), 준비중durable owner부재(4), resume manifest에서device/inode누락(5), 종료attempt와budget시각관계누락(6)을확인했다. source snapshot/hash와 auto-t3-migration-safety-review.md를보존했다. 같은5파일범위에서각근거를가진국소교정을한번의제한수정으로적용하며새schema/재시도권리/범위확장은없다. 기본2회이후의새근거가있는기존V1가역교정은소유자자동위임(AGENTS.md)에따르며독립재검토·실제양API전체gate는유지한다. 미완전·불명prepared bytes는버리거나이전source에새초기권리를주지않고owner와원본을보존해BLOCKED한다. 종료중ACTIVE waiting은최초finish updatedAt와finishedAt의관계및due를검증하고terminal수동retirement는후속updatedAt을허용하되건강성공outcome을추론하지않는다.
