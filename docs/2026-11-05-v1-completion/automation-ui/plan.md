@@ -18,7 +18,7 @@ tasks:
   - {id: T2, title: durable retry 모델과 검증 경계, depends_on: [T1], status: done, tier: standard}
   - {id: T3, title: 검증된 v1 상태의 v2 migration, depends_on: [T2], status: in_progress, tier: standard}
   - {id: T20, title: v2 도입의 future schema fixture 호환, depends_on: [T1], status: in_progress, tier: light}
-  - {id: T21, title: 전체 gate를 보존하는 고정 retry 진단 실행, depends_on: [T1], status: in_progress, tier: light}
+  - {id: T21, title: 전체 gate를 보존하는 고정 retry 진단 실행, depends_on: [T1], status: done, tier: light}
   - {id: T4, title: retry claim의 실제 SQLite 원자성, depends_on: [T3, T20], status: pending, tier: standard}
   - {id: T5, title: 공용 session의 자동 attempt 연결, depends_on: [T4], status: pending, tier: standard}
   - {id: T6, title: 누락과 출처를 보존하는 aggregate 값, depends_on: [T1], status: in_progress, tier: standard}
@@ -225,7 +225,7 @@ tasks:
 
 ### T21: 전체 gate를 보존하는 고정 retry 진단 실행
 
-- **depends_on**: T1; **tier**: light; **status**: in_progress.
+- **depends_on**: T1; **tier**: light; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -240,6 +240,8 @@ tasks:
 - **검증 방법**: `bash -n android/ci/run-emulator-validation.sh` 및 source0cf03a9와fulltail/기타workflow설정동일대조, 위stubroute검증; root가 branch의workflow_dispatch test_scope=retry-migration과정확한XML8개/digest를검증한다.
 - **주의사항**: 제품/manifest/dependency/원시로그공개/sharding/fixture/timeout 변경 금지. 기존진단과fullrunner표현을재작성하지말고최소case만추가한다. 첫의미있는검증실패시보고/중단한다.
 
+
+- **실제 검증**: CI route source4bb92f3 fresh독립APPROVE 및rootstatic exactroute/누락/unknown/fulltail byte동일검증후, fixtureR11포함2b8ce11의고정진단43553148135 양API정확8개/source동일identity/실패·오류·skip·중복0을공식ZIPdigest와XML로root대조했다(auto-t3-diagnostic-r11-root-proof.json). 실제선택진단은전체143Native/host결과가아니며T3/T20완료를대신하지않는다. 최초진단43552194517의7PASS/1FAIL과R11수정이력은보존한다.
 ### T4: retry claim의 실제 SQLite 원자성
 
 - **depends_on**: T3, T20; **tier**: standard; **status**: pending.
