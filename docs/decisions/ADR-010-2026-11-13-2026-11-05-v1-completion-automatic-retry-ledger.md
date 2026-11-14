@@ -1,7 +1,9 @@
 # ADR-010: 자동 retry cohort와 입장 가능 시각을 같은 SQLite journal에 보관
 
 ## 상태
-Proposed
+Superseded by ADR-012-2026-11-14-2026-11-05-v1-completion
+
+[ADR-012: durable automatic owner link](ADR-012-2026-11-14-2026-11-05-v1-completion-durable-automatic-owner-link.md)
 
 준비 초안이다. 구현·migration·검증이 수행됐다는 뜻이 아니며 실행 허가를 추가하지 않는다. 기존 ADR의 상태는 변경하지 않는다.
 
