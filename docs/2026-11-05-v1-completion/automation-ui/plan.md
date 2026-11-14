@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 6c52453ae421a22c1d19049bdd6c17f70498fd56
+parent_rev: 17c6c1ff82a57d5ee73cf79319299a42bf8a08d0
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-auto-retry
@@ -211,13 +211,14 @@ tasks:
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
   | `AI/SyncExecutionSessionInstrumentedTest.kt` | 수정 | unsupported fixture version 2를 future 3으로 교정 |
+  | `AI/SqliteSyncStateStoreInstrumentedTest.kt` | 수정 | 기존 attempt 손상 INSERT의 12열을 명시해 v2 nullable 추가와 호환 |
 
 - **인터페이스**: 신규 API는 없으며 손상·unsupported 시 raw read/remote write 0과 원본 보존 assertion을 유지한다.
-- **결정 로직**: 기존 unsupported fixture의 version 2는 이제 supported v2가 되므로 3을 넣는다. 기존 테스트 이름·구조·assertion·다른 damage 입력은 변경하지 않는다.
+- **결정 로직**: 기존 unsupported fixture의 version 2는 이제 supported v2가 되므로 3을 넣는다. 기존 테스트 이름·구조·assertion·다른 damage 입력은 변경하지 않는다. 기존 attempt 손상 fixture INSERT는 기존12열명만명시하고12값/손상조건을그대로유지한다.
 - **작성할 테스트**: 기존 unsupported damage 사례를 그대로 재사용한다. 신규 테스트 파일이나 expectation 변경은 없다.
 - **완료 기준**: T3와 통합된 source에서 기존 full Native API35/36 및 host protocol을 실제 통과해야 done이다. 컴파일만으로 완료하지 않는다.
 - **검증 방법**: T3 source frozen 뒤 root가 `./gradlew :app:assembleDebugAndroidTest` 및 repository root에서 `GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh`를 수행한다. 로컬 emulator 부재는 pending이고 root GitHub CI 양API로 실제 검증한다. T3와 같은 명령을 중복 실행하지 않고 source head/evidence를 공유한다.
-- **주의사항**: 이 파일은 T3와 disjoint다. 이후 T5의 기존 session fixture 인계 전 T20 완료 source를 보존한다. 회귀 삭제·skip·assertion 완화·v2 corruption 허용 금지.
+- **주의사항**: 이 두 파일은 T3 제품·새fixture와 disjoint다. 이후 T5의 기존 session fixture 인계 전 T20 완료 source를 보존한다. 회귀 삭제·skip·assertion 완화·v2 corruption 허용 금지.
 
 ### T4: retry claim의 실제 SQLite 원자성
 
@@ -793,3 +794,7 @@ T3 첫실행 전 source로 확인한 v2 store capacity/reset/ledger 전체valida
 ### T3 독립 원문 검토 교정3·4·5·6
 
 원래prep1/2를보존한첫부분기여들을컴파일한뒤새staging기여를동결해독립Terra원문검토를받았다. 새기여는아직build/test전이며검토에서Java Os class를Kotlin값으로사용한컴파일문제(3), 준비중durable owner부재(4), resume manifest에서device/inode누락(5), 종료attempt와budget시각관계누락(6)을확인했다. source snapshot/hash와 auto-t3-migration-safety-review.md를보존했다. 같은5파일범위에서각근거를가진국소교정을한번의제한수정으로적용하며새schema/재시도권리/범위확장은없다. 기본2회이후의새근거가있는기존V1가역교정은소유자자동위임(AGENTS.md)에따르며독립재검토·실제양API전체gate는유지한다. 미완전·불명prepared bytes는버리거나이전source에새초기권리를주지않고owner와원본을보존해BLOCKED한다. 종료중ACTIVE waiting은최초finish updatedAt와finishedAt의관계및due를검증하고terminal수동retirement는후속updatedAt을허용하되건강성공outcome을추론하지않는다.
+
+### T20 보정1 — 기존 손상 fixture의 schema 독립 SQL
+
+실제 source검사에서 기존attempt raw INSERT12값이v2의13열과맞지않는것을확인했다. T20에기존SqliteSyncStateStoreInstrumentedTest한파일을추가해원래12열명만명시하고동일bad attempt값/기존assertion을보존한다. T20누적보정1이며T3회차와독립적으로기록한다. 제품동작·회귀기대값·host를변경하지않고root가통합source의테스트APK와전체양API/host를검증한다.
