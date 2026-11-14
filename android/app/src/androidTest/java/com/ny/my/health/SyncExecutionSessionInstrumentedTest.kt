@@ -549,7 +549,7 @@ class SyncExecutionSessionInstrumentedTest {
                                 db.setForeignKeyConstraintsEnabled(false)
                                 db.execSQL("DELETE FROM day WHERE scope_key=?", arrayOf(f.key.value))
                             }
-                            "unsupported" -> db.version = 2
+                            "unsupported" -> db.version = 3
                         }
                     }
                 }
