@@ -15,8 +15,8 @@ execution_gate: actual-PR19-merge-contract-parent-ADR-repin-independent-readines
 tasks:
   - {id: T19, title: WorkManager helper process 격리 기반, depends_on: [], status: done, tier: standard}
   - {id: T1, title: 실제 WorkManager starter 기반, depends_on: [T19], status: done, tier: standard}
-  - {id: T2, title: durable retry 모델과 검증 경계, depends_on: [T1], status: in_progress, tier: standard}
-  - {id: T3, title: 검증된 v1 상태의 v2 migration, depends_on: [T2], status: pending, tier: standard}
+  - {id: T2, title: durable retry 모델과 검증 경계, depends_on: [T1], status: done, tier: standard}
+  - {id: T3, title: 검증된 v1 상태의 v2 migration, depends_on: [T2], status: in_progress, tier: standard}
   - {id: T4, title: retry claim의 실제 SQLite 원자성, depends_on: [T3], status: pending, tier: standard}
   - {id: T5, title: 공용 session의 자동 attempt 연결, depends_on: [T4], status: pending, tier: standard}
   - {id: T6, title: 누락과 출처를 보존하는 aggregate 값, depends_on: [T1], status: in_progress, tier: standard}
@@ -143,7 +143,7 @@ tasks:
 
 ### T2: durable retry 모델과 검증 경계
 
-- **depends_on**: T1; **tier**: standard; **status**: in_progress.
+- **depends_on**: T1; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -167,9 +167,11 @@ tasks:
 
 - **주의사항**: 기존 AttemptState는 마지막 실행의 mirror다. 새 lineage는 frozen 날짜 cohort이며 revisions는 UNREAD sentinel이 아닌 nullable 관찰 metadata다. 순수 validation에는 DB/SDK 호출을 넣지 않는다. 암묵 초기화/새 migration의 추정이 틀리면 우회하지 말고 blocked로 보고한다. 단언 완화·skip 금지.
 
+- **실제 검증**: source dcc5738의 R7 actor 및 root 전체core86개 통과, 공식 PR19 base84 identity 전부 보존/실패·오류·skip·중복0. root log auto-t2-root-recovery7-verify.log 및 sourceSHA별 auto-t2-root-proof.json. 기존 generic/수동 테스트는 변경하지 않았다. owner pure 검증만 완료이며 persisted ledger/SQLite/CAS는 T3/T4 대기다.
+
 ### T3: 검증된 v1 상태의 v2 migration
 
-- **depends_on**: T2; **tier**: standard; **status**: pending.
+- **depends_on**: T2; **tier**: standard; **status**: in_progress.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
