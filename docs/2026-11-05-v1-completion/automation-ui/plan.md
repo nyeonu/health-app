@@ -5,11 +5,11 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 17c6c1ff82a57d5ee73cf79319299a42bf8a08d0
+parent_rev: 3e713e6c0c87a3f10b8e2800a934708b047ea68c
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-auto-retry
-parallel_branches: [feature/v1-auto-retry, feature/v1-auto-summary]
+parallel_branches: [feature/v1-auto-retry, feature/v1-auto-summary, feature/v1-auto-diagnostics]
 source_base: 75cc443702a3467c87268d49ce52d4d75b2ed8a5
 execution_gate: actual-PR19-merge-contract-parent-ADR-repin-independent-readiness
 tasks:
@@ -18,6 +18,7 @@ tasks:
   - {id: T2, title: durable retry 모델과 검증 경계, depends_on: [T1], status: done, tier: standard}
   - {id: T3, title: 검증된 v1 상태의 v2 migration, depends_on: [T2], status: in_progress, tier: standard}
   - {id: T20, title: v2 도입의 future schema fixture 호환, depends_on: [T1], status: in_progress, tier: light}
+  - {id: T21, title: 전체 gate를 보존하는 고정 retry 진단 실행, depends_on: [T1], status: in_progress, tier: light}
   - {id: T4, title: retry claim의 실제 SQLite 원자성, depends_on: [T3, T20], status: pending, tier: standard}
   - {id: T5, title: 공용 session의 자동 attempt 연결, depends_on: [T4], status: pending, tier: standard}
   - {id: T6, title: 누락과 출처를 보존하는 aggregate 값, depends_on: [T1], status: in_progress, tier: standard}
@@ -221,6 +222,23 @@ tasks:
 - **완료 기준**: T3와 통합된 source에서 기존 full Native API35/36 및 host protocol을 실제 통과해야 done이다. 컴파일만으로 완료하지 않는다.
 - **검증 방법**: T3 source frozen 뒤 root가 `./gradlew :app:assembleDebugAndroidTest` 및 repository root에서 `GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh`를 수행한다. 로컬 emulator 부재는 pending이고 root GitHub CI 양API로 실제 검증한다. T3와 같은 명령을 중복 실행하지 않고 source head/evidence를 공유한다.
 - **주의사항**: 이 두 파일은 T3 제품·새fixture와 disjoint다. 이후 T5의 기존 session fixture 인계 전 T20 완료 source를 보존한다. 회귀 삭제·skip·assertion 완화·v2 corruption 허용 금지.
+
+### T21: 전체 gate를 보존하는 고정 retry 진단 실행
+
+- **depends_on**: T1; **tier**: light; **status**: in_progress.
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `.github/workflows/android-emulator-tests.yml` | 수정 | 기존 dispatch choice에 정적 retry 진단3개만 추가 |
+  | `android/ci/run-emulator-validation.sh` | 수정 | source 존재 확인 뒤 고정 class만 실행·진단 종료 |
+
+- **인터페이스**: 기존 dispatch allowlist를 확장하며 임의 class/command 입력은 받지 않는다. 기본값 full, PR full, 기존 진단6개와 양API/host/registry 순서·artifact/timeout/permissions는 그대로다.
+- **결정 로직**: workflow_dispatch의 retry-migration은 정확한 class com.ny.my.health.SyncRetryBudgetMigrationInstrumentedTest, retry-store는 com.ny.my.health.SyncRetryBudgetStoreInstrumentedTest, retry-session은 com.ny.my.health.SyncExecutionSessionInstrumentedTest를 실행한다. 각 고정 source path가 없으면 실패하며 unknown은 기존대로 실패한다. 선택 진단은 full PASS가 아니다.
+- **작성할 테스트**: shell syntax와 임시 synthetic adb/gradle stub으로3개scope의 exact1class 선택, source누락/unknown 실패 및 기존full tail bytes 보존을 검증한다. 저장소에 새test파일/의존성은 추가하지 않는다. 실제현재migration8개를양API에서선택실행하는CI증거는root가확인한다.
+- **완료 기준**: staticroute/checks와실제선택진단8개양API를통과하고 fullgate불변을fresh독립review로확인한다. 진단결과로T3/전체V1완료를대신하지않는다.
+- **검증 방법**: `bash -n android/ci/run-emulator-validation.sh` 및 source0cf03a9와fulltail/기타workflow설정동일대조, 위stubroute검증; root가 branch의workflow_dispatch test_scope=retry-migration과정확한XML8개/digest를검증한다.
+- **주의사항**: 제품/manifest/dependency/원시로그공개/sharding/fixture/timeout 변경 금지. 기존진단과fullrunner표현을재작성하지말고최소case만추가한다. 첫의미있는검증실패시보고/중단한다.
 
 ### T4: retry claim의 실제 SQLite 원자성
 
@@ -812,3 +830,7 @@ R3~6 source교정후독립재검토에서Os static/identity/finish일관성은so
 ### T3 교정10 — 실제 Android fixture의 locale metadata 오염 차단
 
 root가현재91433b6 전체로컬core/app/APK/lint를2m29s 통과시킨뒤Native실행전새fixture의raw openOrCreateDatabase/openDatabase에NO_LOCALIZED_COLLATORS누락을발견했다. AOSP공식SQLiteConnection.java HTTP200 source476/496줄로기본writableopen이android_metadata table을추가함을확인했다. 이는strictv1/v2 map에없는테이블로처음부터fixture를unsupported로만들며제품schema를완화할이유가아니다. 새MigrationInstrumentedTest의모든rawopen에production과같은NO_LOCALIZED_COLLATORS 및초기DELETE/FULL설정을적용하는test-only교정10이다. 기존테스트/스키마/map/assertion은보존한다. 진행중43550413104는오염fixture의불필요한긴검증을피해취소요청하고PASS증거로쓰지않는다. 새sourcehead로전체양API/host를재실행한다. 원래회차1~9를보존한다. 공식source는공개AOSP참조이며실기기수행주장이아니다.
+
+### T21 준비 — 새기능이아닌기존진단 allowlist 확장
+
+제품T3와독립인별도worktree에서기존정적diagnostic패턴을세개의정적class로확장한다. 현재full0cf03a9run43550859281는유지하며source/gate불변검증뒤새fixture선택실행을병렬화한다. 별도스펙/SLA나fullsharding을도입하지않고기존자동검증경로의가역기술보조만수행한다. 완료/PASS층구분과PR최종currenthead전체검증은유지한다.
