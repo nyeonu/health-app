@@ -192,6 +192,7 @@ tasks:
 - **준비 교정2·증거 층**: 위 Android 통합 층의 SQLite/WorkManager/프로세스 병기는 테스트 층 분류이며 T3에 새 worker/host를 도입하라는 요구가 아니다. T3 새 테스트는 실제 SQLite v1/v2·재열기·injected interruption 단계와 원본 보존을 실제 검증한다. 기존 full runner의 실제 process recovery/cleanup host gate는 그대로 모두 수행한다. 새 migration 단계의 실제 kill/restart를 수행했다고 주장하지 않으며 exception fault와 명확히 구분한다.
 - **검토 교정3~6**: Os static class 직접 호출(3), copy 이전 durable exclusive owner 및 준비중 중단의 known-state resume/unknown preserve BLOCKED(4), source/stage inode·device·size·digest를 manifest와 모든 rename 경계에서 검증(5), linked finished attempt의 created/started/finished/updated/due 일관성(6)을 같은 기존파일에서 보완한다. 새 migration test의 실제 DB reopen/fault/corruption으로 확인한다.
 - **검토 교정7**: 유효한 owner+원본proof와 stage 미생성 상태는 copy부터 재개한다. 변환 완료 checkpoint 전 변환된 stage의 device/inode/size/hash를 별도 durable proof로 기록해 재개 시 검증·ready 승격하며 DDL을 재실행하지 않는다. 증명 기록 전 partial/unproved/mismatched stage는 계속 원본과 owner 보존 BLOCKED다.
+- **교정8·9 검증**: 실제compile의 core 모듈 public nullable finishedAt은 local val snapshot으로 비교한다(8). actor가 보고한 FK ON retained-budget reset·linked finish corruption/valid retirement·changed-content/legacy spill·명시gap·실제v1 dirty journal 회귀를 같은신규fixture에 보완한다(9). 기존테스트·assertion은변경하지않는다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -803,3 +804,7 @@ T3 첫실행 전 source로 확인한 v2 store capacity/reset/ledger 전체valida
 ### T3 교정7 — 알려진 준비 중단의 안전한 재개
 
 R3~6 source교정후독립재검토에서Os static/identity/finish일관성은source수준해소됐으나owner-only와커밋된transformed checkpoint가정상적으로도영구BLOCKED되는것을확인했다(auto-t3-migration-safety-rereview.md). 유효owner·그대로인원본·아직stage없음은known state로copy부터재개한다. 변환완료checkpoint전에는별도durable 변환proof를기록해같은inode/content를확인한뒤v2검증과ready승격만재개한다. durable proof기록전의partial·불명·불일치바이트는기존preserve/BLOCKED기준을유지한다. 원래prep1/2와R3/4/5/6에이번7을누적하며새권리/schema/domain필드없이다음부분교정과실제새SQLitefixture검증을진행한다.
+
+### T3 교정8·9 — 실제 compile 실패와 보고된 검증 누락
+
+첫현재staging/test source APKcompile이SyncRetryBudgetMigration.kt:102에서core다른모듈public nullable finishedAt smartcast불가로실패했다(auto-t3-verify.log). actor는즉시중단했고추가수정/재실행없다. 교정8은해당immutable local val로snapshot후null분기·비교하는Kotlin모듈경계수정이다. 같은보고의미커버인FKON budget reset·link시간corruption/정상terminalretirement·changedbytes/legacyspill·직접gap·실제v1dirtyjournal은원래승인T3기준누락이므로새fixture에서교정9로보완한다. 새SQLschema/권리/기존기대값변경없고T3원래prep1/2·R3~7을보존한누적8/9로기록하며단일제한수정/원명령검증한다. 실제kernelkill미수행은분리한다.
