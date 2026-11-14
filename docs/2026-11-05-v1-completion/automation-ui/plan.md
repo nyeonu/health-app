@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 60e44d93cb2d8878f541327034591630c48c0ba7
+parent_rev: f14b7501602bfe53aa3becb0482c1ebb3cca6116
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-auto-retry
@@ -149,13 +149,14 @@ tasks:
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
   | `C/SyncRetryBudget.kt` | 신규 | IO 없는 lineage/claim/finalization validation |
-  | `C/SyncState.kt` | 수정 | optional automaticOwner 및 pending unfinished validator |
+  | `C/SyncState.kt` | 수정 | optional owner와 memory-only bound context validator |
   | `CT/SyncRetryBudgetTest.kt` | 신규 | 초기+3회·due 경계·immutable proposal/lineage 검증 |
 
 - **인터페이스**: 2절 `AutomaticRetryContracts` 참조. 기존 port를 바꾸는 추가 계약은 부모에 먼저 통합한다.
 - **결정 로직**: 같은 unfinished lineage → 새 attempt/periodic/revision 관찰만으로 사용량 초기화 금지; completed lineage → 새 정상 batch 허용; retry claim 3회 뒤 → exhausted; now<due → DEFERRED/사용량 불변; 최초 proposal 누락·scope/date 교체 → 거부.
 - **작성할 테스트**: `Retry lineage permits one initial run and three claimed retries despite new attempt ids and changed observed revisions` (①성공기준·②경계/동등분할·③오류·④순서; JVM 유닛/adapter 경계). 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
-- **계약 보정3 검증**: SyncState validator의 자동 pending unfinished·기존 finished MANUAL pending COMMITTED 보존 및 정확히 한 payload, immutable input/output, 초기 version 0/reclaim만 +1/observe·finish 불변, invalid 고정 예외, due 경계와 세 hash golden을 기존 T2 테스트 파일에서 검증한다.
+- **계약 보정3 검증**: SyncState validator의 bound-context pending unfinished·모든 legacy trigger의 finished pending 및 generic null-owner 의미 보존 및 정확히 한 payload, immutable input/output, 초기 version 0/reclaim만 +1/observe·finish 불변, invalid 고정 예외, due 경계와 세 hash golden을 기존 T2 테스트 파일에서 검증한다.
+- **교정6 검증**: 기존 세 파일만 유지한다. SyncState.validateMutation에 automaticOwnerRequired: Boolean = false memory-only 인자를 추가하고 새 bound 사례는 명시적으로 true를 전달한다. supplied owner의 intrinsic/id/key 검증, bound start/finish 거부 및 day/confirmation/union, 수동과 모든 legacy trigger의 default semantics를 기존 신규 SyncRetryBudgetTest에서 검증한다. 기존 SyncStateTest와 DestinationSyncTest 및 기대값은 수정하지 않고 전체 core suite를 실행한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -181,6 +182,7 @@ tasks:
 - **결정 로직**: 정확한 supported v1 + validated content → additive v2; unknown schema/future version/corruption → 원본 보존 BLOCKED.
 - **작성할 테스트**: `Validated v1 migration retains bindings unfinished journals uncertainty prior confirmations and gaps through interrupted v2 publish` (①성공기준·②경계/동등분할·③오류·④순서; 실제 SQLite/WorkManager/프로세스 통합). 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
 - **계약 보정3 검증**: 한 신규 table에 requestedScopes를 검증된 column/JSON으로 저장하고 dates/scopes/observed JSON 합계 <=16KiB. 기존 ACTIVE partial unique index의 generation scan을 EXPLAIN으로 검증해 충분하면 추가 index 금지. schema 검증은 전체 row를 검증한다.
+- **교정6 검증**: 고정 DDL은 retry_budget parent, 기존 attempt의 nullable automatic_lineage_id FK, 기존 ACTIVE partial index다. 기존 계획의 SyncRetryBudgetMigrationInstrumentedTest에서 v1 legacy NULL, 원본 보존, FK ON reset 순서, migrated/fresh v2 실제 sqlite_master 및 foreign_key_list parity, reopen/FK/quick checks를 검증한다. v1/v2 exact schema map을 구분한다. 기존 hot-journal fixture의 의미를 보존하며 새 test 파일이나 기존 hot-journal 테스트 수정은 요구하지 않는다. API28은 source 호환성 판단이며 실제 migration 미수행, 기존 API35/36 gate는 유지한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -189,7 +191,7 @@ tasks:
   (cd "$(git rev-parse --show-toplevel)" && GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh)
   ```
 
-- **주의사항**: §2 migration 계약을 따른다. version>2를 future unsupported fixture로 사용하며 malformed v1는 계속 거부한다. native v1 hot-journal forensic fixture를 v2라는 이유로 제거하지 않는다. 새 row만 추가하고 old row/bytes의 의미를 재작성하지 않는다. 암묵 초기화/새 migration의 추정이 틀리면 우회하지 말고 blocked로 보고한다. 단언 완화·skip 금지.
+- **주의사항**: §2 migration 계약을 따른다. version>2를 future unsupported fixture로 사용하며 malformed v1는 계속 거부한다. native v1 hot-journal forensic fixture를 v2라는 이유로 제거하지 않는다. staged attempt nullable FK를 추가하되 old row/bytes의 의미를 재작성하지 않는다. 암묵 초기화/새 migration의 추정이 틀리면 우회하지 말고 blocked로 보고한다. 단언 완화·skip 금지.
 
 **Checkpoint**: 해당 구간의 실제 source/계약/회귀와 parent pin을 root가 확인한 후 후속 구간으로 진행한다.
 
@@ -208,6 +210,7 @@ tasks:
 - **결정 로직**: expected generation+lineage+version+owner 일치 → claim 1회 commit; stale/동일 claim replay → 증가 없음; exhausted → health/remote admission 거부.
 - **작성할 테스트**: `SQLite retry claims survive reopen and racing attempts cannot exceed three retries or erase old metadata` (①성공기준·②경계/동등분할·③오류·④순서; 실제 SQLite/WorkManager/프로세스 통합). 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
 - **계약 보정3 검증**: 2절 preflight/load API 및 exact scope CAS를 구현한다. indexed ACTIVE owner/due streaming은 cap 100000, 목록/JSON per-row/N+1 금지. owner recovery 우선, max future due/정각/다른 scope terminal, stale/손상 외부 호출 0을 검증한다. busy union 동시성, 실제 observation/day atomicity, eligible manual retirement 및 rollback/reopen을 검증한다.
+- **교정6 검증**: 기존 계획의 SyncRetryBudgetStoreInstrumentedTest에서 긍정 persisted link를 private boundary가 도출하는 것과 claim/finish/recovery/opt-out 뒤 reopen, orphan·역방향 owner/link 불일치·generation/scope/count/version/date/revision 불일치의 fail closed, ownerless union, legacy config false, finished manual replacement와 보존 budget, rollback/CAS를 검증한다. generic caller는 bool 또는 link를 지정하지 못한다. T3 schema/fixture 소유를 건드리지 않는다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -233,7 +236,8 @@ tasks:
 - **인터페이스**: 2절 `AutomaticRetryContracts`, `AutomaticSessionRoutingContracts` 참조. 기존 port를 바꾸는 추가 계약은 부모에 먼저 통합한다.
 - **결정 로직**: busy → pending trigger merge만; owner → 복구 후 atomic claim; cancellation → journal interruption 보존, retry reset 없음.
 - **작성할 테스트**: `Automatic session claims once under the shared gate and cancellation never resets budget or clears uncertain creates` (①성공기준·②경계/동등분할·③오류·④순서; 실제 SQLite/WorkManager/프로세스 통합). ⑤기존 관련 회귀 재사용. 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
-- **계약 보정3 검증**: 모든 자동 day/confirmation에 owner와 실제 read revision을 전달한다. ownerless busy pending union은 현재 미완료 attempt superset만 허용한다. readScoped와 pure identify만 source catch, 취소 전파/두 SourceReadException reason 보존/나머지 SOURCE_READ_FAILED; store 및 destination IO는 제외. 기존 DestinationSyncTest에서 해당 날짜 revision 실패 write 0, 이전 완료 write 유지 및 분리 회귀를 검증한다.
+- **계약 보정3 검증**: 모든 자동 day/confirmation에 owner와 실제 read revision을 전달한다. bound ownerless busy pending union은 현재 미완료 attempt superset만 허용하며 ledgerless legacy generic 동작은 보존한다. readScoped와 pure identify만 source catch, 취소 전파/두 SourceReadException reason 보존/나머지 SOURCE_READ_FAILED; store 및 destination IO는 제외. 기존 DestinationSyncTest에서 해당 날짜 revision 실패 write 0, 이전 완료 write 유지 및 분리 회귀를 검증한다.
+- **교정6 검증**: 실제 enabled automatic entry는 prepare/access 이전 전용 claim/finish로 라우팅하고 default-off 및 due 이전 auth/metadata/records/remote 0을 기존 session 테스트에서 검증한다. legacy synthetic generic 경로는 보존한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -384,6 +388,7 @@ tasks:
 - **인터페이스**: 2절 `AutomaticWorkContracts`, `AutomaticSessionRoutingContracts`, `WorkManagerIsolationRegistry` 참조. 기존 port를 바꾸는 추가 계약은 부모에 먼저 통합한다.
 - **결정 로직**: automatic=false → enqueue 없음; true+current generation+Drive → unique periodic와 catch-up; stale/local → no health admission.
 - **작성할 테스트**: `Explicit automatic opt in creates one constrained daily CoroutineWorker without exact time promises` (①성공기준·②경계/동등분할·③오류·④순서; 실제 SQLite/WorkManager/프로세스 통합). 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
+- **교정6 검증**: worker의 실제 enabled entry는 전용 claim/finish로 라우팅하고 default off 또는 due 이전 auth/metadata/records/remote 호출 0을 기존 worker fixture에서 검증한다. generic store start 거부만으로 IO 보장을 주장하지 않는다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -605,6 +610,8 @@ tasks:
 | preflight·scope 독립성과 ownerless busy union | 미래 ACTIVE due 최대값·정각·다른 terminal scope 허용·same-scope terminal 거부·stale/손상 외부 IO 0·미완료 superset 동시 union 무손실 | T2/T3/T4/T5/T12; ①②③④/JVM·실제 SQLite·process |
 | summary 및 projection 실패 경계 | 동일 불변 DTO의 missing/zero/max/방어복사·SUMMARY 및 수동 bytes/hash·revision 실패 해당 날짜 write 0·두 source reason/취소/store 분리 | T5/T6/T7; ①②③⑤/JVM |
 
+| durable link와 legacy validation 경계 | 기존 scheduled generic start/engine 및 finished pending 유지·bound owner/day/finish 거부·orphan/reverse mismatch/opt-out·reopen·schema parity·early IO 0 | T2/T3/T4/T5/T11; ①②③④⑤/JVM·SQLite·worker |
+
 ### 원문 테스트의 작업 배정
 
 §1의 첫 테스트 이름은 아래 배정에서 같은 이름의 실제 테스트 또는 요구별 fixture로 구현한다. 공유 manual 테스트는 기존 suite를 재사용한다. §3의 보완 테스트가 원문 요구 검증을 대체하거나 누락시키지 않는다.
@@ -730,3 +737,7 @@ PR19는75cc443702a3467c87268d49ce52d4d75b2ed8a5로 병합됐고 이 worktree를 
 ### T2 교정4·5 위임 범위
 
 첫core실패는기존MANUALfinishedpending을새자동제약으로거부한것이며기존SyncStateTest의COMMITTED기대는변경하지않는다. 자동trigger에한정한미완료pending/ownercontext검증과waitingdue=updatedAt+delay snapshotvalidation을완성한다. 최초85개중새lineage검증은통과했으나원래계획의불변입출력·cohort교체/완료후새lineage·잘못된입력·owner문맥·정확히한payload검증이미완료였으므로기존T2새test파일안에서요구기준별누락을보완한다. 파일은원래3개,단일제한수정과원명령검증후중단/보고하며기존준비1·2·계약3에교정4·5를누적한다. root의T6별도lane는영향없이보존한다.
+
+### T2 교정6 — durable owner link와 legacy validation 경계
+
+기존 준비1/2·계약3·T2 교정4/5는 유지하고 횟수를 초기화하지 않는다. R4/R5 전체 core 86개 중 84 통과·2 실패는 기존 generic SCHEDULED start 및 ledgerless scheduled engine 회귀다. 원인은 trigger를 ledger binding의 증거로 취급한 것이다. 기존 테스트는 변경하지 않는다. 교정6은 memory-only 명시 context와 저장된 attempt→lineage positive link로 경계를 분리하며 ADR-012 Proposed가 ADR-010을 대체한다. 실제 PR19 merge 및 T1 done은 유지한다. T2/T6은 공통 상태 in_progress이고 T6 완료는 별도 summary source lane의 사실이다. 이 문서 수정만으로 구현 또는 SQL migration 검증을 주장하지 않는다. parent/ADR 실제 commit f14b7501602bfe53aa3becb0482c1ebb3cca6116에 child parent_rev를 재고정했다. 19 brief 재조립 및 fresh readiness review 후 제품 교정을 위임한다. 각 T 5파일 상한, T3→T4 순차 ownership과 기존 전체 gate 및 실기기/실계정 pending은 유지한다.
