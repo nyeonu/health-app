@@ -780,3 +780,7 @@ T3 첫실행 전 source로 확인한 v2 store capacity/reset/ledger 전체valida
 ### T3 실행자 인계 — 미구현 산출물 보존
 
 첫 T3 실행자는 준비교정1·2의 파일소유와검증층문제해소후에도 staged migration/recovery를 자신있게 완성하지못했다고 보고하고 재배정을 요청했다. 제품파일편집·빌드·Native수행은0이며 기존T2/T20 source는그대로다. 다른새Terra 실행자에게동일T3와현재조립brief를인계한다. 모델·세션교체로 기존공통prep회차및T3prep1·2를초기화하지않으며상태는in_progress다.
+
+### T3 첫 구현 기여의 크기 제한
+
+새실행자도제품편집없이기존active-only validator를장애로보고했으므로동일T3를재작성하지않고첫기여를기존store의 migration-source 전체generation 검증helper로한정한다. Metadata와이미명시meta를받는 streaming validator를재사용·분리하고 archived generation의id/destination/enrolled/categories를검증한다. archived automatic은저장되지않아검증용문맥값을과거설정사실이나저장값으로주장하지않는다. 실제active config/binding 및v1automatictrue차단은별도권위값으로검증한다. per-generation indexedstreaming과cap을유지하며normalUIread를매번전체generation검증으로바꾸지않는다. 이후같은task의schema/stagedpublish/실제test기여를순차연결한다. 이부분기여는T3완료나별도feature완료가아니며모든원래Nativegate를유지하고기존회차를초기화하지않는다.
