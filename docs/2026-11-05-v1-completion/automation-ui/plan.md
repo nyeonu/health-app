@@ -694,3 +694,7 @@ T19는earlystarter의옛script가아닌실제mergedSAF의진단earlyexit·critic
 ### T19 실제 완료·T1 시작 (2026-11-14 UTC)
 
 source2992452/run43527182302 공식 artifact API35 14088236324/sha256:9548d12b541c816ecbd67b73e74f98ed5118b2a5d5522ead1f46634e6cf51dca, API36 14087950535/sha256:093a97d19d5446fb585faa19aee96631991247027e574960edb0d0f66f5e438f. 각135unique Native/critical15+remaining117+isolated3, 기존132 보존, 실패/오류/skip/중복0; host recovery8+settings4+cleanup8 및 sync-state recovery17+cleanup17, killedholds pass0. root가 officialdigest와 실제XML/세격리raw·JSON/host원문을 직접 대조했다(/workspace/tooling/auto-t19-root-native-proof.json). 독립 소스 재검토2992452 APPROVE. T19누적교정1~4는 보존한다. 다음T1은 same task Terra 세션의 read-only preflight를 이어 진행하며 실제 production 초기화·manifest·네graph 감사·양API 재검증은 새로 수행한다.
+
+### T1 교정3 — 기존 core 타입 import 누락
+
+최초 구현 검증 compileDebugKotlin이 HealthApplication.kt:22 ScopedHealthReader unresolved reference로 중단됐다. core/Ports.kt:46의 기존 com.ny.my.health.core.ScopedHealthReader 선언을 root가 확인했다. 새 계약/의존성/동작을 추가하지 않고 HealthApplication.kt에 정확한 import 한 줄을 추가해 같은 전체 로컬 검증을 다시 수행한다. T1 준비 교정1·2를 보존하고 이번을 원래T1의 교정3으로 누적한다. 새 근거와 한정된 가역 수정을 소유자의 기존V1 자동 승인 위임으로 진행하며 후속 미확인 오류는 통과로 처리하지 않는다. manifest/probe/starter·기존회귀와 감사 gate는 유지한다.
