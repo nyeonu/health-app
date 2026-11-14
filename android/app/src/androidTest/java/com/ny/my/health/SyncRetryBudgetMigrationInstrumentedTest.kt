@@ -181,9 +181,19 @@ class SyncRetryBudgetMigrationInstrumentedTest {
             assertEquals(StateStatus.READY, store(file).load().status)
             installTerminalBudget(file, "2026-11-05T00:00:03Z")
             assertEquals(StateStatus.READY, store(file).load().status)
+            SyncStateDatabase(file).openForWrite().use { db ->
+                assertEquals(listOf("1"), query(db, "PRAGMA foreign_keys"))
+                db.beginTransaction()
+                try {
+                    try {
+                        db.delete("retry_budget", null, null)
+                        fail("연결된 retry budget 삭제는 외래 키에 의해 거부되어야 합니다")
+                    } catch (_: android.database.sqlite.SQLiteConstraintException) { }
+                } finally { db.endTransaction() }
+            }
             assertEquals(CommitStatus.COMMITTED, store(file).reset(DestinationGeneration(generation)).status)
-            SyncStateDatabase(file).openForRead().use { db ->
-                assertEquals(listOf("1"), query(db!!, "PRAGMA foreign_keys"))
+            SyncStateDatabase(file).openForWrite().use { db ->
+                assertEquals(listOf("1"), query(db, "PRAGMA foreign_keys"))
                 assertTrue(query(db, "PRAGMA foreign_key_check").isEmpty())
                 assertEquals(listOf("0"), query(db, "SELECT count(*) FROM retry_budget"))
                 assertEquals(listOf("0"), query(db, "SELECT count(*) FROM attempt"))
