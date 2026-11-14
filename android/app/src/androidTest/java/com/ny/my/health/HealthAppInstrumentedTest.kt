@@ -213,6 +213,8 @@ class HealthAppInstrumentedTest {
     private fun captureNativeLayout(name: String) {
         try {
             compose.waitUntil(10_000) {
+                val hasFocus = compose.runOnUiThread { compose.activity.hasWindowFocus() }
+                if (!hasFocus) NativeWindowEnvironment.dismissKnownExternalAnr()
                 compose.runOnUiThread { compose.activity.hasWindowFocus() }
             }
         } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {

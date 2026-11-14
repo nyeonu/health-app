@@ -40,6 +40,8 @@ class PhoneProfilingClipboardInstrumentedTest {
 
         // Compose 유휴 상태와 별개로 OS 클립보드 접근에 필요한 전경 포커스를 기다린다.
         compose.waitUntil(10_000) {
+            val hasFocus = compose.runOnUiThread { compose.activity.hasWindowFocus() }
+            if (!hasFocus) NativeWindowEnvironment.dismissKnownExternalAnr()
             compose.runOnUiThread {
                 compose.activity.lifecycle.currentState == Lifecycle.State.RESUMED &&
                     compose.activity.hasWindowFocus()

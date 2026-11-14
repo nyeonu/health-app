@@ -2,7 +2,17 @@
 
 이 문서는 진행 증거이며 V1 수용 완료나 출시 승인이 아니다. 소유자의 자동승인 범위에서 구현·독립 검토·개발 병합을 진행한다. 실제 Galaxy/Google/SAF provider/Doze·재부팅·TalkBack의 미실행 항목은 pending이다.
 
-## 현재 상태 (2026-11-13)
+## 현재 상태 (2026-11-14 UTC)
+
+core-store PR16, 수동 Drive PR17, 전경 SAF local PR18의 소프트웨어 구현·검증·독립 검토·개발 병합을 완료했다. PR18은 `9ab774beac85bf7a96953bb0a0aa1b8098c76c69`로 병합됐으며 최종 reviewed head `cbc3f870f4a20d79e32316c1f0159f50410d2627`의 [Native run43519528348](https://github.com/nyeonu/health-app/actions/runs/43519528348)은 양API132개, [JVM/APK run43519528355](https://github.com/nyeonu/health-app/actions/runs/43519528355)은181개를 통과했다. 실제 Galaxy/provider 수용은 [SAF 수용 목록](../V1/storage-destinations.md)에 남아 있다.
+
+완료된 WorkManager2.11 기반을 실제 SAF merge에 통합한 뒤 T19 helper 격리를 먼저 검증했다. source `299245214cc76c433ba9ee6909c0f786027dc56b`의 [full run43527182302](https://github.com/nyeonu/health-app/actions/runs/43527182302)이 API35·36 각각135 unique Native(critical15+remaining117+normal/helper/normal3), 기존132 보존, 실패·오류·skip·중복0, history host20 및 sync-state recovery17+cleanup17/killed holds PASS0으로 통과했다. root는 공식 ZIP digest와 XML·격리 raw/JSON·host 원문을 대조했다. 소스 독립 재검토도 통과했으며 T19는 done이다.
+
+현재 T1은 source `cb981dfcb7a25c9a0d555f7fbe68e382560f6268`의 기본 off Application/Configuration.Provider·WorkerFactory 기반을 구현하고 로컬 JVM181, lint, APK/testAPK, AAR와 debug/release manifest를 검증했다. [현재 의존성 감사](../V1/dependency-audit.json)는 네 실제 resolved graph129/130/135/110, 합집합155좌표와 새 OSV155조회/HTTP200/오류0/취약점 일치0을 기록한다. 품질·보안 정적 checkpoint에서 차단 지적은 없었지만 새 bootstrap의 양API 실제 실행과 최종 current-head 검토·병합은 대기 중이므로 T1은 in_progress다. 자동 health worker·자동 설정·재시도 ledger·aggregate/현재성 UI는 후속 단계다.
+
+T1 reviewed merge 후 retry/store와 summary/Health Connect 두 경로를 별도 작업 트리에서 병렬 구현하고, worker/settings 및 최종 UI/보안 감사로 합류한다. 실제 기기·계정·provider·TalkBack과 남은 P0·개인 키 백업 미확인은 유지한다. 아래는 이전 시점의 이력이며 현재 계획 frontmatter와 이 절이 우선한다.
+
+## 이전 상태 기록 (2026-11-13)
 
 core-store PR16과 수동 Drive PR17의 소프트웨어 구현·검증·독립 검토·개발 병합을 완료했다. PR17 merge는 `57da82514e8483f5f32f2ad34ae0111c7f1dc431`, 검증 source는 `b35c11c8b4651cf9b12b004a7fc4ae3d52a4d3ee`다. JVM176/실패·오류·skip0 및 APK/lint, API35/36 각각 Native120/실패·오류·skip·중복0, 각 history host20과 SyncState verifier17+cleanup17/killed holds PASS0을 원본으로 대조했다. 별도 수동 slice 스펙 PASS·품질 APPROVE·보안/성능 추가 차단0과 수정/재검토는 [최종 검증](manual-drive/final-verification.md) 및 PR17 한글 댓글에 있다.
 
