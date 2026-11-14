@@ -26,7 +26,9 @@ class SyncRetryBudgetMigrationInstrumentedTest {
     private fun fixture(): File {
         val root = InstrumentationRegistry.getInstrumentation().targetContext.noBackupFilesDir
         val file = File(root, "migration-test-${UUID.randomUUID()}.db")
-        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+        SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.CREATE_IF_NECESSARY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use { db ->
+            db.rawQuery("PRAGMA journal_mode=DELETE", null).use { require(it.moveToFirst() && it.getString(0).equals("delete", true)) }
+            db.execSQL("PRAGMA synchronous=FULL")
             db.setForeignKeyConstraintsEnabled(true)
             db.beginTransaction()
             try {
@@ -115,7 +117,7 @@ class SyncRetryBudgetMigrationInstrumentedTest {
         for (kind in listOf("malformed", "future", "automatic")) {
             val file = fixture()
             try {
-                SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use { db ->
                     when (kind) {
                         "malformed" -> db.execSQL("UPDATE config SET binding_payload='{' ")
                         "future" -> db.version = 3
@@ -160,7 +162,7 @@ class SyncRetryBudgetMigrationInstrumentedTest {
         val budget = RetryBudget.validated(lineage, DestinationGeneration(generation), ReadScopeKey(scope), scopes, dates,
             dates.associateWith { null }, 0, null, null, 0, null, RetryBudgetStatus.COMPLETED,
             java.time.Instant.parse(time), java.time.Instant.parse(updated))
-        SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+        SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use { db ->
             db.beginTransaction()
             try {
                 if (!missingParent) db.execSQL("INSERT INTO retry_budget VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", arrayOf(lineage, generation, scope,
@@ -233,7 +235,7 @@ class SyncRetryBudgetMigrationInstrumentedTest {
         val file = fixture()
         val journal = File(file.path + "-journal")
         try {
-            SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use { db ->
                 db.beginTransaction()
                 try {
                     db.execSQL("UPDATE generation SET enrolled_day='2020-01-01' WHERE id=?", arrayOf(generation))
