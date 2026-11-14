@@ -101,7 +101,7 @@ class ManualDriveStoreInstrumentedTest {
                             }
                         }
                     }
-                    "unsupported" -> broken.db.openForWrite().use { it.version = 2 }
+                    "unsupported" -> broken.db.openForWrite().use { it.version = 3 }
                     "unavailable" -> assertTrue(broken.db.resetDirectory.mkdir())
                     "raw-whitespace-handle" -> {
                         val invalid = "raw opaque 공백 /?#%:&=+"
