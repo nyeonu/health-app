@@ -740,3 +740,7 @@ PR19 current-head8b9f38e의 Native43534668761과 JVM43534668764가 모두 SUCCES
 ### T2 교정4·5 — 실제 첫 검증의 수동 호환 및 모델 완결성
 
 최초T2 core실행85개 중 기존 SyncStateTest.kt:174가실패했다. 실제baseline75cc/PR19에서는 MANUAL attempt의 finished pending union을 COMMITTED로검증해84개core가통과했고, 자동ownerless정책의미완료조건을모든trigger에넓힌문구가기존수동보존계약과충돌했다. 교정4는 unfinished제약을자동attempt에한정하고기존수동test/기대값을그대로보존한다. 교정5는 root의원문/diff대조에서확인한 validated waiting due와 updatedAt+delay의불일치허용 및필수owner/불변성/경계검증누락을같은기존정책으로완성한다. 새retry권리/타입/column/외부동작은추가하지않고T2원래3파일만수정한다. 준비1·2·계약구체화3을보존하며이번4와5를원래T2에누적한다. 각원인가설과수정범위를먼저기록한단일제한수정/검증을소유자기존V1가역교정위임으로진행한다. 실패시추가루프없이보고한다.
+
+### T3 준비 교정1 — schema/store 연결과 future fixture 소유 분리
+
+실제 source 검사에서 reset의 attempt 다음 generation 삭제 및 capacity가 retry_budget를 포함하지 않는 것을 확인했다. v2에 한 table과 FK를 추가하는 기존계약을 완성하려면 T3가 기존 store의 최소 capacity/전체ledger검증 호출/reset 순서를 연결해야 한다. T3는 기존4파일에 SqliteSyncStateStore.kt를 더한5파일로 한정한다. 상세 atomicclaim/ownerderivedmutation은 여전히 T4이고 같은store파일은 T3완료후 순차인계한다. 기존 session nativefixture의 version2 unsupported는 v2정상도입후더이상future아니므로 같은 assertion/손상거부 의미를 보존한 version3 fixture교정을 별도T20단일파일로분리해T3와병렬수행한다. T4는T3/T20의같은head전체Native검증뒤시작한다. 원래19task의범위/5PRgate는유지하고호환성보정T20만추가하며새기능/권한/의존성/스키마는추가하지않는다. 기존공통prep1/2·계약3·R6를보존하고이번은T3prep교정1이다.
