@@ -157,6 +157,7 @@ tasks:
 - **작성할 테스트**: `Retry lineage permits one initial run and three claimed retries despite new attempt ids and changed observed revisions` (①성공기준·②경계/동등분할·③오류·④순서; JVM 유닛/adapter 경계). 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
 - **계약 보정3 검증**: SyncState validator의 bound-context pending unfinished·모든 legacy trigger의 finished pending 및 generic null-owner 의미 보존 및 정확히 한 payload, immutable input/output, 초기 version 0/reclaim만 +1/observe·finish 불변, invalid 고정 예외, due 경계와 세 hash golden을 기존 T2 테스트 파일에서 검증한다.
 - **교정6 검증**: 기존 세 파일만 유지한다. SyncState.validateMutation에 automaticOwnerRequired: Boolean = false memory-only 인자를 추가하고 새 bound 사례는 명시적으로 true를 전달한다. supplied owner의 intrinsic/id/key 검증, bound start/finish 거부 및 day/confirmation/union, 수동과 모든 legacy trigger의 default semantics를 기존 신규 SyncRetryBudgetTest에서 검증한다. 기존 SyncStateTest와 DestinationSyncTest 및 기대값은 수정하지 않고 전체 core suite를 실행한다.
+- **교정7 검증**: 기존 신규 SyncRetryBudgetTest의 bound 성공 confirmation/missing-owner 거부, manual owner 거부 및 bound context true에서 manual generic start/finish 보존을 직접 검증한다. 제품 파일과 legacy tests는 변경하지 않는다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -741,3 +742,7 @@ PR19는75cc443702a3467c87268d49ce52d4d75b2ed8a5로 병합됐고 이 worktree를 
 ### T2 교정6 — durable owner link와 legacy validation 경계
 
 기존 준비1/2·계약3·T2 교정4/5는 유지하고 횟수를 초기화하지 않는다. R4/R5 전체 core 86개 중 84 통과·2 실패는 기존 generic SCHEDULED start 및 ledgerless scheduled engine 회귀다. 원인은 trigger를 ledger binding의 증거로 취급한 것이다. 기존 테스트는 변경하지 않는다. 교정6은 memory-only 명시 context와 저장된 attempt→lineage positive link로 경계를 분리하며 ADR-012 Proposed가 ADR-010을 대체한다. 실제 PR19 merge 및 T1 done은 유지한다. T2/T6은 공통 상태 in_progress이고 T6 완료는 별도 summary source lane의 사실이다. 이 문서 수정만으로 구현 또는 SQL migration 검증을 주장하지 않는다. parent/ADR 실제 commit f14b7501602bfe53aa3becb0482c1ebb3cca6116에 child parent_rev를 재고정했다. 19 brief 재조립 및 fresh readiness review 후 제품 교정을 위임한다. 각 T 5파일 상한, T3→T4 순차 ownership과 기존 전체 gate 및 실기기/실계정 pending은 유지한다.
+
+### T2 교정7 — 보고된 pure owner 경계 미커버 보완
+
+R6 actor와 root 전체core86개가 통과했지만 actor가 명시한 confirmation 및 manual owner 직접 검증이 미작성이다. 기존 승인T2의 owner/day/confirmation/manual 보존 기준 누락만 기존 신규test파일에서 보완한다. 새업무규칙이나 제품변경 없이 실제유효fixture의 확인 성공·owner누락거절·manual owner 거절과 bound context의 manual generic 보존을 단일부분수정/전체core검증한다. 원래prep1/2·계약3·R4/5/6에7을누적하고회차를초기화하지않으며 소유자의같은범위가역교정위임으로진행한다.
