@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 2ae14c7c311c29cc02dc3027582581f637dd8279
+parent_rev: 26f88f1070bac17b1d073d14d1c072bb4d218bbb
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-auto-infra
@@ -698,3 +698,7 @@ source2992452/run43527182302 공식 artifact API35 14088236324/sha256:9548d12b54
 ### T1 교정3 — 기존 core 타입 import 누락
 
 최초 구현 검증 compileDebugKotlin이 HealthApplication.kt:22 ScopedHealthReader unresolved reference로 중단됐다. core/Ports.kt:46의 기존 com.ny.my.health.core.ScopedHealthReader 선언을 root가 확인했다. 새 계약/의존성/동작을 추가하지 않고 HealthApplication.kt에 정확한 import 한 줄을 추가해 같은 전체 로컬 검증을 다시 수행한다. T1 준비 교정1·2를 보존하고 이번을 원래T1의 교정3으로 누적한다. 새 근거와 한정된 가역 수정을 소유자의 기존V1 자동 승인 위임으로 진행하며 후속 미확인 오류는 통과로 처리하지 않는다. manifest/probe/starter·기존회귀와 감사 gate는 유지한다.
+
+### T1 교정3 결과·현재 head 감사 checkpoint
+
+기존 core.ScopedHealthReader import 한 줄 교정 후 같은 동결 소스의 로컬 결합 검증이 2m42s/133tasks로 통과했다. 최초 결합 빌드 원문은 미보존이며 이를 원문 검증으로 꾸미지 않는다. root가 source를 cb981df로 고정하고 별도 직접 Gradle JVM/APK/lint/testAPK 검증을 15s PASS로 실행·로그 보존했다. 실제 JVM XML core84+app97/실패·오류·skip·중복0과 lint0error 및 debug/release merger를 직접 대조했다. 현재 네graph129/130/135/110(합집합155), 새OSV155결과/HTTP200/오류0/취약점0, 21개 command로그와 query/response/source hash 대조는 docs/V1/dependency-audit.json 및 root의 auto-t1-root-audit-proof.json에 있다. post-bootstrap Native와 최종 현재head 독립 검토는 대기이므로 T1은 in_progress다. 작업별 사전 준비된 T2/T6는 읽기 전용 점검만 수행하며 T1 실제 reviewed merge 뒤 별도worktree에서 구현한다.
