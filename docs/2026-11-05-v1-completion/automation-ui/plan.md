@@ -210,7 +210,7 @@ tasks:
   |---|---|---|
   | `AI/SyncExecutionSessionInstrumentedTest.kt` | 수정 | unsupported fixture version 2를 future 3으로 교정 |
 
-- **인터페이스**: 2절 `AutomaticRetryContracts` 참조. 신규 API는 없으며 손상·unsupported 시 raw read/remote write 0과 원본 보존 assertion을 유지한다.
+- **인터페이스**: 신규 API는 없으며 손상·unsupported 시 raw read/remote write 0과 원본 보존 assertion을 유지한다.
 - **결정 로직**: 기존 unsupported fixture의 version 2는 이제 supported v2가 되므로 3을 넣는다. 기존 테스트 이름·구조·assertion·다른 damage 입력은 변경하지 않는다.
 - **작성할 테스트**: 기존 unsupported damage 사례를 그대로 재사용한다. 신규 테스트 파일이나 expectation 변경은 없다.
 - **완료 기준**: T3와 통합된 source에서 기존 full Native API35/36 및 host protocol을 실제 통과해야 done이다. 컴파일만으로 완료하지 않는다.
