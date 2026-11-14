@@ -808,3 +808,7 @@ R3~6 source교정후독립재검토에서Os static/identity/finish일관성은so
 ### T3 교정8·9 — 실제 compile 실패와 보고된 검증 누락
 
 첫현재staging/test source APKcompile이SyncRetryBudgetMigration.kt:102에서core다른모듈public nullable finishedAt smartcast불가로실패했다(auto-t3-verify.log). actor는즉시중단했고추가수정/재실행없다. 교정8은해당immutable local val로snapshot후null분기·비교하는Kotlin모듈경계수정이다. 같은보고의미커버인FKON budget reset·link시간corruption/정상terminalretirement·changedbytes/legacyspill·직접gap·실제v1dirtyjournal은원래승인T3기준누락이므로새fixture에서교정9로보완한다. 새SQLschema/권리/기존기대값변경없고T3원래prep1/2·R3~7을보존한누적8/9로기록하며단일제한수정/원명령검증한다. 실제kernelkill미수행은분리한다.
+
+### T3 교정10 — 실제 Android fixture의 locale metadata 오염 차단
+
+root가현재91433b6 전체로컬core/app/APK/lint를2m29s 통과시킨뒤Native실행전새fixture의raw openOrCreateDatabase/openDatabase에NO_LOCALIZED_COLLATORS누락을발견했다. AOSP공식SQLiteConnection.java HTTP200 source476/496줄로기본writableopen이android_metadata table을추가함을확인했다. 이는strictv1/v2 map에없는테이블로처음부터fixture를unsupported로만들며제품schema를완화할이유가아니다. 새MigrationInstrumentedTest의모든rawopen에production과같은NO_LOCALIZED_COLLATORS 및초기DELETE/FULL설정을적용하는test-only교정10이다. 기존테스트/스키마/map/assertion은보존한다. 진행중43550413104는오염fixture의불필요한긴검증을피해취소요청하고PASS증거로쓰지않는다. 새sourcehead로전체양API/host를재실행한다. 원래회차1~9를보존한다. 공식source는공개AOSP참조이며실기기수행주장이아니다.
