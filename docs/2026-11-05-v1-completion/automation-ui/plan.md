@@ -15,11 +15,11 @@ execution_gate: actual-PR19-merge-contract-parent-ADR-repin-independent-readines
 tasks:
   - {id: T19, title: WorkManager helper process 격리 기반, depends_on: [], status: done, tier: standard}
   - {id: T1, title: 실제 WorkManager starter 기반, depends_on: [T19], status: done, tier: standard}
-  - {id: T2, title: durable retry 모델과 검증 경계, depends_on: [T1], status: pending, tier: standard}
+  - {id: T2, title: durable retry 모델과 검증 경계, depends_on: [T1], status: in_progress, tier: standard}
   - {id: T3, title: 검증된 v1 상태의 v2 migration, depends_on: [T2], status: pending, tier: standard}
   - {id: T4, title: retry claim의 실제 SQLite 원자성, depends_on: [T3], status: pending, tier: standard}
   - {id: T5, title: 공용 session의 자동 attempt 연결, depends_on: [T4], status: pending, tier: standard}
-  - {id: T6, title: 누락과 출처를 보존하는 aggregate 값, depends_on: [T1], status: pending, tier: standard}
+  - {id: T6, title: 누락과 출처를 보존하는 aggregate 값, depends_on: [T1], status: in_progress, tier: standard}
   - {id: T7, title: reserved CSV 요약과 의미 revision, depends_on: [T6], status: pending, tier: standard}
   - {id: T8, title: 실제 HC background category admission, depends_on: [T1, T7], status: pending, tier: standard}
   - {id: T9, title: 불명확한 운동 심박의 안전 차단, depends_on: [T8], status: pending, tier: standard}
@@ -143,7 +143,7 @@ tasks:
 
 ### T2: durable retry 모델과 검증 경계
 
-- **depends_on**: T1; **tier**: standard; **status**: pending.
+- **depends_on**: T1; **tier**: standard; **status**: in_progress.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -248,7 +248,7 @@ tasks:
 
 ### T6: 누락과 출처를 보존하는 aggregate 값
 
-- **depends_on**: T1; **tier**: standard; **status**: pending.
+- **depends_on**: T1; **tier**: standard; **status**: in_progress.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -722,3 +722,7 @@ source2992452/run43527182302 공식 artifact API35 14088236324/sha256:9548d12b54
 ### 실제 T1 완료·후속 계약 readiness gate
 
 PR19는75cc443702a3467c87268d49ce52d4d75b2ed8a5로 병합됐고 이 worktree를 검증head8b9f38e와 tree동일한 실제master merge로 fast-forward했다. current Native43534668761 양API135 unique/기존132보존/오류·실패·skip·중복0 및기존host20/17+17, JVM43534668764의181개를 원본대조했고 독립검토·PR한글최종댓글6869176673을 기록했다. T1done이며 아래후속T2/T6는 parent/ADR commit→childrepin→19brief 재조립→fresh readiness 승인 전까지 pending을 유지한다. 구현은 실제PR19merge에 공통준비commit을 더한 같은 기준에서 두 별도lane worktree로 시작한다. 준비교정1·2·계약구체화3 및 T1import교정3·T19후속교정4까지의 원래누적이력은 초기화하지 않는다.
+
+### T2/T6 독립 readiness 완료·병렬 실행 시작
+
+공통준비head df5c072404b10ca9bb43bdcac58301eac42dfbec의 실제parent/ADR/child/데이터계약과T2/T4/T5/T6/T7 실제브리프를 작성자와 다른 fresh Terra 세션이 재검토해 READY를 기록했다(auto-contract-doc-final-readiness.md). 두 Important(unknown-scope metadata-only preflight, ownerless busy union)은 해소됐고 해당5브리프는 독립 재조립과 byte동일했다. source_base75cc443 실제reviewedmerge+이공통준비commit을 공유하는 별도retry/summary worktree에서 T2와T6을 시작한다. 각T는기존준비교정1·2 및 계약구체화3을 이어가며 source동작 변경을 실제verify하기 전완료로표시하지않는다.
