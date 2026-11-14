@@ -189,6 +189,7 @@ tasks:
 - **계약 보정3 검증**: 한 신규 table에 requestedScopes를 검증된 column/JSON으로 저장하고 dates/scopes/observed JSON 합계 <=16KiB. 기존 ACTIVE partial unique index의 generation scan을 EXPLAIN으로 검증해 충분하면 추가 index 금지. schema 검증은 전체 row를 검증한다.
 - **교정6 검증**: 고정 DDL은 retry_budget parent, 기존 attempt의 nullable automatic_lineage_id FK, 기존 ACTIVE partial index다. 기존 계획의 SyncRetryBudgetMigrationInstrumentedTest에서 v1 legacy NULL, 원본 보존, FK ON reset 순서, migrated/fresh v2 실제 sqlite_master 및 foreign_key_list parity, reopen/FK/quick checks를 검증한다. v1/v2 exact schema map을 구분한다. 기존 hot-journal fixture의 의미를 보존하며 새 test 파일이나 기존 hot-journal 테스트 수정은 요구하지 않는다. API28은 source 호환성 판단이며 실제 migration 미수행, 기존 API35/36 gate는 유지한다.
 - **준비 교정1**: 원래4파일에 기존 store 연결1파일을 더한5파일이며 T4와 순차 인계한다. 기존 session future-version fixture는 별도 T20 한파일이 소유한다.
+- **준비 교정2·증거 층**: 위 Android 통합 층의 SQLite/WorkManager/프로세스 병기는 테스트 층 분류이며 T3에 새 worker/host를 도입하라는 요구가 아니다. T3 새 테스트는 실제 SQLite v1/v2·재열기·injected interruption 단계와 원본 보존을 실제 검증한다. 기존 full runner의 실제 process recovery/cleanup host gate는 그대로 모두 수행한다. 새 migration 단계의 실제 kill/restart를 수행했다고 주장하지 않으며 exception fault와 명확히 구분한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -771,3 +772,7 @@ R6 actor와 root 전체core86개가 통과했지만 actor가 명시한 confirmat
 ### T3 준비 교정1과 T20 추가 — 실제 파일 소유 일치
 
 T3 첫실행 전 source로 확인한 v2 store capacity/reset/ledger 전체validation 연결은 기존원자성요구의구현연결이며5번째store파일로한정한다. 상세claim구현은T4에순차인계한다. 기존unsupported version2fixture는별도T20에서같은assertion을유지해version3으로교정한다. 각각5/1파일로병렬편집가능하며검증은T3source동결뒤같은head의전체양API Native/host로한번수행한다. T3/T20을실제통과전done으로표시하지않고T4는둘모두기다린다. 기존회차를보존하고이번T3prep1을누적한다.
+
+### T3 준비 교정2 — 통합 층 표기와 실제 실행 증거 경계
+
+실행자가 공통 Android 통합 층 SQLite/WorkManager/프로세스 병기를 T3의 신규 WorkManager 및 host kill test 의무로 읽어 편집 전 중단했다. T3 작업의 명시 대상과 named test/completion은 실제 DB staged migration·reopen·중단 fault 경계이며 새 worker/host 파일은 지정하지 않았다. 해당 의미를 명확히 하고 실제 SQLite fault 주입과 별도 실제 기존hostprocess 증거를 구분한다. 기존full양API/host 명령·기존process fixture는유지하며 새migrationphase의 kernelkill증거를 수행없이추정하지않는다. 새제품기능·gate축소없이 원래5파일내최초구현을이어가며 prep1뒤이번2를누적한다.
