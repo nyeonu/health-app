@@ -744,3 +744,7 @@ PR19 current-head8b9f38e의 Native43534668761과 JVM43534668764가 모두 SUCCES
 ### T3 준비 교정1 — schema/store 연결과 future fixture 소유 분리
 
 실제 source 검사에서 reset의 attempt 다음 generation 삭제 및 capacity가 retry_budget를 포함하지 않는 것을 확인했다. v2에 한 table과 FK를 추가하는 기존계약을 완성하려면 T3가 기존 store의 최소 capacity/전체ledger검증 호출/reset 순서를 연결해야 한다. T3는 기존4파일에 SqliteSyncStateStore.kt를 더한5파일로 한정한다. 상세 atomicclaim/ownerderivedmutation은 여전히 T4이고 같은store파일은 T3완료후 순차인계한다. 기존 session nativefixture의 version2 unsupported는 v2정상도입후더이상future아니므로 같은 assertion/손상거부 의미를 보존한 version3 fixture교정을 별도T20단일파일로분리해T3와병렬수행한다. T4는T3/T20의같은head전체Native검증뒤시작한다. 원래19task의범위/5PRgate는유지하고호환성보정T20만추가하며새기능/권한/의존성/스키마는추가하지않는다. 기존공통prep1/2·계약3·R6를보존하고이번은T3prep교정1이다.
+
+### T20 호환성 보정1 — v2 nullable 열 추가 뒤 기존 손상 fixture SQL
+
+기존SqliteSyncStateStoreInstrumentedTest:815의 INSERT INTO attempt VALUES는v1의12열을가정한다. v2에nullable link가추가되어13열이되면원래손상내용을검증하기전에SQL열수오류로중단된다. 기존12열명시columnlist만추가해같은12값·같은손상·같은assertion을보존한다. T20소유에이기존fixture파일을더해총2파일로한정하며T3제품/새migrationfixture와disjoint이고T4/T5순차인계를유지한다. 신규schema나검증완화가아니며T3와같은head의실제양API/host검증전T20done처리하지않는다.
