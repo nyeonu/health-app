@@ -812,7 +812,7 @@ class SqliteSyncStateStoreInstrumentedTest {
                     "binding" -> db.execSQL("UPDATE config SET binding_payload='{}'")
                     "unselected" -> db.execSQL("UPDATE day SET requested_scopes_json='{}' WHERE date=?",
                         arrayOf(h.enrolled.toString()))
-                    "attempt" -> db.execSQL("INSERT INTO attempt VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",arrayOf(
+                    "attempt" -> db.execSQL("INSERT INTO attempt (id,generation,scope_key,requested_scopes_json,trigger,scheduled_at,started_at,finished_at,dates_json,retry_budget_key,retries_used,pending_triggers_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",arrayOf(
                         UUID.randomUUID().toString(),h.generation.value,"b".repeat(64),SyncStateCodec.encodeScopes(h.scopes),
                         SyncTrigger.MANUAL.name,h.started.toString(),h.started.toString(),null,
                         "[\"${h.enrolled}\"]","a".repeat(64),0,"[]"))
