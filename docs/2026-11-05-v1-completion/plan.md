@@ -536,6 +536,8 @@ exerciseSummary: AggregateDuration? = null
 
 - `WorkManagerIsolationRegistry`: 실제 SAF merge `9ab774beac85bf7a96953bb0a0aa1b8098c76c69`와 WM 통합 `6c5f5b0412029054cc992adc09a2296bcf0c696c` 기준 Source Native는133개(critical15+나머지118, starter1포함)이다. T19후 normal기존132+격리starter1+신규normalprobe2=135개를 예상하되 반드시 실제class/method 집합으로 다시 확인한다. 과거121/critical14를 현재inventory로 쓰지 않는다.
 
+- `WorkManagerIsolationContracts` 확인: source299245214cc76c433ba9ee6909c0f786027dc56b의 full workflow43527182302가 API35·36 각각135 unique Native(critical15+remaining117+별도격리3), 기존132 보존, 오류/실패/skip/중복0, host20 및 sync-state recovery17+cleanup17·killed holds pass0로 실제 통과했다. 공식 ZIP digest와 XML/격리 원문·machine 결과/host 원문을 root가 대조했다(auto-t19-root-native-proof.json). 이는 production Application 도입 전 T19 증거이며 T1의 production bootstrap·새 manifest·현재 네 graph audit를 대신하지 않는다.
+
 ## 3. 추적성
 
 아래 23행의 기준은 스펙 5절 원문이다. 테스트 이름은 실제 backtick Kotlin 함수 이름으로 사용한다. 한 행의 복합 기준은 해당 이름의 여러 fixture/경계 시나리오로 검증하고 하위 plan은 자기 행만 인용한다. ⑤는 기존 reader pagination/overlap·Drive root/privacy·history/layout regression을 재사용하며 새 과거 결함을 꾸며내지 않는다. 테스트 대역은 실제 계정/provider/배터리 수용 증거가 아니다.
