@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 3e713e6c0c87a3f10b8e2800a934708b047ea68c
+parent_rev: 10d0eaaa305dfec2874a5714cf1fa5e4ffd36b8a
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-auto-retry
@@ -217,13 +217,15 @@ tasks:
   |---|---|---|
   | `AI/SyncExecutionSessionInstrumentedTest.kt` | 수정 | unsupported fixture version 2를 future 3으로 교정 |
   | `AI/SqliteSyncStateStoreInstrumentedTest.kt` | 수정 | 기존 attempt 손상 INSERT의 12열을 명시해 v2 nullable 추가와 호환 |
+  | `AI/ManualDriveStoreInstrumentedTest.kt` | 수정 | 남은 SyncStateDatabase future fixture version2를3으로 교정 |
 
 - **인터페이스**: 신규 API는 없으며 손상·unsupported 시 raw read/remote write 0과 원본 보존 assertion을 유지한다.
 - **결정 로직**: 기존 unsupported fixture의 version 2는 이제 supported v2가 되므로 3을 넣는다. 기존 테스트 이름·구조·assertion·다른 damage 입력은 변경하지 않는다. 기존 attempt 손상 fixture INSERT는 기존12열명만명시하고12값/손상조건을그대로유지한다.
 - **작성할 테스트**: 기존 unsupported damage 사례를 그대로 재사용한다. 신규 테스트 파일이나 expectation 변경은 없다.
+- **보정2 검증**: 실제full의기존manual unsupported분기 실패는해당fixture입력2→3으로교정하고기존saf-store class2개를양API실제검증한다. 별도History DB의future2는유지하며최종전체gate도다시실행한다.
 - **완료 기준**: T3와 통합된 source에서 기존 full Native API35/36 및 host protocol을 실제 통과해야 done이다. 컴파일만으로 완료하지 않는다.
 - **검증 방법**: T3 source frozen 뒤 root가 `./gradlew :app:assembleDebugAndroidTest` 및 repository root에서 `GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh`를 수행한다. 로컬 emulator 부재는 pending이고 root GitHub CI 양API로 실제 검증한다. T3와 같은 명령을 중복 실행하지 않고 source head/evidence를 공유한다.
-- **주의사항**: 이 두 파일은 T3 제품·새fixture와 disjoint다. 이후 T5의 기존 session fixture 인계 전 T20 완료 source를 보존한다. 회귀 삭제·skip·assertion 완화·v2 corruption 허용 금지.
+- **주의사항**: 이 세 파일은 T3 제품·새fixture와 disjoint다. 이후 T5의 기존 session fixture 인계 전 T20 완료 source를 보존한다. 회귀 삭제·skip·assertion 완화·v2 corruption 허용 금지.
 
 ### T21: 전체 gate를 보존하는 고정 retry 진단 실행
 
@@ -842,3 +844,7 @@ root가현재91433b6 전체로컬core/app/APK/lint를2m29s 통과시킨뒤Native
 ### T21 준비 — 새기능이아닌기존진단 allowlist 확장
 
 제품T3와독립인별도worktree에서기존정적diagnostic패턴을세개의정적class로확장한다. 현재full0cf03a9run43550859281는유지하며source/gate불변검증뒤새fixture선택실행을병렬화한다. 별도스펙/SLA나fullsharding을도입하지않고기존자동검증경로의가역기술보조만수행한다. 완료/PASS층구분과PR최종currenthead전체검증은유지한다.
+
+### T20 보정2 — 실제 full에서 발견한 남은 future 입력
+
+43553867643 API36 full의125remaining중1개실패는기존ManualDriveStore fixture의version2가이제지원버전인것이원인이다. root가source104줄과로그원문을대조했고T20세번째file로한정한input2→3교정을위임한다. 원래assertion과모든손상회귀는그대로다. 전체Native의추가version2는독립SqliteHistoryStore의schema1 fixture라변경하지않는다. T20누적1/2와T3누적1~11은독립보존하며현재full은FAIL/다른API취소로분리한다.
