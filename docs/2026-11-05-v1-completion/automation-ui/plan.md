@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: f14b7501602bfe53aa3becb0482c1ebb3cca6116
+parent_rev: 6c52453ae421a22c1d19049bdd6c17f70498fd56
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-auto-retry
@@ -17,7 +17,8 @@ tasks:
   - {id: T1, title: 실제 WorkManager starter 기반, depends_on: [T19], status: done, tier: standard}
   - {id: T2, title: durable retry 모델과 검증 경계, depends_on: [T1], status: done, tier: standard}
   - {id: T3, title: 검증된 v1 상태의 v2 migration, depends_on: [T2], status: in_progress, tier: standard}
-  - {id: T4, title: retry claim의 실제 SQLite 원자성, depends_on: [T3], status: pending, tier: standard}
+  - {id: T20, title: v2 도입의 future schema fixture 호환, depends_on: [T1], status: in_progress, tier: light}
+  - {id: T4, title: retry claim의 실제 SQLite 원자성, depends_on: [T3, T20], status: pending, tier: standard}
   - {id: T5, title: 공용 session의 자동 attempt 연결, depends_on: [T4], status: pending, tier: standard}
   - {id: T6, title: 누락과 출처를 보존하는 aggregate 값, depends_on: [T1], status: in_progress, tier: standard}
   - {id: T7, title: reserved CSV 요약과 의미 revision, depends_on: [T6], status: pending, tier: standard}
@@ -176,6 +177,7 @@ tasks:
 
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
+  | `A/SqliteSyncStateStore.kt` | 수정 | v2 ledger 전체 검증 호출·capacity·FK ON reset 연결만; T4 원자 claim 구현은 제외 |
   | `A/SyncStateDatabase.kt` | 수정 | v1/v2 strict schema admission |
   | `A/SyncRetryBudgetMigration.kt` | 신규 | owned staged migration/marker 복구 |
   | `A/SyncStateHotJournalRecovery.kt` | 수정 | 버전별 canary schema 검증 |
@@ -186,6 +188,7 @@ tasks:
 - **작성할 테스트**: `Validated v1 migration retains bindings unfinished journals uncertainty prior confirmations and gaps through interrupted v2 publish` (①성공기준·②경계/동등분할·③오류·④순서; 실제 SQLite/WorkManager/프로세스 통합). 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
 - **계약 보정3 검증**: 한 신규 table에 requestedScopes를 검증된 column/JSON으로 저장하고 dates/scopes/observed JSON 합계 <=16KiB. 기존 ACTIVE partial unique index의 generation scan을 EXPLAIN으로 검증해 충분하면 추가 index 금지. schema 검증은 전체 row를 검증한다.
 - **교정6 검증**: 고정 DDL은 retry_budget parent, 기존 attempt의 nullable automatic_lineage_id FK, 기존 ACTIVE partial index다. 기존 계획의 SyncRetryBudgetMigrationInstrumentedTest에서 v1 legacy NULL, 원본 보존, FK ON reset 순서, migrated/fresh v2 실제 sqlite_master 및 foreign_key_list parity, reopen/FK/quick checks를 검증한다. v1/v2 exact schema map을 구분한다. 기존 hot-journal fixture의 의미를 보존하며 새 test 파일이나 기존 hot-journal 테스트 수정은 요구하지 않는다. API28은 source 호환성 판단이며 실제 migration 미수행, 기존 API35/36 gate는 유지한다.
+- **준비 교정1**: 원래4파일에 기존 store 연결1파일을 더한5파일이며 T4와 순차 인계한다. 기존 session future-version fixture는 별도 T20 한파일이 소유한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -198,9 +201,25 @@ tasks:
 
 **Checkpoint**: 해당 구간의 실제 source/계약/회귀와 parent pin을 root가 확인한 후 후속 구간으로 진행한다.
 
+### T20: v2 도입의 future schema fixture 호환
+
+- **depends_on**: T1; **tier**: light; **status**: in_progress.
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `AI/SyncExecutionSessionInstrumentedTest.kt` | 수정 | unsupported fixture version 2를 future 3으로 교정 |
+
+- **인터페이스**: 2절 `AutomaticRetryContracts` 참조. 신규 API는 없으며 손상·unsupported 시 raw read/remote write 0과 원본 보존 assertion을 유지한다.
+- **결정 로직**: 기존 unsupported fixture의 version 2는 이제 supported v2가 되므로 3을 넣는다. 기존 테스트 이름·구조·assertion·다른 damage 입력은 변경하지 않는다.
+- **작성할 테스트**: 기존 unsupported damage 사례를 그대로 재사용한다. 신규 테스트 파일이나 expectation 변경은 없다.
+- **완료 기준**: T3와 통합된 source에서 기존 full Native API35/36 및 host protocol을 실제 통과해야 done이다. 컴파일만으로 완료하지 않는다.
+- **검증 방법**: T3 source frozen 뒤 root가 `./gradlew :app:assembleDebugAndroidTest` 및 repository root에서 `GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh`를 수행한다. 로컬 emulator 부재는 pending이고 root GitHub CI 양API로 실제 검증한다. T3와 같은 명령을 중복 실행하지 않고 source head/evidence를 공유한다.
+- **주의사항**: 이 파일은 T3와 disjoint다. 이후 T5의 기존 session fixture 인계 전 T20 완료 source를 보존한다. 회귀 삭제·skip·assertion 완화·v2 corruption 허용 금지.
+
 ### T4: retry claim의 실제 SQLite 원자성
 
-- **depends_on**: T3; **tier**: standard; **status**: pending.
+- **depends_on**: T3, T20; **tier**: standard; **status**: pending.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -748,3 +767,7 @@ PR19는75cc443702a3467c87268d49ce52d4d75b2ed8a5로 병합됐고 이 worktree를 
 ### T2 교정7 — 보고된 pure owner 경계 미커버 보완
 
 R6 actor와 root 전체core86개가 통과했지만 actor가 명시한 confirmation 및 manual owner 직접 검증이 미작성이다. 기존 승인T2의 owner/day/confirmation/manual 보존 기준 누락만 기존 신규test파일에서 보완한다. 새업무규칙이나 제품변경 없이 실제유효fixture의 확인 성공·owner누락거절·manual owner 거절과 bound context의 manual generic 보존을 단일부분수정/전체core검증한다. 원래prep1/2·계약3·R4/5/6에7을누적하고회차를초기화하지않으며 소유자의같은범위가역교정위임으로진행한다.
+
+### T3 준비 교정1과 T20 추가 — 실제 파일 소유 일치
+
+T3 첫실행 전 source로 확인한 v2 store capacity/reset/ledger 전체validation 연결은 기존원자성요구의구현연결이며5번째store파일로한정한다. 상세claim구현은T4에순차인계한다. 기존unsupported version2fixture는별도T20에서같은assertion을유지해version3으로교정한다. 각각5/1파일로병렬편집가능하며검증은T3source동결뒤같은head의전체양API Native/host로한번수행한다. T3/T20을실제통과전done으로표시하지않고T4는둘모두기다린다. 기존회차를보존하고이번T3prep1을누적한다.
