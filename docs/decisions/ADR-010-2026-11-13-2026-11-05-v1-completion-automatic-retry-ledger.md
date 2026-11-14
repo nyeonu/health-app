@@ -33,7 +33,7 @@ manual EXPLICIT_DAY와 automatic SUMMARY/WORKOUT_SCOPED는 별도 scope다. 한 
 - 허용 transient finish에서 남은 retry가 있으면 다음 retry1/2/3에 각각 30/60/120초 delay와 `retryNotBefore=finishNow+delay`를 attempt 종료와 함께 commit한다. periodic/catch-up 모두 같은 claim transaction에서 `now >= retryNotBefore`와 generation/lineage/version/owner를 확인한다. DB due 사전 확인 후 최종 CAS에서도 재검사한다. due 이전은 DEFERRED이고 attempt/count/claimVersion 변화와 auth/HC metadata·record/remote 호출은 0이다. worker는 `Result.retry()`로 재대기하며 별도 sleep/drain loop나 새 initial은 없다. OS가 더 늦게 실행할 수 있다.
 - retry3 실패는 finish와 함께 EXHAUSTED 및 미완료 날짜 RETRY_EXHAUSTED blocker를 기록한다. 미조회 날짜도 revision=null의 visible blocker로 남긴다. 기존 unknown/prior/REMOTE_STALE·확정 파일과 다른 영구 blocker를 보존한다. BLOCKED/EXHAUSTED의 null due는 admission 허가가 아니다. finalize 실패는 fail closed이며 claim 뒤 crash는 소비량을 refund하지 않고 unfinished journal부터 복구한다.
 - explicit manual recovery만 eligible ledger 종료와 기존 `reopenManualBlockers`를 같은 transaction으로 묶어 새 initial을 허용할 수 있다. 앱 열기·periodic·catch-up·work 재등록은 reopen이 아니다. 완료 cohort는 due를 해제하지만 새 config/generation을 실패 예산 우회로 쓰지 않는다. 시계 후퇴는 due까지 보수적으로 대기하며 정확한 실행 시각을 약속하지 않는다.
-- PK는 lineage UUID, generation FK 및 `(generation,scope_key)`당 ACTIVE 1행의 partial unique index를 제안한다. dates/revision vector JSON은 16KiB 이하, ledger는 기존 DB capacity guard에 포함한 최대 100000행이다. enum/UUID/hash/date/time/count/due·owner 관계를 모든 read/admission에서 검증한다. cap 초과는 STORE_UNAVAILABLE이며 자동 prune/reset은 없다. indexed bounded 조회를 사용하고 날짜별 N+1 또는 전체 JSON rewrite를 추가하지 않는다.
+- PK는 lineage UUID, generation FK 및 `(generation,scope_key)`당 ACTIVE 1행의 partial unique index를 제안한다. requestedScopes/dates/revision vector JSON 합계는 16KiB 이하, ledger는 기존 DB capacity guard에 포함한 최대 100000행이다. enum/UUID/hash/date/time/count/due·owner 관계를 모든 read/admission에서 검증한다. cap 초과는 STORE_UNAVAILABLE이며 자동 prune/reset은 없다. indexed bounded 조회를 사용하고 날짜별 N+1 또는 전체 JSON rewrite를 추가하지 않는다.
 
 ### migration과 원본 보존
 
@@ -96,3 +96,13 @@ v2 상태를 v1 코드로 열면 unsupported 차단이 정상이다. schema 번�
 - [현재 session source](../../android/app/src/main/java/com/ny/my/health/SyncExecutionSession.kt)
 - [현재 store source](../../android/app/src/main/java/com/ny/my/health/SqliteSyncStateStore.kt)
 - [현재 exact schema admission](../../android/app/src/main/java/com/ny/my/health/SyncStateDatabase.kt)
+
+## 다음 lane 계약 구체화 — Proposed, 구현·검증 대기
+
+부모 2절 AutomaticRetryContracts의 typed 모델 및 store API가 기준이다. gate/recovery 뒤 단일 validated current-generation snapshot에서 기존 ACTIVE partial unique index의 generation scan이 EXPLAIN으로 충분하면 새 index 없이 owner/due만 최대 100000행 streaming한다. unresolved owner는 recovery 우선, 미래 ACTIVE due 최대값까지 mutation/외부 접근 없이 defer, 정각은 ready다. 다른 scope의 BLOCKED/EXHAUSTED/COMPLETED는 전역 장벽이 아니다. 이후 fresh metadata 및 exact-scope read/claim CAS와 physical unknown guard를 적용한다. requestedScopes는 같은 한 table에서 저장·검증하고 숨은 JSON 또는 별도 DB는 금지한다.
+
+SyncMutation의 owner는 optional validation context이며 유일한 ownerless 자동 예외는 현재 generation의 matching unfinished attempt에 대한 pendingTriggers sole payload superset union이다. 트랜잭션에서 동시 union 손실을 막고 다른 상태를 변경하지 않는다. 자동 day/confirmation과 실제 read revision은 matching ACTIVE owner/version/frozen fields 및 day hash를 한 transaction에서 확인한다. 정상 start/finish는 전용 원자 API만 사용한다. process-death recovery/config invalidation은 기존 gate와 CAS의 좁은 원자 경계이며 live owner timeout takeover가 아니다. 최초 version 0, reclaim만 +1, observe/finish 불변. 정상 COMPLETED는 모든 실제 frozen rows 확인이 필요하며 eligible explicit manual retirement의 COMPLETED는 lifecycle 종료만 뜻하고 uncertainty와 counts/observations/rows를 보존한다.
+
+Hash framing은 UTF-8 component마다 unsigned 4-byte big-endian 길이 후 SHA-256 lowercase hex다. lineage `automatic-retry/1`, `00000000-0000-4000-8000-000000000001` → `2ae9b57cbb27eccbfdf58955bbbeb1d0ee1bd81e0d2af0463f67c5c4aa54b034`. access domain `automatic-access/1` 뒤 availability, sorted granted 개수/이름, sorted scope 개수/type/scope 쌍을 붙인다. `automatic-access/1,1,2,SLEEP,STEPS,2,SLEEP,SUMMARY,STEPS,SUMMARY` → `1c28d20a593cd831089fc8b7b157d529cf54146c376f293173f897d31b3bcd9f`; `automatic-access/1,0,0,0` → `fc7f546dd2128a4224bd2904de0cb8fddd24ae37a328ad3ebb604883bc05262b`. metadata freshness는 session/adapter가 비교하며 DB는 HC에 접근하지 않는다.
+
+실제 PR19 reviewed merge 및 rebase 후 parent/ADR과 child revision을 실제 commit으로 재고정하고 fresh 문서 readiness review 전 T2/T6을 시작하지 않는다. PR2 retry 선병합 후 PR3를 실제 merge head에 rebase하고 검증·독립 review를 반복한다. 본 ADR은 Proposed로 남는다.
