@@ -65,6 +65,30 @@ if [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ]; then
       (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SafManualFlowInstrumentedTest,com.ny.my.health.ManualDriveFlowInstrumentedTest')
       exit 0
       ;;
+    retry-migration)
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/SyncRetryBudgetMigrationInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: SyncRetryBudgetMigrationInstrumentedTest' >&2
+        exit 1
+      fi
+      (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SyncRetryBudgetMigrationInstrumentedTest')
+      exit 0
+      ;;
+    retry-store)
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/SyncRetryBudgetStoreInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: SyncRetryBudgetStoreInstrumentedTest' >&2
+        exit 1
+      fi
+      (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SyncRetryBudgetStoreInstrumentedTest')
+      exit 0
+      ;;
+    retry-session)
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/SyncExecutionSessionInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: SyncExecutionSessionInstrumentedTest' >&2
+        exit 1
+      fi
+      (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SyncExecutionSessionInstrumentedTest')
+      exit 0
+      ;;
     *)
       echo '알 수 없는 수동 진단 범위입니다.' >&2
       exit 1

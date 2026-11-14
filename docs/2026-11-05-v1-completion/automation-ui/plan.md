@@ -5,11 +5,11 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 17c6c1ff82a57d5ee73cf79319299a42bf8a08d0
+parent_rev: 3e713e6c0c87a3f10b8e2800a934708b047ea68c
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-auto-retry
-parallel_branches: [feature/v1-auto-retry, feature/v1-auto-summary]
+parallel_branches: [feature/v1-auto-retry, feature/v1-auto-summary, feature/v1-auto-diagnostics]
 source_base: 75cc443702a3467c87268d49ce52d4d75b2ed8a5
 execution_gate: actual-PR19-merge-contract-parent-ADR-repin-independent-readiness
 tasks:
@@ -18,6 +18,7 @@ tasks:
   - {id: T2, title: durable retry 모델과 검증 경계, depends_on: [T1], status: done, tier: standard}
   - {id: T3, title: 검증된 v1 상태의 v2 migration, depends_on: [T2], status: in_progress, tier: standard}
   - {id: T20, title: v2 도입의 future schema fixture 호환, depends_on: [T1], status: in_progress, tier: light}
+  - {id: T21, title: 전체 gate를 보존하는 고정 retry 진단 실행, depends_on: [T1], status: done, tier: light}
   - {id: T4, title: retry claim의 실제 SQLite 원자성, depends_on: [T3, T20], status: pending, tier: standard}
   - {id: T5, title: 공용 session의 자동 attempt 연결, depends_on: [T4], status: pending, tier: standard}
   - {id: T6, title: 누락과 출처를 보존하는 aggregate 값, depends_on: [T1], status: in_progress, tier: standard}
@@ -185,7 +186,7 @@ tasks:
 
 - **인터페이스**: 2절 `AutomaticRetryContracts` 참조. 기존 port를 바꾸는 추가 계약은 부모에 먼저 통합한다.
 - **결정 로직**: 정확한 supported v1 + validated content → additive v2; unknown schema/future version/corruption → 원본 보존 BLOCKED.
-- **작성할 테스트**: `Validated v1 migration retains bindings unfinished journals uncertainty prior confirmations and gaps through interrupted v2 publish` (①성공기준·②경계/동등분할·③오류·④순서; 실제 SQLite/WorkManager/프로세스 통합). 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
+- **작성할 테스트**: `validatedV1MigrationRetainsBindingsJournalsUncertaintyPriorConfirmationsAndGapsThroughInterruptedV2Publish` (①성공기준·②경계/동등분할·③오류·④순서; 실제 SQLite/WorkManager/프로세스 통합). 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
 - **계약 보정3 검증**: 한 신규 table에 requestedScopes를 검증된 column/JSON으로 저장하고 dates/scopes/observed JSON 합계 <=16KiB. 기존 ACTIVE partial unique index의 generation scan을 EXPLAIN으로 검증해 충분하면 추가 index 금지. schema 검증은 전체 row를 검증한다.
 - **교정6 검증**: 고정 DDL은 retry_budget parent, 기존 attempt의 nullable automatic_lineage_id FK, 기존 ACTIVE partial index다. 기존 계획의 SyncRetryBudgetMigrationInstrumentedTest에서 v1 legacy NULL, 원본 보존, FK ON reset 순서, migrated/fresh v2 실제 sqlite_master 및 foreign_key_list parity, reopen/FK/quick checks를 검증한다. v1/v2 exact schema map을 구분한다. 기존 hot-journal fixture의 의미를 보존하며 새 test 파일이나 기존 hot-journal 테스트 수정은 요구하지 않는다. API28은 source 호환성 판단이며 실제 migration 미수행, 기존 API35/36 gate는 유지한다.
 - **준비 교정1**: 원래4파일에 기존 store 연결1파일을 더한5파일이며 T4와 순차 인계한다. 기존 session future-version fixture는 별도 T20 한파일이 소유한다.
@@ -205,6 +206,8 @@ tasks:
 
 **Checkpoint**: 해당 구간의 실제 source/계약/회귀와 parent pin을 root가 확인한 후 후속 구간으로 진행한다.
 
+
+- **현재 실제 검증**: R11포함5de10ad와동일runtime/test의진단head2b8ce11에서43553148135 양API새8개를실행했고root공식ZIPdigest/XML대조로실패·오류·skip·중복0이다. SDKfault/reopen·schema/FKparity·실제v1dirtypair는검증했지만전체143Native/기존실제host결과는별도미완료이므로T3/T20in_progress와T4pending을유지한다.
 ### T20: v2 도입의 future schema fixture 호환
 
 - **depends_on**: T1; **tier**: light; **status**: in_progress.
@@ -222,6 +225,25 @@ tasks:
 - **검증 방법**: T3 source frozen 뒤 root가 `./gradlew :app:assembleDebugAndroidTest` 및 repository root에서 `GITHUB_EVENT_NAME=workflow_dispatch TEST_SCOPE=full bash android/ci/run-emulator-validation.sh`를 수행한다. 로컬 emulator 부재는 pending이고 root GitHub CI 양API로 실제 검증한다. T3와 같은 명령을 중복 실행하지 않고 source head/evidence를 공유한다.
 - **주의사항**: 이 두 파일은 T3 제품·새fixture와 disjoint다. 이후 T5의 기존 session fixture 인계 전 T20 완료 source를 보존한다. 회귀 삭제·skip·assertion 완화·v2 corruption 허용 금지.
 
+### T21: 전체 gate를 보존하는 고정 retry 진단 실행
+
+- **depends_on**: T1; **tier**: light; **status**: done.
+- **변경 파일**
+
+  | 파일 | 신규/수정 | 변경 요지 |
+  |---|---|---|
+  | `.github/workflows/android-emulator-tests.yml` | 수정 | 기존 dispatch choice에 정적 retry 진단3개만 추가 |
+  | `android/ci/run-emulator-validation.sh` | 수정 | source 존재 확인 뒤 고정 class만 실행·진단 종료 |
+
+- **인터페이스**: 기존 dispatch allowlist를 확장하며 임의 class/command 입력은 받지 않는다. 기본값 full, PR full, 기존 진단6개와 양API/host/registry 순서·artifact/timeout/permissions는 그대로다.
+- **결정 로직**: workflow_dispatch의 retry-migration은 정확한 class com.ny.my.health.SyncRetryBudgetMigrationInstrumentedTest, retry-store는 com.ny.my.health.SyncRetryBudgetStoreInstrumentedTest, retry-session은 com.ny.my.health.SyncExecutionSessionInstrumentedTest를 실행한다. 각 고정 source path가 없으면 실패하며 unknown은 기존대로 실패한다. 선택 진단은 full PASS가 아니다.
+- **작성할 테스트**: shell syntax와 임시 synthetic adb/gradle stub으로3개scope의 exact1class 선택, source누락/unknown 실패 및 기존full tail bytes 보존을 검증한다. 저장소에 새test파일/의존성은 추가하지 않는다. 실제현재migration8개를양API에서선택실행하는CI증거는root가확인한다.
+- **완료 기준**: staticroute/checks와실제선택진단8개양API를통과하고 fullgate불변을fresh독립review로확인한다. 진단결과로T3/전체V1완료를대신하지않는다.
+- **검증 방법**: `bash -n android/ci/run-emulator-validation.sh` 및 source0cf03a9와fulltail/기타workflow설정동일대조, 위stubroute검증; root가 branch의workflow_dispatch test_scope=retry-migration과정확한XML8개/digest를검증한다.
+- **주의사항**: 제품/manifest/dependency/원시로그공개/sharding/fixture/timeout 변경 금지. 기존진단과fullrunner표현을재작성하지말고최소case만추가한다. 첫의미있는검증실패시보고/중단한다.
+
+
+- **실제 검증**: CI route source4bb92f3 fresh독립APPROVE 및rootstatic exactroute/누락/unknown/fulltail byte동일검증후, fixtureR11포함2b8ce11의고정진단43553148135 양API정확8개/source동일identity/실패·오류·skip·중복0을공식ZIPdigest와XML로root대조했다(auto-t3-diagnostic-r11-root-proof.json). 실제선택진단은전체143Native/host결과가아니며T3/T20완료를대신하지않는다. 최초진단43552194517의7PASS/1FAIL과R11수정이력은보존한다.
 ### T4: retry claim의 실제 SQLite 원자성
 
 - **depends_on**: T3, T20; **tier**: standard; **status**: pending.
@@ -816,3 +838,7 @@ root가현재91433b6 전체로컬core/app/APK/lint를2m29s 통과시킨뒤Native
 ### T3 교정11 — 읽기 연결의 FK 설정값을 실제 쓰기 enforcement로 검증
 
 고정진단43552194517(4bb92f3)의공식ZIPdigest/XML원본을root가대조해양API8개중7개통과·같은reset case1개실패를확인했다. 기대[1]/실제[0]은reset후openForRead의PRAGMA foreign_keys검증위치오류다. AOSP공식SQLiteConnection.java351~358줄은foreignKeyMode설정을non-readonly연결에만적용하므로readonly는설정true요청에도0일수있다. 승인계약은FKON 쓰기/reset 순서이므로기존[1]을[0]으로완화하지않고openForWrite에서[1]과parent삭제RESTRICT실제거부를검증하고제품reset뒤empty/FKcheck를검증하도록같은새fixture만교정한다. 제품코드·tablemap·기존회귀기대값은불변이다. 43550859281full은같은테스트위치오류가있어취소요청했고PASS로사용하지않는다. 실제기준·원인·기대수정·양API원본증거는auto-t3-diagnostic-first-failure-proof.json에남기며prep1/2및R3~10에이번11을누적한다. 수정뒤고정진단8개를먼저양API재검증하고그다음새source의전체양API/host를실행한다.
+
+### T21 준비 — 새기능이아닌기존진단 allowlist 확장
+
+제품T3와독립인별도worktree에서기존정적diagnostic패턴을세개의정적class로확장한다. 현재full0cf03a9run43550859281는유지하며source/gate불변검증뒤새fixture선택실행을병렬화한다. 별도스펙/SLA나fullsharding을도입하지않고기존자동검증경로의가역기술보조만수행한다. 완료/PASS층구분과PR최종currenthead전체검증은유지한다.

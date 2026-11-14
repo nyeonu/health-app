@@ -748,3 +748,7 @@ PR19 current-head8b9f38e의 Native43534668761과 JVM43534668764가 모두 SUCCES
 ### T20 호환성 보정1 — v2 nullable 열 추가 뒤 기존 손상 fixture SQL
 
 기존SqliteSyncStateStoreInstrumentedTest:815의 INSERT INTO attempt VALUES는v1의12열을가정한다. v2에nullable link가추가되어13열이되면원래손상내용을검증하기전에SQL열수오류로중단된다. 기존12열명시columnlist만추가해같은12값·같은손상·같은assertion을보존한다. T20소유에이기존fixture파일을더해총2파일로한정하며T3제품/새migrationfixture와disjoint이고T4/T5순차인계를유지한다. 신규schema나검증완화가아니며T3와같은head의실제양API/host검증전T20done처리하지않는다.
+
+### T21 — 전체 gate와 분리된 고정 자동 retry 진단 경로
+
+실제기존full Native43527182302는API35 43m24s/API36 35m18s이고XML의기존SQLite4개hot method 합계1297/995초가길다(ci-full-sharding-feasibility.md 실제원본). 현재T3 full43550859281는0cf03a9에서그대로실행하며범위/순서/host/timeout을바꾸지않는다. 교차emulator순서변경이있는sharding은채택하지않는다. 새T3/T4/T5의오류피드백만빨리받도록기존workflow_dispatch 고정진단case패턴에세개의정적allowlist를추가한다. retry-migration→SyncRetryBudgetMigrationInstrumentedTest, retry-store→SyncRetryBudgetStoreInstrumentedTest, retry-session→SyncExecutionSessionInstrumentedTest이며classsource없으면실패한다. PR event와manual full은기존fullrunner를byte그대로실행하고선택진단을full/hostPASS로사용하지않는다. T21은독립diagnostics branch의workflow/shell두파일뿐이며제품source와disjoint하게진행한다. 현재T3의양API8개진단을실제실행해선택/오류/elapsed를기록하되baseline과조건이다르므로전체성능개선비율이나SLA를주장하지않는다. user의V1자동승인/병렬속도개선위임내가역CI보조경로이며새의존성/권한/공개artifact정책변경없다. 정상PR병합전currenthead의전체양API/host와fresh독립review는불변이다.
