@@ -5,7 +5,7 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: da94c1e1e32d378fb0fa124ac5149f036df7349b
+parent_rev: 60e44d93cb2d8878f541327034591630c48c0ba7
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-auto-retry
@@ -155,7 +155,7 @@ tasks:
 - **인터페이스**: 2절 `AutomaticRetryContracts` 참조. 기존 port를 바꾸는 추가 계약은 부모에 먼저 통합한다.
 - **결정 로직**: 같은 unfinished lineage → 새 attempt/periodic/revision 관찰만으로 사용량 초기화 금지; completed lineage → 새 정상 batch 허용; retry claim 3회 뒤 → exhausted; now<due → DEFERRED/사용량 불변; 최초 proposal 누락·scope/date 교체 → 거부.
 - **작성할 테스트**: `Retry lineage permits one initial run and three claimed retries despite new attempt ids and changed observed revisions` (①성공기준·②경계/동등분할·③오류·④순서; JVM 유닛/adapter 경계). 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
-- **계약 보정3 검증**: SyncState validator의 pending unfinished 및 정확히 한 payload, immutable input/output, 초기 version 0/reclaim만 +1/observe·finish 불변, invalid 고정 예외, due 경계와 세 hash golden을 기존 T2 테스트 파일에서 검증한다.
+- **계약 보정3 검증**: SyncState validator의 자동 pending unfinished·기존 finished MANUAL pending COMMITTED 보존 및 정확히 한 payload, immutable input/output, 초기 version 0/reclaim만 +1/observe·finish 불변, invalid 고정 예외, due 경계와 세 hash golden을 기존 T2 테스트 파일에서 검증한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -726,3 +726,7 @@ PR19는75cc443702a3467c87268d49ce52d4d75b2ed8a5로 병합됐고 이 worktree를 
 ### T2/T6 독립 readiness 완료·병렬 실행 시작
 
 공통준비head df5c072404b10ca9bb43bdcac58301eac42dfbec의 실제parent/ADR/child/데이터계약과T2/T4/T5/T6/T7 실제브리프를 작성자와 다른 fresh Terra 세션이 재검토해 READY를 기록했다(auto-contract-doc-final-readiness.md). 두 Important(unknown-scope metadata-only preflight, ownerless busy union)은 해소됐고 해당5브리프는 독립 재조립과 byte동일했다. source_base75cc443 실제reviewedmerge+이공통준비commit을 공유하는 별도retry/summary worktree에서 T2와T6을 시작한다. 각T는기존준비교정1·2 및 계약구체화3을 이어가며 source동작 변경을 실제verify하기 전완료로표시하지않는다.
+
+### T2 교정4·5 위임 범위
+
+첫core실패는기존MANUALfinishedpending을새자동제약으로거부한것이며기존SyncStateTest의COMMITTED기대는변경하지않는다. 자동trigger에한정한미완료pending/ownercontext검증과waitingdue=updatedAt+delay snapshotvalidation을완성한다. 최초85개중새lineage검증은통과했으나원래계획의불변입출력·cohort교체/완료후새lineage·잘못된입력·owner문맥·정확히한payload검증이미완료였으므로기존T2새test파일안에서요구기준별누락을보완한다. 파일은원래3개,단일제한수정과원명령검증후중단/보고하며기존준비1·2·계약3에교정4·5를누적한다. root의T6별도lane는영향없이보존한다.
