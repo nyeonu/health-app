@@ -19,6 +19,9 @@ on:
           - saf-destination
           - saf-ui
           - saf-flow
+          - retry-migration
+          - retry-store
+          - retry-session
 
 permissions:
   contents: read
