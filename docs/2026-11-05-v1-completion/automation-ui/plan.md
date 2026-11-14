@@ -812,3 +812,7 @@ R3~6 source교정후독립재검토에서Os static/identity/finish일관성은so
 ### T3 교정10 — 실제 Android fixture의 locale metadata 오염 차단
 
 root가현재91433b6 전체로컬core/app/APK/lint를2m29s 통과시킨뒤Native실행전새fixture의raw openOrCreateDatabase/openDatabase에NO_LOCALIZED_COLLATORS누락을발견했다. AOSP공식SQLiteConnection.java HTTP200 source476/496줄로기본writableopen이android_metadata table을추가함을확인했다. 이는strictv1/v2 map에없는테이블로처음부터fixture를unsupported로만들며제품schema를완화할이유가아니다. 새MigrationInstrumentedTest의모든rawopen에production과같은NO_LOCALIZED_COLLATORS 및초기DELETE/FULL설정을적용하는test-only교정10이다. 기존테스트/스키마/map/assertion은보존한다. 진행중43550413104는오염fixture의불필요한긴검증을피해취소요청하고PASS증거로쓰지않는다. 새sourcehead로전체양API/host를재실행한다. 원래회차1~9를보존한다. 공식source는공개AOSP참조이며실기기수행주장이아니다.
+
+### T3 교정11 — 읽기 연결의 FK 설정값을 실제 쓰기 enforcement로 검증
+
+고정진단43552194517(4bb92f3)의공식ZIPdigest/XML원본을root가대조해양API8개중7개통과·같은reset case1개실패를확인했다. 기대[1]/실제[0]은reset후openForRead의PRAGMA foreign_keys검증위치오류다. AOSP공식SQLiteConnection.java351~358줄은foreignKeyMode설정을non-readonly연결에만적용하므로readonly는설정true요청에도0일수있다. 승인계약은FKON 쓰기/reset 순서이므로기존[1]을[0]으로완화하지않고openForWrite에서[1]과parent삭제RESTRICT실제거부를검증하고제품reset뒤empty/FKcheck를검증하도록같은새fixture만교정한다. 제품코드·tablemap·기존회귀기대값은불변이다. 43550859281full은같은테스트위치오류가있어취소요청했고PASS로사용하지않는다. 실제기준·원인·기대수정·양API원본증거는auto-t3-diagnostic-first-failure-proof.json에남기며prep1/2및R3~10에이번11을누적한다. 수정뒤고정진단8개를먼저양API재검증하고그다음새source의전체양API/host를실행한다.
