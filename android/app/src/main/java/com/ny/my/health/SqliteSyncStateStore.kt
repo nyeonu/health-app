@@ -283,18 +283,44 @@ internal class SqliteSyncStateStore internal constructor(
             db.delete("dataset", null, null)
             db.delete("day", null, null)
             db.delete("attempt", null, null)
+            if (db.version == 2) db.delete("retry_budget", null, null)
             db.delete("generation", "id<>?", arrayOf(generation.value))
             SyncCommit(CommitStatus.COMMITTED, generation)
         }
     }
 
-    private fun admittedRead(date: LocalDate, coroutine: CoroutineContext): SQLiteDatabase? =
-        database.openAdmittedRead({ db ->
+    private fun admittedRead(date: LocalDate, coroutine: CoroutineContext): SQLiteDatabase? {
+        val cancel = { coroutine.ensureActive() }
+        val validateV1: (SQLiteDatabase) -> Unit = { db -> validateMigrationSource(db,date,cancel) }
+        val validateV2: (SQLiteDatabase) -> Unit = { db ->
+            require(db.version == 2)
+            validateMigrationContent(db,date,cancel)
+            SyncRetryBudgetLedger.validate(db,date,cancel)
+        }
+        val migration = SyncRetryBudgetMigration(database)
+        migration.resume(validateV1,validateV2,cancel)
+        var opened = database.openAdmittedRead({ db ->
             coroutine.ensureActive()
-            capacity(db)
-            validateActive(db,date)
+            if (db.version == 1) validateV1(db) else {
+                capacity(db); validateActive(db,date); SyncRetryBudgetLedger.validate(db,date,cancel)
+            }
             coroutine.ensureActive()
-        }, { coroutine.ensureActive() })
+        }, cancel)
+        try {
+            if (opened?.version == 1) {
+                validateV1(opened)
+                opened.close()
+                opened = null
+                migration.migrate(validateV1,validateV2,cancel)
+                opened = checkNotNull(database.openForRead())
+            }
+            if (opened?.version == 2) {
+                capacity(opened)
+                SyncRetryBudgetLedger.validate(opened,date,cancel)
+            }
+            return opened
+        } catch (error: Throwable) { opened?.close(); throw error }
+    }
 
     private suspend fun write(expected: DestinationGeneration?,allowAbsent: Boolean = false,
         requestedScopes: Map<DataType,ReadScope>? = null,
@@ -367,7 +393,7 @@ internal class SqliteSyncStateStore internal constructor(
         return withContext(Dispatchers.IO) { synchronized(database.pathLock) {
             try {
                 val marker = database.resetDirectory
-                if (Files.isSymbolicLink(marker.toPath()) || Files.isSymbolicLink(database.databaseFile.toPath()) ||
+                if (present(database.migrationDirectory) || SyncRetryBudgetMigration.hasLegacyPreparation(database.databaseFile) || Files.isSymbolicLink(marker.toPath()) || Files.isSymbolicLink(database.databaseFile.toPath()) ||
                     (database.databaseFile.exists() && !database.databaseFile.isFile)) return@synchronized SyncCommit(CommitStatus.UNAVAILABLE, null)
                 if (!present(marker)) {
                     val status = read(null,today(),null,coroutine).status
@@ -500,16 +526,60 @@ internal class SqliteSyncStateStore internal constructor(
         for ((table,count) in mapOf("config" to 1L,"generation" to 1L,"day" to 0L,"dataset" to 0L,"attempt" to 0L)) {
             db.rawQuery("SELECT count(*) FROM $table",null).use { require(it.moveToFirst() && it.getLong(0) == count) }
         }
+        if (db.version == 2) db.rawQuery("SELECT count(*) FROM retry_budget",null).use { require(it.moveToFirst() && it.getLong(0) == 0L) }
     }
 
     private data class Admission(val metadata: Metadata, val attempt: AttemptState?,
         val selectedKey: ReadScopeKey?, val full: Scan?, val selected: Scan?, val last: Instant?)
 
+    /** 이전 원본 검증에만 사용한다. 일반 읽기의 active 세대 scan은 바꾸지 않는다. */
+    internal fun validateMigrationSource(db: SQLiteDatabase, date: LocalDate, checkCancelled: () -> Unit) {
+        require(db.version == 1)
+        validateMigrationContent(db,date,checkCancelled)
+    }
+
+    private fun validateMigrationContent(db: SQLiteDatabase, date: LocalDate, checkCancelled: () -> Unit) {
+        require(db.version in 1..2)
+        checkCancelled()
+        capacity(db)
+        db.rawQuery("PRAGMA foreign_key_check", null).use { require(!it.moveToFirst()) }
+        db.rawQuery("PRAGMA quick_check", null).use { require(it.moveToFirst() && it.getString(0) == "ok" && !it.moveToNext()) }
+        val active = metadata(db)
+        require(active.configuration?.automatic != true)
+        var sawActive = false
+        db.rawQuery("SELECT id,destination_handle,enrolled_day,categories_json FROM generation ORDER BY id", null).use { rows ->
+            while (rows.moveToNext()) {
+                checkCancelled()
+                val generation = DestinationGeneration(SyncStateCodec.decodeUuid(rows.text(0)))
+                val destination = rows.nullable(1)
+                val enrolled = rows.nullable(2)
+                val categories = SyncStateCodec.decodeCategories(rows.text(3), 1)
+                val configuration = if (destination == null) {
+                    require(enrolled == null && categories.isEmpty())
+                    null
+                } else {
+                    SyncConfiguration(SyncStateCodec.decodeHandle(destination),
+                        SyncStateCodec.decodeDate(requireNotNull(enrolled)), false, categories).also { require(it.isValid()) }
+                }
+                val isActive = generation == active.generation
+                if (isActive) {
+                    require(!sawActive && configuration == active.configuration)
+                    sawActive = true
+                }
+                validateActive(db, date, if (isActive) active else Metadata(generation, configuration, 0L),
+                    validateBinding = isActive)
+            }
+        }
+        require(sawActive)
+        checkCancelled()
+    }
+
     /** 같은 잠금 호출 안에서만 모든 active 행의 검증과 집계를 재사용한다. */
     private fun validateActive(db: SQLiteDatabase, date: LocalDate, meta: Metadata = metadata(db),
-        access: ReadAccess? = null, requestedScopes: Map<DataType,ReadScope>? = null): Admission {
+        access: ReadAccess? = null, requestedScopes: Map<DataType,ReadScope>? = null,
+        validateBinding: Boolean = true): Admission {
         val attempt = readAttempt(db,meta,date)
-        db.rawQuery("SELECT binding_kind,binding_payload FROM config WHERE id=1",null).use { binding ->
+        if (validateBinding) db.rawQuery("SELECT binding_kind,binding_payload FROM config WHERE id=1",null).use { binding ->
             require(binding.moveToFirst())
             if (!binding.isNull(0)) decodeBinding(binding.text(0),binding.text(1))
         }
@@ -713,6 +783,9 @@ internal class SqliteSyncStateStore internal constructor(
     private fun capacity(db: SQLiteDatabase) {
         mapOf("generation" to 10000L,"attempt" to 10000L,"day" to 100000L,"dataset" to 400000L).forEach { (table,max) ->
             db.rawQuery("SELECT count(*) FROM $table",null).use { require(it.moveToFirst() && it.getLong(0) <= max) }
+        }
+        if (db.version == 2) db.rawQuery("SELECT count(*) FROM retry_budget",null).use {
+            require(it.moveToFirst() && it.getLong(0) <= 100000L)
         }
     }
     private fun encodeBinding(value: PrivateDestinationBinding): String {
