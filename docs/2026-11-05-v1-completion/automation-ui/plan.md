@@ -5,15 +5,15 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: ac0a43269b3c817cbed05fea440d5afb795e5312
+parent_rev: 2ae14c7c311c29cc02dc3027582581f637dd8279
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
 branch: feature/v1-auto-infra
 source_base: 6c5f5b0412029054cc992adc09a2296bcf0c696c
 execution_gate: actual-SAF-merge-WM-integration-parent-ADR-approved-and-repinned
 tasks:
-  - {id: T19, title: WorkManager helper process 격리 기반, depends_on: [], status: in_progress, tier: standard}
-  - {id: T1, title: 실제 WorkManager starter 기반, depends_on: [T19], status: pending, tier: standard}
+  - {id: T19, title: WorkManager helper process 격리 기반, depends_on: [], status: done, tier: standard}
+  - {id: T1, title: 실제 WorkManager starter 기반, depends_on: [T19], status: in_progress, tier: standard}
   - {id: T2, title: durable retry 모델과 검증 경계, depends_on: [T1], status: pending, tier: standard}
   - {id: T3, title: 검증된 v1 상태의 v2 migration, depends_on: [T2], status: pending, tier: standard}
   - {id: T4, title: retry claim의 실제 SQLite 원자성, depends_on: [T3], status: pending, tier: standard}
@@ -89,7 +89,7 @@ tasks:
 
 ### T19: WorkManager helper process 격리 기반
 
-- **depends_on**: 실제 SAF reviewed merge 및 early WorkManager source/evidence 통합 gate; **tier**: standard; **status**: pending. 숫자는 기존 T1~T18 추적성을 유지하기 위한 새 ID이며 실행순서는 T19→T1이다.
+- **depends_on**: 실제 SAF reviewed merge 및 early WorkManager source/evidence 통합 gate; **tier**: standard; **status**: done. 숫자는 기존 T1~T18 추적성을 유지하기 위한 새 ID이며 실행순서는 T19→T1이다.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -108,7 +108,7 @@ tasks:
 
 ### T1: 실제 WorkManager starter 기반
 
-- **depends_on**: T19; **tier**: standard; **status**: pending.
+- **depends_on**: T19; **tier**: standard; **status**: in_progress.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -690,3 +690,7 @@ T19는earlystarter의옛script가아닌실제mergedSAF의진단earlyexit·critic
 ### T19 교정4 — 실제 AndroidJUnitRunner 성공 protocol
 
 1b58950 재검토에서 캐시된 runner1.6.2 InstrumentationResultPrinter의 실제 bytecode는 testStarted에 stream=\n%s:(class header), 성공 testFinished에 stream=.을 내보내지만 교정3 parser는 빈 stream만 허용함을 확인했다. root도 실제 runtimejar javap로 동일 사실을 대조했다(auto-t19-runner-result-printer-bytecode.txt). 잘못 만든 fake 성공 응답을 실제 protocol의 클래스 continuation/성공 dot까지 정확히 반영하며 기대 identity·code·count·privacy·모든 미허용 출력 차단은 보존한다. 종료검증에서 pidof의 정상 부재 exit1과 timeout/adb오류도 구별하여 종료 미확인을 성공으로 처리하지 않는다. 기존 T19 회차1~3을 유지하고 이번4를 소유자 같은V1 가역 기술 교정 위임으로 수행한다. 파일은 기존 hostscript 하나이며 새 의존성/제품동작/검증기준 변경은 없다. 실제 protocol fixture의 교정 전 실패·교정 후 통과와 기존 부정 protocol 회귀·fresh 재검토 후 양API full을 실행한다.
+
+### T19 실제 완료·T1 시작 (2026-11-14 UTC)
+
+source2992452/run43527182302 공식 artifact API35 14088236324/sha256:9548d12b541c816ecbd67b73e74f98ed5118b2a5d5522ead1f46634e6cf51dca, API36 14087950535/sha256:093a97d19d5446fb585faa19aee96631991247027e574960edb0d0f66f5e438f. 각135unique Native/critical15+remaining117+isolated3, 기존132 보존, 실패/오류/skip/중복0; host recovery8+settings4+cleanup8 및 sync-state recovery17+cleanup17, killedholds pass0. root가 officialdigest와 실제XML/세격리raw·JSON/host원문을 직접 대조했다(/workspace/tooling/auto-t19-root-native-proof.json). 독립 소스 재검토2992452 APPROVE. T19누적교정1~4는 보존한다. 다음T1은 same task Terra 세션의 read-only preflight를 이어 진행하며 실제 production 초기화·manifest·네graph 감사·양API 재검증은 새로 수행한다.
