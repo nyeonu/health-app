@@ -5,15 +5,16 @@ status: in_progress
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
-parent_rev: 26f88f1070bac17b1d073d14d1c072bb4d218bbb
+parent_rev: da94c1e1e32d378fb0fa124ac5149f036df7349b
 spec: ../spec.md
 spec_rev: 97c01b1992ad7935e6fa8f1f8b371a3963457daa
-branch: feature/v1-auto-infra
-source_base: 6c5f5b0412029054cc992adc09a2296bcf0c696c
-execution_gate: actual-SAF-merge-WM-integration-parent-ADR-approved-and-repinned
+branch: feature/v1-auto-retry
+parallel_branches: [feature/v1-auto-retry, feature/v1-auto-summary]
+source_base: 75cc443702a3467c87268d49ce52d4d75b2ed8a5
+execution_gate: actual-PR19-merge-contract-parent-ADR-repin-independent-readiness
 tasks:
   - {id: T19, title: WorkManager helper process 격리 기반, depends_on: [], status: done, tier: standard}
-  - {id: T1, title: 실제 WorkManager starter 기반, depends_on: [T19], status: in_progress, tier: standard}
+  - {id: T1, title: 실제 WorkManager starter 기반, depends_on: [T19], status: done, tier: standard}
   - {id: T2, title: durable retry 모델과 검증 경계, depends_on: [T1], status: pending, tier: standard}
   - {id: T3, title: 검증된 v1 상태의 v2 migration, depends_on: [T2], status: pending, tier: standard}
   - {id: T4, title: retry claim의 실제 SQLite 원자성, depends_on: [T3], status: pending, tier: standard}
@@ -108,7 +109,7 @@ tasks:
 
 ### T1: 실제 WorkManager starter 기반
 
-- **depends_on**: T19; **tier**: standard; **status**: in_progress.
+- **depends_on**: T19; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -148,11 +149,13 @@ tasks:
   | 파일 | 신규/수정 | 변경 요지 |
   |---|---|---|
   | `C/SyncRetryBudget.kt` | 신규 | IO 없는 lineage/claim/finalization validation |
+  | `C/SyncState.kt` | 수정 | optional automaticOwner 및 pending unfinished validator |
   | `CT/SyncRetryBudgetTest.kt` | 신규 | 초기+3회·due 경계·immutable proposal/lineage 검증 |
 
 - **인터페이스**: 2절 `AutomaticRetryContracts` 참조. 기존 port를 바꾸는 추가 계약은 부모에 먼저 통합한다.
 - **결정 로직**: 같은 unfinished lineage → 새 attempt/periodic/revision 관찰만으로 사용량 초기화 금지; completed lineage → 새 정상 batch 허용; retry claim 3회 뒤 → exhausted; now<due → DEFERRED/사용량 불변; 최초 proposal 누락·scope/date 교체 → 거부.
 - **작성할 테스트**: `Retry lineage permits one initial run and three claimed retries despite new attempt ids and changed observed revisions` (①성공기준·②경계/동등분할·③오류·④순서; JVM 유닛/adapter 경계). 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
+- **계약 보정3 검증**: SyncState validator의 pending unfinished 및 정확히 한 payload, immutable input/output, 초기 version 0/reclaim만 +1/observe·finish 불변, invalid 고정 예외, due 경계와 세 hash golden을 기존 T2 테스트 파일에서 검증한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -177,6 +180,7 @@ tasks:
 - **인터페이스**: 2절 `AutomaticRetryContracts` 참조. 기존 port를 바꾸는 추가 계약은 부모에 먼저 통합한다.
 - **결정 로직**: 정확한 supported v1 + validated content → additive v2; unknown schema/future version/corruption → 원본 보존 BLOCKED.
 - **작성할 테스트**: `Validated v1 migration retains bindings unfinished journals uncertainty prior confirmations and gaps through interrupted v2 publish` (①성공기준·②경계/동등분할·③오류·④순서; 실제 SQLite/WorkManager/프로세스 통합). 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
+- **계약 보정3 검증**: 한 신규 table에 requestedScopes를 검증된 column/JSON으로 저장하고 dates/scopes/observed JSON 합계 <=16KiB. 기존 ACTIVE partial unique index의 generation scan을 EXPLAIN으로 검증해 충분하면 추가 index 금지. schema 검증은 전체 row를 검증한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -203,6 +207,7 @@ tasks:
 - **인터페이스**: 2절 `AutomaticRetryContracts` 참조. 기존 port를 바꾸는 추가 계약은 부모에 먼저 통합한다.
 - **결정 로직**: expected generation+lineage+version+owner 일치 → claim 1회 commit; stale/동일 claim replay → 증가 없음; exhausted → health/remote admission 거부.
 - **작성할 테스트**: `SQLite retry claims survive reopen and racing attempts cannot exceed three retries or erase old metadata` (①성공기준·②경계/동등분할·③오류·④순서; 실제 SQLite/WorkManager/프로세스 통합). 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
+- **계약 보정3 검증**: 2절 preflight/load API 및 exact scope CAS를 구현한다. indexed ACTIVE owner/due streaming은 cap 100000, 목록/JSON per-row/N+1 금지. owner recovery 우선, max future due/정각/다른 scope terminal, stale/손상 외부 호출 0을 검증한다. busy union 동시성, 실제 observation/day atomicity, eligible manual retirement 및 rollback/reopen을 검증한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -228,6 +233,7 @@ tasks:
 - **인터페이스**: 2절 `AutomaticRetryContracts`, `AutomaticSessionRoutingContracts` 참조. 기존 port를 바꾸는 추가 계약은 부모에 먼저 통합한다.
 - **결정 로직**: busy → pending trigger merge만; owner → 복구 후 atomic claim; cancellation → journal interruption 보존, retry reset 없음.
 - **작성할 테스트**: `Automatic session claims once under the shared gate and cancellation never resets budget or clears uncertain creates` (①성공기준·②경계/동등분할·③오류·④순서; 실제 SQLite/WorkManager/프로세스 통합). ⑤기존 관련 회귀 재사용. 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
+- **계약 보정3 검증**: 모든 자동 day/confirmation에 owner와 실제 read revision을 전달한다. ownerless busy pending union은 현재 미완료 attempt superset만 허용한다. readScoped와 pure identify만 source catch, 취소 전파/두 SourceReadException reason 보존/나머지 SOURCE_READ_FAILED; store 및 destination IO는 제외. 기존 DestinationSyncTest에서 해당 날짜 revision 실패 write 0, 이전 완료 write 유지 및 분리 회귀를 검증한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -252,8 +258,9 @@ tasks:
   | `CT/NormalizationTest.kt` | 수정 | null/zero/분수/권한/기존 latest weight |
 
 - **인터페이스**: 2절 `AutomaticSummaryContracts` 참조. 기존 port를 바꾸는 추가 계약은 부모에 먼저 통합한다.
-- **결정 로직**: 미조회/null metric → blank; 실제 Duration.ZERO → 0.0; negative/overflow → source failure; manual defaults → 기존 결과.
+- **결정 로직**: 미조회/null metric → blank; 실제 Duration.ZERO → 0.0; negative → source failure; 최대 Duration의 분 변환은 finite; manual defaults → 기존 결과.
 - **작성할 테스트**: `Aggregate duration summaries preserve missing zero fractional minutes and provenance without inventing sessions` (①성공기준·②경계/동등분할·③오류·④순서; JVM 유닛/adapter 경계). ⑤기존 관련 회귀 재사용. 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
+- **계약 보정3 검증**: 단일 immutable AggregateDuration DTO를 snapshot/day 둘 다 끝에 default null로 추가한다. defensive copy/unmodifiable origins, 값 동등성, 음수 거부, 최대 Duration finite, ZERO만 0.0, missing blank, 1440 상한 없음을 기존 테스트에서 검증한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -278,6 +285,7 @@ tasks:
 - **인터페이스**: 2절 `AutomaticSummaryContracts` 참조. 기존 port를 바꾸는 추가 계약은 부모에 먼저 통합한다.
 - **결정 로직**: summary metric 실제 존재 → daily; 모든 metric missing/다른 record 없음 → CSV 없음; manual aggregate 없음 → 동일 bytes와 기존 revision.
 - **작성할 테스트**: `Summary only daily files retain v0.1 header while changed aggregates advance revision and manual exports stay byte identical` (①성공기준·②경계/동등분할·③오류·④순서; JVM 유닛/adapter 경계). ⑤기존 관련 회귀 재사용. 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
+- **계약 보정3 검증**: SUMMARY scope 검증과 sorted origins, manual 기본 null의 기존 CSV bytes/hash golden을 유지한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -403,6 +411,7 @@ tasks:
 - **인터페이스**: 2절 `AutomaticRetryContracts`, `WorkManagerIsolationRegistry` 참조. 기존 port를 바꾸는 추가 계약은 부모에 먼저 통합한다.
 - **결정 로직**: RETRYABLE+남은 durable claim 또는 DEFERRED(due 미도달) → Result.retry; blocked/exhausted/merged/stale → retry loop 없이 Result.success+정확한 durable state; success → coverage 자체로 판정.
 - **작성할 테스트**: `Only transient batch failures retry at most three times and uncertain creates reconcile first` (①성공기준·②경계/동등분할·③오류·④순서; 실제 SQLite/WorkManager/프로세스 통합). 위 상태/입력과 기대 결과를 assertion으로 검증한다. 신규 테스트이며 기존 회귀는 삭제하지 않는다.
+- **계약 보정3 검증**: preflight와 ownerless busy union의 process 경합 및 stale/손상 외부 호출 0, explicit eligible retirement의 불확실성 보존을 기존 통합 테스트에서 검증한다.
 - **완료 기준**: 위 검증이 실제 통과하고 개인정보 없는 evidence가 있다. 미수행은 pending이다.
 - **검증 방법** (실행 단계, `android/`에서):
 
@@ -593,6 +602,9 @@ tasks:
 | 앱 열기·home·취소·접근성 | global lastUploadAt와 scope freshness 분리/WorkInfo ENQUEUED constraints vs BLOCKED dependency/metadata-only restore/unique catch-up/EMPTY 및 최근·과거·partial·blocked 안전 표시/late callback 무효/전 actions 도달 | T13~T16; ①②③④⑤/SQLite·Compose Activity |
 | 보안·개발 증거와 실제 수용 분리 | 네 resolved graph OSV/manifest/release/공개 artifact allowlist/기존 회귀/정확 roadmap·pending | T1·T17~T18·전체검증; ①③⑤/정적·통합·문서; 실제 수용은 비자동 |
 
+| preflight·scope 독립성과 ownerless busy union | 미래 ACTIVE due 최대값·정각·다른 terminal scope 허용·same-scope terminal 거부·stale/손상 외부 IO 0·미완료 superset 동시 union 무손실 | T2/T3/T4/T5/T12; ①②③④/JVM·실제 SQLite·process |
+| summary 및 projection 실패 경계 | 동일 불변 DTO의 missing/zero/max/방어복사·SUMMARY 및 수동 bytes/hash·revision 실패 해당 날짜 write 0·두 source reason/취소/store 분리 | T5/T6/T7; ①②③⑤/JVM |
+
 ### 원문 테스트의 작업 배정
 
 §1의 첫 테스트 이름은 아래 배정에서 같은 이름의 실제 테스트 또는 요구별 fixture로 구현한다. 공유 manual 테스트는 기존 suite를 재사용한다. §3의 보완 테스트가 원문 요구 검증을 대체하거나 누락시키지 않는다.
@@ -702,3 +714,11 @@ source2992452/run43527182302 공식 artifact API35 14088236324/sha256:9548d12b54
 ### T1 교정3 결과·현재 head 감사 checkpoint
 
 기존 core.ScopedHealthReader import 한 줄 교정 후 같은 동결 소스의 로컬 결합 검증이 2m42s/133tasks로 통과했다. 최초 결합 빌드 원문은 미보존이며 이를 원문 검증으로 꾸미지 않는다. root가 source를 cb981df로 고정하고 별도 직접 Gradle JVM/APK/lint/testAPK 검증을 15s PASS로 실행·로그 보존했다. 실제 JVM XML core84+app97/실패·오류·skip·중복0과 lint0error 및 debug/release merger를 직접 대조했다. 현재 네graph129/130/135/110(합집합155), 새OSV155결과/HTTP200/오류0/취약점0, 21개 command로그와 query/response/source hash 대조는 docs/V1/dependency-audit.json 및 root의 auto-t1-root-audit-proof.json에 있다. post-bootstrap Native와 최종 현재head 독립 검토는 대기이므로 T1은 in_progress다. 작업별 사전 준비된 T2/T6는 읽기 전용 점검만 수행하며 T1 실제 reviewed merge 뒤 별도worktree에서 구현한다.
+
+### 준비 교정3 — 다음 lane 공개 계약 보정 (미구현)
+
+준비 교정1/2와 기존 작업별 교정 이력·위임을 유지한다. T2/T3/T4/T5/T6/T7/T12의 API, preflight, ownerless pending union, transaction 검증과 summary DTO 공백을 부모 2절 및 Proposed ADR-010으로 보정했다. 이것은 실행 또는 검증 완료 주장이 아니다. T19 done, T1 in_progress, 나머지 pending과 기존 DAG/spec_rev/source pin은 그대로다. parent_rev는 아직 기존 값이며 실제 PR19 reviewed merge와 rebase 후 root가 parent/ADR을 실제 commit하고 child parent_rev를 그 commit으로 재고정해야 한다. SHA를 예측하지 않는다. 실제 PR19 full CI 및 fresh reviewed merge → 실제 source rebase → parent/ADR repin과 child pin → 전체 브리프 재조립 및 fresh 독립 문서 readiness review가 T2/T6 시작의 필수 gate다. PR2 retry와 PR3 summary는 실제 PR1 merge에서 파일 소유를 분리해 병렬 작성할 수 있으나 PR2를 먼저 merge하고 PR3를 실제 PR2 merge head로 rebase, 관련 및 필수 전체 검증과 fresh 독립 head review를 다시 수행한다. 실기기·실계정·활성화는 별도 pending이다.
+
+### 실제 T1 완료·후속 계약 readiness gate
+
+PR19는75cc443702a3467c87268d49ce52d4d75b2ed8a5로 병합됐고 이 worktree를 검증head8b9f38e와 tree동일한 실제master merge로 fast-forward했다. current Native43534668761 양API135 unique/기존132보존/오류·실패·skip·중복0 및기존host20/17+17, JVM43534668764의181개를 원본대조했고 독립검토·PR한글최종댓글6869176673을 기록했다. T1done이며 아래후속T2/T6는 parent/ADR commit→childrepin→19brief 재조립→fresh readiness 승인 전까지 pending을 유지한다. 구현은 실제PR19merge에 공통준비commit을 더한 같은 기준에서 두 별도lane worktree로 시작한다. 준비교정1·2·계약구체화3 및 T1import교정3·T19후속교정4까지의 원래누적이력은 초기화하지 않는다.
