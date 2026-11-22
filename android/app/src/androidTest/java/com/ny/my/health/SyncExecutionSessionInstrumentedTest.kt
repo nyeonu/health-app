@@ -22,6 +22,226 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class SyncExecutionSessionInstrumentedTest {
     @Test
+    fun automaticPreflightDefersForLatestFractionalDueWithoutExternalCalls() = runBlocking {
+        val f = Fixture()
+        try {
+            f.configure()
+            assertEquals(CommitStatus.COMMITTED, f.store().setAutomaticCAS(f.generation, true, f.time).status)
+            suspend fun waiting(scope: ReadScope, now: Instant): RetryBudget {
+                val scopes = mapOf(DataType.STEPS to scope)
+                val access = ReadAccess(true, scopes.keys, scopes)
+                val key = SyncPlanner.scopeKey(f.config, access)!!
+                val id = UUID.randomUUID().toString()
+                val dates = listOf(f.date.minusDays(1))
+                val proposal = InitialAutomaticProposal.validated(f.generation, key, scopes, dates, id,
+                    SyncTrigger.SCHEDULED, now, AutomaticRetryModel.accessFingerprint(access), f.config.enrolledDay, f.date)
+                val claim = f.store().claimAutomaticAttempt(f.generation, null, null, proposal, key, scopes, dates,
+                    id, SyncTrigger.SCHEDULED, now) as RetryClaim.Claimed
+                assertEquals(CommitStatus.COMMITTED, f.store().finishAutomaticAttempt(f.generation,
+                    claim.budget.lineageId, id, claim.budget.claimVersion, AutomaticFinishOutcome.RETRYABLE, now).status)
+                return (f.store().loadAutomaticBudget(f.generation, key) as AutomaticBudgetRead.Ready).budget!!
+            }
+            val first = waiting(ReadScope.EXPLICIT_DAY, f.time)
+            val second = waiting(ReadScope.SUMMARY, f.time.plusMillis(500))
+            assertEquals(second.retryNotBefore, (f.store().preflightAutomaticAdmission(f.generation, f.time) as AutomaticPreflight.Deferred).retryNotBefore)
+            var prepared = 0
+            val session = SyncExecutionSession(f.store(), f.reader, null, f.clock, { UUID.randomUUID().toString() }, automaticSession = true)
+            assertEquals(BatchStatus.RETRYABLE, session.runAutomaticPrepared(SyncTrigger.SCHEDULED, f.generation) {
+                prepared++; f.engine()
+            }.status)
+            assertEquals(0, prepared)
+            assertTrue(f.accesses.isEmpty())
+            assertEquals(0, f.reads.get())
+            assertEquals(0, f.writes.get())
+            assertEquals(first.claimVersion, (f.store().loadAutomaticBudget(f.generation, first.scopeKey) as AutomaticBudgetRead.Ready).budget!!.claimVersion)
+            val thirdScopes = mapOf(DataType.STEPS to ReadScope.WORKOUT_SCOPED)
+            val thirdAccess = ReadAccess(true, thirdScopes.keys, thirdScopes)
+            val thirdKey = SyncPlanner.scopeKey(f.config, thirdAccess)!!
+            val id = UUID.randomUUID().toString()
+            val dates = listOf(f.date.minusDays(1))
+            val proposal = InitialAutomaticProposal.validated(f.generation, thirdKey, thirdScopes, dates, id,
+                SyncTrigger.SCHEDULED, f.time.plusSeconds(1), AutomaticRetryModel.accessFingerprint(thirdAccess), f.config.enrolledDay, f.date)
+            assertTrue(f.store().claimAutomaticAttempt(f.generation, null, null, proposal, thirdKey, thirdScopes,
+                dates, id, SyncTrigger.SCHEDULED, f.time.plusSeconds(1)) is RetryClaim.Claimed)
+            assertEquals(AutomaticPreflight.RecoveryRequired, f.store().preflightAutomaticAdmission(f.generation, f.time.plusSeconds(1)))
+            assertEquals(BatchStatus.BLOCKED,
+                SyncExecutionSession(f.store(), f.reader, null, Clock.fixed(f.time.plusSeconds(1), ZoneOffset.UTC),
+                    { UUID.randomUUID().toString() }, automaticSession = true)
+                    .runAutomaticPrepared(SyncTrigger.SCHEDULED, f.generation) { prepared++; f.engine() }.status)
+            assertEquals(0, prepared)
+            assertTrue(f.accesses.isEmpty())
+            assertEquals(0, f.reads.get())
+            assertEquals(0, f.writes.get())
+        } finally { f.close() }
+    }
+
+    @Test
+    fun automaticDisabledAndStaleSessionsNeverAccessExternalServices() = runBlocking {
+        val f = Fixture()
+        try {
+            f.configure()
+            val session = SyncExecutionSession(f.store(), f.reader, null, f.clock, { UUID.randomUUID().toString() }, automaticSession = true)
+            var prepared = 0
+            suspend fun run(generation: DestinationGeneration) = session.runAutomaticPrepared(SyncTrigger.SCHEDULED, generation) {
+                prepared++; f.engine()
+            }
+            assertEquals(BatchStatus.BLOCKED, run(f.generation).status)
+            assertEquals(BatchStatus.STALE, run(DestinationGeneration(UUID.randomUUID().toString())).status)
+            assertEquals(0, prepared)
+            assertTrue(f.accesses.isEmpty())
+            assertEquals(0, f.reads.get())
+            assertEquals(0, f.writes.get())
+        } finally { f.close() }
+    }
+
+    @Test
+    fun automaticCancellationPreservesUncertainCreateAndConsumedBudgetAcrossReopen() = runBlocking {
+        val f = Fixture()
+        try {
+            f.configure()
+            assertEquals(CommitStatus.COMMITTED, f.store().setAutomaticCAS(f.generation, true, f.time).status)
+            val writing = CountDownLatch(1)
+            f.write = { _, _ -> writing.countDown(); awaitCancellation() }
+            val session = SyncExecutionSession(f.store(), f.reader, null, f.clock, { UUID.randomUUID().toString() }, automaticSession = true)
+            val job = launch(Dispatchers.IO) { session.runAutomaticPrepared(SyncTrigger.SCHEDULED, f.generation) { f.engine() } }
+            await(writing)
+            job.cancelAndJoin()
+            val budget = (f.store().loadAutomaticBudget(f.generation, f.key) as AutomaticBudgetRead.Ready).budget!!
+            assertEquals(RetryBudgetStatus.BLOCKED, budget.status)
+            assertEquals(0, budget.retriesUsed)
+            assertNotNull(budget.observedRevisions[f.date.minusDays(1)])
+            assertTrue(f.store().loadUnresolvedCreates(f.generation, f.date.minusDays(1))!!.isNotEmpty())
+            assertNotNull(f.ready().attempt!!.finishedAt)
+            val beforeReads = f.reads.get()
+            assertEquals(BatchStatus.BLOCKED, session.runAutomaticPrepared(SyncTrigger.CATCH_UP, f.generation) { f.engine() }.status)
+            assertEquals(beforeReads, f.reads.get())
+        } finally { f.close() }
+    }
+
+    @Test
+    fun automaticRetryKeepsLineageAndConsumesBudgetWhenSourceRevisionChanges() = runBlocking {
+        val f = Fixture()
+        try {
+            f.configure()
+            assertEquals(CommitStatus.COMMITTED, f.store().setAutomaticCAS(f.generation, true, f.time).status)
+            f.reconcile = { throw DestinationException(BlockReason.DESTINATION_TRANSIENT_FAILURE) }
+            fun session(clock: Clock) = SyncExecutionSession(f.store(), f.reader, null, clock,
+                { UUID.randomUUID().toString() }, automaticSession = true)
+            assertEquals(BatchStatus.RETRYABLE, session(f.clock).runAutomaticPrepared(SyncTrigger.SCHEDULED, f.generation) { f.engine() }.status)
+            val first = (f.store().loadAutomaticBudget(f.generation, f.key) as AutomaticBudgetRead.Ready).budget!!
+            f.steps++
+            val later = Clock.fixed(f.time.plusSeconds(30), ZoneOffset.UTC)
+            f.reconcile = { ReconciledFiles(emptyList(), it, emptySet()) }
+            assertEquals(BatchStatus.COMPLETED, session(later).runAutomaticPrepared(SyncTrigger.CATCH_UP, f.generation) { f.engine(sessionClock = later) }.status)
+            val last = (f.store().loadAutomaticBudget(f.generation, f.key) as AutomaticBudgetRead.Ready).budget
+            assertNull(last)
+            assertEquals(1, f.ready().attempt!!.retriesUsed)
+            assertEquals(first.retryBudgetKey, f.ready().attempt!!.retryBudgetKey)
+        } finally { f.close() }
+    }
+
+    @Test
+    fun automaticAndManualSessionsShareOneGateAndOnlyOwnerPrepares() = runBlocking {
+        val f = Fixture()
+        try {
+            f.configure()
+            assertEquals(CommitStatus.COMMITTED, f.store().setAutomaticCAS(f.generation, true, f.time).status)
+            val preparing = CountDownLatch(1)
+            val release = CompletableDeferred<Unit>()
+            val session = SyncExecutionSession(f.store(), f.reader, null, f.clock, { UUID.randomUUID().toString() }, automaticSession = true)
+            val owner = async(Dispatchers.IO) { session.runAutomaticPrepared(SyncTrigger.SCHEDULED, f.generation) {
+                preparing.countDown(); release.await(); f.engine()
+            } }
+            await(preparing)
+            var manualPrepared = 0
+            val manual = f.session(alias = true, legacyEngine = false).runPrepared(SyncTrigger.MANUAL, f.generation) {
+                manualPrepared++; f.engine()
+            }
+            assertEquals(BatchStatus.MERGED, manual.status)
+            assertEquals(0, manualPrepared)
+            release.complete(Unit)
+            assertEquals(BatchStatus.COMPLETED, owner.await().status)
+            assertTrue(f.ready().attempt!!.pendingTriggers.contains(SyncTrigger.MANUAL))
+        } finally { f.close() }
+    }
+
+    @Test
+    fun failedAutomaticAccountProofFinishesCohortWithoutReadingHealthRecords() = runBlocking {
+        val f = Fixture()
+        try {
+            f.configure()
+            assertEquals(CommitStatus.COMMITTED, f.store().setAutomaticCAS(f.generation, true, f.time).status)
+            val session = SyncExecutionSession(f.store(), f.reader, null, f.clock, { UUID.randomUUID().toString() }, automaticSession = true)
+            assertEquals(BatchStatus.BLOCKED, session.runAutomaticPrepared(SyncTrigger.SCHEDULED, f.generation) {
+                throw BoundDriveAuthorizationException()
+            }.status)
+            assertEquals(BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED, f.day()!!.blocker)
+            assertEquals(RetryBudgetStatus.BLOCKED, (f.store().loadAutomaticBudget(f.generation, f.key) as AutomaticBudgetRead.Ready).budget!!.status)
+            assertNotNull(f.ready().attempt!!.finishedAt)
+            assertEquals(0, f.reads.get())
+            assertEquals(0, f.writes.get())
+        } finally { f.close() }
+    }
+
+    @Test
+    fun terminalBudgetInAnotherScopeDoesNotBlockAutomaticAdmission() = runBlocking {
+        val f = Fixture()
+        try {
+            f.configure()
+            assertEquals(CommitStatus.COMMITTED, f.store().setAutomaticCAS(f.generation, true, f.time).status)
+            val scopes = mapOf(DataType.STEPS to ReadScope.SUMMARY)
+            val access = ReadAccess(true, scopes.keys, scopes)
+            val key = SyncPlanner.scopeKey(f.config, access)!!
+            val dates = listOf(f.date.minusDays(1))
+            val id = UUID.randomUUID().toString()
+            val proposal = InitialAutomaticProposal.validated(f.generation, key, scopes, dates, id,
+                SyncTrigger.SCHEDULED, f.time, AutomaticRetryModel.accessFingerprint(access), f.config.enrolledDay, f.date)
+            val claimed = f.store().claimAutomaticAttempt(f.generation, null, null, proposal, key, scopes,
+                dates, id, SyncTrigger.SCHEDULED, f.time) as RetryClaim.Claimed
+            assertEquals(CommitStatus.COMMITTED, f.store().finishAutomaticAttempt(f.generation, claimed.budget.lineageId,
+                id, claimed.budget.claimVersion, AutomaticFinishOutcome.BLOCKED, f.time).status)
+            val session = SyncExecutionSession(f.store(), f.reader, null, f.clock, { UUID.randomUUID().toString() }, automaticSession = true)
+            assertEquals(BatchStatus.COMPLETED, session.runAutomaticPrepared(SyncTrigger.SCHEDULED, f.generation) { f.engine() }.status)
+            assertEquals(RetryBudgetStatus.BLOCKED, (f.store().loadAutomaticBudget(f.generation, key) as AutomaticBudgetRead.Ready).budget!!.status)
+            assertEquals(1, f.reads.get())
+        } finally { f.close() }
+    }
+
+    @Test
+    fun automaticUsesPositiveGrantedScopesAndBlocksWhenNoScopesAreAvailable() = runBlocking {
+        val all = DataType.entries.toSet()
+        val four = mapOf(DataType.STEPS to ReadScope.SUMMARY, DataType.SLEEP to ReadScope.SUMMARY,
+            DataType.EXERCISE to ReadScope.SUMMARY, DataType.WEIGHT to ReadScope.EXPLICIT_DAY)
+        for (positive in listOf(four, mapOf(DataType.STEPS to ReadScope.SUMMARY), emptyMap())) {
+            val f = Fixture()
+            try {
+                f.config = f.config.copy(categories = all)
+                f.access = ReadAccess(true, positive.keys, positive + (DataType.HEART_RATE to ReadScope.BLOCKED))
+                f.configure()
+                assertEquals(CommitStatus.COMMITTED, f.store().setAutomaticCAS(f.generation, true, f.time).status)
+                val session = SyncExecutionSession(f.store(), f.reader, null, f.clock,
+                    { UUID.randomUUID().toString() }, automaticSession = true)
+                var prepared = 0
+                val result = session.runAutomaticPrepared(SyncTrigger.SCHEDULED, f.generation) {
+                    prepared++; f.engine()
+                }
+                if (positive.isEmpty()) {
+                    assertEquals(BatchStatus.BLOCKED, result.status)
+                    assertEquals(0, prepared)
+                    assertEquals(0, f.reads.get())
+                    assertEquals(0, f.writes.get())
+                    assertNull(f.ready().attempt)
+                } else {
+                    assertEquals(BatchStatus.COMPLETED, result.status)
+                    assertEquals(positive, f.ready().attempt!!.requestedScopes)
+                    assertEquals(all - positive.keys, result.coverage!!.excludedTypes)
+                    assertEquals(1, prepared)
+                    assertEquals(1, f.reads.get())
+                }
+            } finally { f.close() }
+        }
+    }
+    @Test
     fun preparedSessionAdmitsOneCredentialFactoryAndBusyCallersOnlyMergeTriggers() = runBlocking {
         val f = Fixture()
         try {
@@ -387,7 +607,7 @@ class SyncExecutionSessionInstrumentedTest {
     }
 
     @Test
-    fun detectingAutomaticPolicyUsesAccessMetadataOnlyAndAbsentOrUnavailableStoresNeverFabricateCoverage() = runBlocking {
+    fun detectingPendingDefaultsToManualAndExplicitCatchUpUsesMetadataOnly() = runBlocking {
         val f = Fixture()
         try {
             try { f.session().detectPending(); fail("미설정을 구분해야 합니다") }
@@ -396,19 +616,21 @@ class SyncExecutionSessionInstrumentedTest {
             f.session().detectPending()
             f.db.openForWrite().use { it.execSQL("UPDATE config SET automatic=1 WHERE id=1") }
             f.session().detectPending()
-            assertEquals(listOf(SyncTrigger.MANUAL, SyncTrigger.CATCH_UP), f.accesses)
+            val automatic = SyncExecutionSession(f.store(), f.reader, null, f.clock, { UUID.randomUUID().toString() }, automaticSession = true)
+            automatic.detectPending(SyncTrigger.CATCH_UP)
+            assertEquals(listOf(SyncTrigger.MANUAL, SyncTrigger.MANUAL, SyncTrigger.CATCH_UP), f.accesses)
             assertEquals(0, f.reads.get())
             assertEquals(0, f.writes.get())
             val saved = f.file.readBytes()
             f.file.writeText("합성 손상")
             try { f.session().detectPending(); fail("저장소 오류를 구분해야 합니다") }
             catch (error: IllegalStateException) { assertEquals("동기화 저장소를 사용할 수 없습니다", error.message) }
-            assertEquals(2, f.accesses.size)
+            assertEquals(3, f.accesses.size)
             f.file.writeBytes(saved)
             val tombstone = f.store().reset(f.generation)
             assertEquals(CommitStatus.COMMITTED, tombstone.status)
             assertEquals(0L, f.session().detectPending().scopePendingCount)
-            assertEquals(2, f.accesses.size)
+            assertEquals(3, f.accesses.size)
         } finally { f.close() }
     }
 
@@ -571,10 +793,10 @@ class SyncExecutionSessionInstrumentedTest {
         val date = LocalDate.of(2026, 11, 5)
         val time = Instant.parse("2026-11-05T00:00:00Z")
         val clock = Clock.fixed(time, ZoneOffset.UTC)
-        val config = SyncConfiguration("synthetic-session", date.minusDays(1), false, setOf(DataType.STEPS))
+        var config = SyncConfiguration("synthetic-session", date.minusDays(1), false, setOf(DataType.STEPS))
         val scopes = mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY)
         var access = ReadAccess(true, scopes.keys, scopes)
-        val key = SyncPlanner.scopeKey(config, access)!!
+        val key get() = SyncPlanner.scopeKey(config, access)!!
         private var configuredGeneration: DestinationGeneration? = null
         val generation: DestinationGeneration get() = requireNotNull(configuredGeneration)
         @Volatile var failCommit = false
@@ -593,7 +815,7 @@ class SyncExecutionSessionInstrumentedTest {
             }
             override suspend fun readScoped(date: LocalDate, requestedScopes: Map<DataType, ReadScope>): ScopedSnapshot {
                 reads.incrementAndGet()
-                return ScopedSnapshot(HealthSnapshot(date, steps, emptyList(), emptyList(), emptyList(), emptyList(), scopes.keys),
+                return ScopedSnapshot(HealthSnapshot(date, steps, emptyList(), emptyList(), emptyList(), emptyList(), requestedScopes.keys),
                     requestedScopes, emptySet())
             }
         }

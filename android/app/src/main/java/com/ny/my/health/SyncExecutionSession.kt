@@ -26,6 +26,7 @@ internal class SyncExecutionSession(
     private val clock: Clock,
     private val newId: () -> String,
     private val observer: suspend (SyncSessionPhase) -> Unit = {},
+    private val automaticSession: Boolean = false,
 ) {
     private class Owner(val generation: DestinationGeneration?) {
         var attemptId: String? = null
@@ -42,13 +43,14 @@ internal class SyncExecutionSession(
         entries.getOrPut(store.database.databaseFile.canonicalPath) { Entry() }
     }
 
-    suspend fun detectPending(): CoverageSummary {
+    suspend fun detectPending(trigger: SyncTrigger = SyncTrigger.MANUAL): CoverageSummary {
+        require(if (automaticSession) trigger != SyncTrigger.MANUAL else trigger == SyncTrigger.MANUAL)
         if (!entry.gate.tryLock()) return ready().coverage
         try {
             recover()
             val state = ready()
-            val config = state.configuration ?: return state.coverage
-            val access = reader.access(if (config.automatic) SyncTrigger.CATCH_UP else SyncTrigger.MANUAL)
+            state.configuration ?: return state.coverage
+            val access = reader.access(trigger)
             return selected(state.generation, access).coverage
         } finally { entry.gate.unlock() }
     }
@@ -61,6 +63,7 @@ internal class SyncExecutionSession(
         generation: DestinationGeneration,
         prepare: suspend () -> DestinationSync,
     ): BatchOutcome {
+        require(!automaticSession)
         if (!entry.gate.tryLock()) return merge(trigger, generation)
         val owner = Owner(generation)
         var outcome = result(BatchStatus.BLOCKED)
@@ -72,6 +75,7 @@ internal class SyncExecutionSession(
             val initial = ready()
             if (initial.generation != generation) return result(BatchStatus.STALE).also { outcome = it }
             val config = initial.configuration ?: return outcome
+            if (config.automatic && trigger != SyncTrigger.MANUAL) return outcome
             // 실행 credential을 포함하는 engine은 gate 소유자의 지역 변수로만 유지한다.
             val preparedEngine = prepare()
             currentCoroutineContext().ensureActive()
@@ -140,6 +144,124 @@ internal class SyncExecutionSession(
         }
     }
 
+    suspend fun runAutomaticPrepared(trigger: SyncTrigger, generation: DestinationGeneration,
+        prepare: suspend () -> DestinationSync): BatchOutcome {
+        require(automaticSession && trigger != SyncTrigger.MANUAL)
+        if (!entry.gate.tryLock()) return merge(trigger, generation)
+        val owner = Owner(generation)
+        var claimed: AutomaticOwner? = null
+        var outcome = result(BatchStatus.BLOCKED)
+        var failure: Throwable? = null
+        try {
+            entry.control.withLock { entry.owner = owner }
+            recover()
+            val initial = ready()
+            if (initial.generation != generation) return result(BatchStatus.STALE).also { outcome = it }
+            val config = initial.configuration ?: return outcome
+            if (!config.automatic) return outcome
+            when (store.preflightAutomaticAdmission(generation, clock.instant())) {
+                AutomaticPreflight.Stale -> return result(BatchStatus.STALE).also { outcome = it }
+                is AutomaticPreflight.Deferred -> return result(BatchStatus.RETRYABLE).also { outcome = it }
+                AutomaticPreflight.RecoveryRequired -> return outcome
+                AutomaticPreflight.Ready -> Unit
+            }
+            val access = reader.access(trigger)
+            val state = selected(generation, access)
+            val key = SyncPlanner.scopeKey(config, access) ?: return outcome
+            if (state.scopeKey != key || !config.categories.containsAll(state.requestedScopes.keys)) return outcome
+            val budget = when (val read = store.loadAutomaticBudget(generation, key)) {
+                AutomaticBudgetRead.Stale -> return result(BatchStatus.STALE).also { outcome = it }
+                is AutomaticBudgetRead.Ready -> read.budget
+            }
+            if (budget?.status == RetryBudgetStatus.BLOCKED || budget?.status == RetryBudgetStatus.EXHAUSTED) return outcome
+            val batch = SyncPlanner.plan(state, today(), access)
+            val dates = budget?.dates ?: batch.dates
+            if (dates.isEmpty()) return result(if (batch.blocked.isEmpty()) BatchStatus.PENDING else BatchStatus.BLOCKED).also { outcome = it }
+            if (budget != null && (budget.requestedScopes != state.requestedScopes ||
+                    dates.any { it < today().minusDays(30) || it < config.enrolledDay || it >= today() })) return outcome
+            val id = newId()
+            val proposal = if (budget == null) InitialAutomaticProposal.validated(generation, key, state.requestedScopes,
+                dates, id, trigger, clock.instant(), AutomaticRetryModel.accessFingerprint(access), config.enrolledDay, today()) else null
+            observer(SyncSessionPhase.BEFORE_START)
+            currentCoroutineContext().ensureActive()
+            val claim = entry.control.withLock {
+                val value = store.claimAutomaticAttempt(generation, budget?.lineageId, budget?.claimVersion, proposal,
+                    key, state.requestedScopes, dates, id, trigger, clock.instant())
+                if (value is RetryClaim.Claimed) {
+                    claimed = AutomaticOwner(value.budget.lineageId, id, value.budget.claimVersion)
+                    owner.attemptId = id
+                    if (entry.receipts.isNotEmpty()) requireCommit(store.transact(generation,
+                        mutation(id, pending = value.attempt.pendingTriggers + entry.receipts.keys)))
+                    entry.receipts.values.forEach { it.complete(result(BatchStatus.MERGED)) }
+                    entry.receipts.clear()
+                }
+                value
+            }
+            when (claim) {
+                is RetryClaim.Claimed -> Unit
+                is RetryClaim.Deferred -> return result(BatchStatus.RETRYABLE).also { outcome = it }
+                RetryClaim.Stale -> return result(BatchStatus.STALE).also { outcome = it }
+                else -> return outcome
+            }
+            observer(SyncSessionPhase.STARTED)
+            val fresh = reader.access(trigger)
+            if (AutomaticRetryModel.accessFingerprint(fresh) != AutomaticRetryModel.accessFingerprint(access)) {
+                finishAutomatic(generation, requireNotNull(claimed), AutomaticFinishOutcome.BLOCKED)
+                claimed = null
+                return outcome
+            }
+            val prepared = try { prepare() } catch (cancel: CancellationException) { throw cancel }
+            catch (_: BoundDriveAuthorizationException) {
+                finishAutomatic(generation, requireNotNull(claimed), AutomaticFinishOutcome.ACCOUNT_AUTHORIZATION_BLOCKED)
+                claimed = null
+                return outcome
+            }
+            val afterPrepare = ready()
+            if (afterPrepare.generation != generation) return result(BatchStatus.STALE).also { outcome = it }
+            if (afterPrepare.configuration?.automatic != true) return outcome
+            outcome = prepared.run(trigger, generation, id, requireNotNull(claimed), finishAttempt = false)
+            observer(SyncSessionPhase.ENGINE_RETURNED)
+            val finish = when (outcome.status) {
+                BatchStatus.COMPLETED -> AutomaticFinishOutcome.COMPLETED
+                BatchStatus.RETRYABLE -> AutomaticFinishOutcome.RETRYABLE
+                else -> AutomaticFinishOutcome.BLOCKED
+            }
+            finishAutomatic(generation, requireNotNull(claimed), finish)
+            claimed = null
+            return outcome
+        } catch (error: Throwable) {
+            failure = error
+            throw error
+        } finally {
+            withContext(NonCancellable) {
+                try {
+                    observer(SyncSessionPhase.CLEANUP)
+                    entry.control.withLock {
+                        owner.closing = true
+                        claimed?.let {
+                            val recovered = store.recoverAutomaticAttempt(generation, it, clock.instant())
+                            if (recovered.status != CommitStatus.STALE) requireCommit(recovered)
+                        }
+                        entry.recoveryNeeded = false
+                    }
+                } catch (_: Exception) {
+                    entry.recoveryNeeded = true
+                    if (failure == null) error("동기화 저장소를 사용할 수 없습니다")
+                } finally {
+                    entry.control.withLock {
+                        entry.receipts.values.forEach { it.complete(result(if (outcome.status == BatchStatus.STALE) BatchStatus.STALE else BatchStatus.BLOCKED)) }
+                        entry.receipts.clear(); entry.owner = null
+                    }
+                    entry.gate.unlock()
+                }
+            }
+        }
+    }
+
+    private suspend fun finishAutomatic(generation: DestinationGeneration, owner: AutomaticOwner, outcome: AutomaticFinishOutcome) {
+        requireCommit(store.finishAutomaticAttempt(generation, owner.lineageId, owner.attemptId, owner.claimVersion, outcome, clock.instant()))
+    }
+
     suspend fun invalidate(generation: DestinationGeneration): SyncCommit = store.invalidate(generation)
 
     private suspend fun merge(trigger: SyncTrigger, generation: DestinationGeneration): BatchOutcome {
@@ -186,6 +308,12 @@ internal class SyncExecutionSession(
 
     private suspend fun recoverAttempt(state: SyncState) {
         val attempt = state.attempt?.takeIf { it.finishedAt == null } ?: return
+        val budget = (store.loadAutomaticBudget(state.generation, attempt.scopeKey) as? AutomaticBudgetRead.Ready)?.budget
+        if (budget?.ownerAttemptId == attempt.id) {
+            requireCommit(store.recoverAutomaticAttempt(state.generation,
+                AutomaticOwner(budget.lineageId, attempt.id, budget.claimVersion), clock.instant()))
+            return
+        }
         check(attempt.startedAt != null) { "동기화 저장소를 사용할 수 없습니다" }
         for (date in attempt.dates) {
             val day = store.loadDay(state.generation, date, attempt.scopeKey) ?: continue

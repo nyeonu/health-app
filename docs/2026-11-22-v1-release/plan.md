@@ -15,7 +15,7 @@ tasks:
   - {id: T4, title: 요약 CSV와 revision, depends_on: [T2], status: done, tier: standard}
   - {id: T5, title: 자동 session 연결, depends_on: [T1, T11], status: in_progress, tier: standard}
   - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: done, tier: standard}
-  - {id: T7, title: WorkManager 실행과 예약, depends_on: [T3, T5, T6], status: pending, tier: standard}
+  - {id: T7, title: WorkManager 실행과 예약, depends_on: [T3, T6], status: in_progress, tier: standard}
   - {id: T8, title: 자동 설정과 상태, depends_on: [T7], status: pending, tier: standard}
   - {id: T9, title: 화면 연결과 접근성, depends_on: [T8], status: pending, tier: standard}
   - {id: T11, title: 자동 engine 경계, depends_on: [], status: done, tier: standard}
@@ -202,7 +202,7 @@ class SyncWorkScheduler(context: Context) {
 
 ### T7: WorkManager 실행과 예약
 
-- **depends_on**: [T3, T5, T6]; **tier**: standard; **status**: pending.
+- **depends_on**: [T3, T6]; T5 실제 Native 통과는 검증·통합 선행 조건; **tier**: standard; **status**: in_progress.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -378,3 +378,17 @@ T10의 기존 PrivacyActivity 정적 설명1파일은 실행 API 구현과 독�
 ### T12 정적 안내 완료
 
 root가 PrivacyActivity diff와 실제 noBackup 저장/token 메모리 경계 및 승인된 자동 Drive/수동 SAF/철회·reset 계약을 대조했고 정적 문자열만 변경됨과 git diff --check PASS를 확인했다. 별도 테스트를 추가하지 않으며 전체 앱 컴파일·Native 및 최종 동작 대조는 통합 gate에 유지한다. 자동 기능의 실제 기기 수용이나 정각 실행 보장은 문구에 포함하지 않았다.
+
+### 원래 T5 교정4 — production 부분 scope 허용
+
+초기 T5 compile/core94/app106 및 계측APK 빌드는 PASS58s다. 독립 리뷰는 state.requestedScopes.keys == config.categories 조건이 production AutomaticHealthReader의 HEART_RATE BLOCKED/나머지4항목 상태를 전면 거부함을 확인했다. 승인 spec의 HR 차단과 다른 category 독립 진행에 따라 planner key 및 configuration의 허용 category 부분집합을 검증하며 전체 동등성은 요구하지 않는다. 최초 fresh positive scopes만 고정하고 claim 후 권한 변경 거부는 그대로다. session/native 기존2파일만 보정해 5-category config+4-positive 자동 완료/HR excluded, steps-only partial 및 zero-positive 차단의 실제 SQLite 회귀를 추가한다. T11 교정1·2 및 T5 fixture교정3을 보존해 이번4로 누적한다. 동일 기존 V1 권한 범위의 실제 production 경로 결함에 대한 가역 교정이며 건강 성공/5종 전체 완료를 꾸미지 않는다.
+
+### T7 격리 staging 병렬화
+
+T5의 실제 API/worker marker는 컴파일 통과했고 하부 T1 원자 SQLite14개는 양API 통과했다. 파일이 겹치지 않는 T7 코드 준비는 이 안정된 API 위에서 T5 대상 Native 대기와 겹쳐 수행한다. root는 T5 후보를 별도 검증 worktree에 고정해 T7 진행 중 소스를 제외하고 검증한다. T7 자체 검증/최종 통합은 T5 현재 후보의 실제 양API session 통과 뒤에만 수행하며, T5 실패·API 변경 시 T7 검증은 보류하고 source를 보존해 한정 보정한다. 어떤 pending도 done/출시수용으로 바꾸지 않는다. 이는 사용자 병렬 속도 위임에 따른 staging 순서 변경이며 전체머지/개인정보/실제SQLite gate는 유지한다.
+
+### T3 교정1 — worker의 suspend durable currentness 검사
+
+T7 실제 연결 검토에서 BackgroundDriveAuthorization의 동기 isCurrent 콜백으로 suspend-only SQLite의 current generation/automatic을 SDK 응답 후 about 직전에 확인할 수 없음을 발견했다. 동기 runBlocking/main-thread 우회나 새 메모리 캐시를 만들지 않는다. 해당 새 background authorizer의 콜백만 suspend () -> Boolean으로 바꾸고 시작/SDK 응답 후 about 전/about 후 block 진입 전의 fresh durable 검사를 await한다. 기존 BoundDriveAuthorization 공개 수동 API는 그대로이며 그 내부 동기 guard에는 ticket sequence/현재 coroutine Job 활성만 사용한다. worker는 store.load()의 generation+automatic을 suspend로 검사한다. token/engine은 gate owner 실행의 메모리에만 두고 callback/engine을 job 간 저장하지 않는다.
+
+기존 T3 authorizer와 해당 JVM 테스트2파일만 보정해 검사 자체의 suspension과 SDK 응답 이후 무효화 시 about0, about 이후 무효화 시 block0·취소 전파를 검증한다. 새 의존성/권한/정책/스키마는 없으며 T3 교정1로 집계한다. 이 보정의 실제 SDK runtime은 기존 약속대로 최종 양API Native에 유지한다.
