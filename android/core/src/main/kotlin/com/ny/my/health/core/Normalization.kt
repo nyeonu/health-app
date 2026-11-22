@@ -50,6 +50,8 @@ class DefaultNormalizer : Normalizer {
             exerciseSessions = if (DataType.EXERCISE in snapshot.grantedTypes) {
                 snapshot.exerciseSessions.filter { overlaps(it.start, it.end) }.sortedWith(exerciseOrder)
             } else emptyList(),
+            sleepSummary = snapshot.sleepSummary.takeIf { DataType.SLEEP in snapshot.grantedTypes },
+            exerciseSummary = snapshot.exerciseSummary.takeIf { DataType.EXERCISE in snapshot.grantedTypes },
         )
     }
 }

@@ -1,12 +1,14 @@
 package com.ny.my.health.core
 
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class NormalizationTest {
@@ -15,6 +17,37 @@ class NormalizationTest {
     private val end = Instant.parse("2026-10-30T15:00:00Z")
     private val generatedAt = Instant.parse("2026-10-31T00:00:00Z")
     private val normalizer = DefaultNormalizer()
+
+    @Test
+    fun `Aggregate duration preserves null zero fractional and maximum values in minutes`() {
+        assertNull(AggregateDuration(null, emptySet()).minutes)
+        assertEquals(0.0, AggregateDuration(Duration.ZERO, emptySet()).minutes!!, 0.0)
+        assertEquals(1.5, AggregateDuration(Duration.ofSeconds(90), emptySet()).minutes!!, 0.0)
+        assertEquals(0.5 / 60.0, AggregateDuration(Duration.ofNanos(500_000_000), emptySet()).minutes!!, 0.0)
+        assertTrue(AggregateDuration(Duration.ofSeconds(Long.MAX_VALUE, 999_999_999), emptySet()).minutes!!.isFinite())
+        assertThrows(IllegalArgumentException::class.java) { AggregateDuration(Duration.ofNanos(-1), emptySet()) }
+    }
+
+    @Test
+    fun `Aggregate origins are defensively copied and preserved for authorized summaries`() {
+        val origins = linkedSetOf("synthetic.source.a", "synthetic.source.b")
+        val sleep = AggregateDuration(Duration.ofMinutes(60), origins)
+        val exercise = AggregateDuration(null, setOf("synthetic.source.c"))
+        origins.clear()
+        assertEquals(setOf("synthetic.source.a", "synthetic.source.b"), sleep.dataOrigins)
+        assertThrows(UnsupportedOperationException::class.java) { (sleep.dataOrigins as MutableSet<String>).clear() }
+        assertEquals(AggregateDuration(Duration.ofMinutes(60), setOf("synthetic.source.b", "synthetic.source.a")), sleep)
+        assertEquals(AggregateDuration(Duration.ofMinutes(60), setOf("synthetic.source.a", "synthetic.source.b")).hashCode(), sleep.hashCode())
+        val snapshot = emptySnapshot().copy(sleepSummary = sleep, exerciseSummary = exercise)
+        val result = normalizer.normalize(snapshot, generatedAt)
+        assertEquals(sleep, result.sleepSummary)
+        assertEquals(exercise, result.exerciseSummary)
+        val denied = normalizer.normalize(snapshot.copy(grantedTypes = emptySet()), generatedAt)
+        assertNull(denied.sleepSummary)
+        assertNull(denied.exerciseSummary)
+        assertNull(normalizer.normalize(emptySnapshot(), generatedAt).sleepSummary)
+        assertNull(normalizer.normalize(emptySnapshot(), generatedAt).exerciseSummary)
+    }
 
     @Test
     fun `KST day boundaries are half open across UTC midnight`() {

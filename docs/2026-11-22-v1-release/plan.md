@@ -10,9 +10,9 @@ spec: spec.md
 spec_rev: 30ffde9529d993306a6d5c04c93abf7fd0f271e2
 tasks:
   - {id: T1, title: SQLite retry 원자성, depends_on: [], status: in_progress, tier: standard}
-  - {id: T2, title: 요약 모델, depends_on: [], status: in_progress, tier: standard}
+  - {id: T2, title: 요약 모델, depends_on: [], status: done, tier: standard}
   - {id: T3, title: 계정 고정 silent 인증, depends_on: [], status: in_progress, tier: standard}
-  - {id: T4, title: 요약 CSV와 revision, depends_on: [T2], status: pending, tier: standard}
+  - {id: T4, title: 요약 CSV와 revision, depends_on: [T2], status: in_progress, tier: standard}
   - {id: T5, title: 자동 session 연결, depends_on: [T1], status: pending, tier: standard}
   - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: pending, tier: standard}
   - {id: T7, title: WorkManager 실행과 예약, depends_on: [T3, T5, T6], status: pending, tier: standard}
@@ -261,3 +261,7 @@ No execution or emulator runs were performed while drafting this plan.
 ### 1.0 준비 검토 교정1 및 자동 승인 적용
 
 2026-11-22 fresh Terra 준비 검토에서 T1 상세 승인 계약 전달 누락과 T3 파일 신규 표기 오기를 확인했다. T1 필수 원문 읽기 경로와 T3 신규/기존 인증 재사용을 명시하고 실제 없는 T7 두 파일도 신규로 정정했다. 검토자는 해당 교정 후 초기 T1/T2/T3 병렬 착수를 허용했다. 산문 Shared design 경고는 원문 계약이 전달됨을 확인했고 미해결 참조는 0이다. 기존 소유자 자동 승인 위임 및 최신 1.0 우선 지시에 따라 승인하며 과거 복구 회차를 보존한다.
+
+### T2 환경 및 완료 근거
+
+기본 sandbox의 Gradle daemon IP 판별 실패 뒤 제품 변경 없이 필요한 network 권한으로 root가 같은 coreOnly 명령을 실행했다. 88 tests, failures/errors/skips 0, 기존 86 유지와 신규 2개를 XML/diff 대조했다. 기능 교정은 없고 환경 권한 확인만 수행했다. 실제 provider 수용을 뜻하지 않는다. T2 완료 후 disjoint T4를 시작한다.
