@@ -2,6 +2,7 @@ package com.ny.my.health.core
 
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.security.MessageDigest
@@ -115,4 +116,26 @@ class SyncRevisionTest {
         rejected { SyncRevision.identify(snapshot(null, scopes = mapOf(DataType.STEPS to ReadScope.BLOCKED)), null, time) }
         rejected { SyncRevision.identify(snapshot().copy(blockedTypes = setOf(DataType.STEPS)), old, time) }
     }
+    @Test
+    fun `Summary revisions require summary scope and track sorted origins and observed durations`() {
+        val scopes = mapOf(DataType.SLEEP to ReadScope.SUMMARY, DataType.EXERCISE to ReadScope.SUMMARY)
+        fun scoped(sleep: AggregateDuration?, exercise: AggregateDuration? = null): ScopedSnapshot {
+            val base = snapshot(null, scopes = scopes)
+            return base.copy(snapshot = base.snapshot.copy(sleepSummary = sleep, exerciseSummary = exercise))
+        }
+        val first = SyncRevision.identify(scoped(AggregateDuration(Duration.ZERO, linkedSetOf("b", "a"))), null, time)
+        assertEquals(setOf(Dataset.DAILY), first.files.keys)
+        val reordered = SyncRevision.identify(scoped(AggregateDuration(Duration.ZERO, linkedSetOf("a", "b"))), null, time.plusSeconds(1))
+        assertEquals(first.key.digest, reordered.key.digest)
+        assertNotEquals(first.key.digest, SyncRevision.identify(scoped(AggregateDuration(Duration.ZERO, setOf("a"))), null, time).key.digest)
+        assertNotEquals(first.key.digest, SyncRevision.identify(scoped(AggregateDuration(null, setOf("a", "b"))), null, time).key.digest)
+        assertNotEquals(first.key.digest, SyncRevision.identify(scoped(null, AggregateDuration(Duration.ZERO, setOf("a", "b"))), null, time).key.digest)
+        val mismatch = mapOf(DataType.SLEEP to ReadScope.EXPLICIT_DAY)
+        val base = snapshot(null, scopes = mismatch)
+        rejected { SyncRevision.identify(base.copy(snapshot = base.snapshot.copy(sleepSummary = AggregateDuration(null, emptySet()))), null, time) }
+        val exerciseMismatch = mapOf(DataType.EXERCISE to ReadScope.EXPLICIT_DAY)
+        val other = snapshot(null, scopes = exerciseMismatch)
+        rejected { SyncRevision.identify(other.copy(snapshot = other.snapshot.copy(exerciseSummary = AggregateDuration(Duration.ZERO, emptySet()))), null, time) }
+    }
+
 }

@@ -163,7 +163,7 @@ class ManualDriveUiInstrumentedTest {
             compose.runOnIdle { state.value = state.value.copy(enrolledDay = yesterday) }
             shown("최근 대상 $yesterday · 읽기 미확인 · 업로드 미확인")
             compose.onNodeWithText("최근 대상 $older · 읽기 미확인 · 업로드 미확인").assertDoesNotExist()
-            shown("자동 동기화와 SAF 저장은 이 화면에서 지원하지 않습니다.")
+            shown("화면을 벗어나면 중단됩니다. 일부 원격 파일은 남을 수 있습니다. 복구는 같은 구성으로 다시 인증하고 명시적으로 계속합니다.")
         }
     }
 }

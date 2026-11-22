@@ -426,6 +426,50 @@ class HealthHomeScreenInstrumentedTest {
         assertEquals(emptyList<String>(), calls)
     }
 
+    @Test fun automaticControlsRequireExplicitConsentAndRestoreDoesNotStartActions() {
+        val events = mutableListOf<String>()
+        val manual = ManualDriveState(phase = ManualDrivePhase.READY, configured = true,
+            foreground = true, privateFolderConsent = true, categories = setOf(DataType.STEPS), grantedCategories = setOf(DataType.STEPS))
+        val actions = ManualDriveActions({}, {}, {}, {}, {}, {}, {}, { events += "reset" },
+            setAutomatic = { events += "automatic:$it" }, requestBackgroundPermission = { events += "permission" })
+        render(state = SyncUiState(automaticKnown = false), manualState = manual, manualActions = actions)
+        shown("자동 Drive 동기화: 확인되지 않음")
+        compose.onNodeWithText("자동 동기화 켜기").performScrollTo().assertIsNotEnabled()
+        restoration.emulateSavedInstanceStateRestore()
+        assertEquals(emptyList<String>(), events)
+        compose.runOnIdle { ui.value = ui.value.copy(automaticKnown = true) }
+        for (isDark in listOf(false, true)) {
+            compose.runOnIdle { dark.value = isDark; textScale.value = 2f; fixtureKey.value++ }
+            for (label in listOf("백그라운드 읽기 권한 확인", "자동 동기화 켜기", "V1 구성·확인 범위 초기화", "업로드 계속")) {
+                compose.onNodeWithText(label).performScrollTo().assertIsDisplayed().assertHasClickAction()
+                    .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            }
+            click("자동 동기화 켜기")
+            compose.onNodeWithText("동의하고 켜기").assertIsDisplayed().assertHasClickAction()
+            compose.onNodeWithText("취소").performClick()
+            click("V1 구성·확인 범위 초기화")
+            compose.onNodeWithText("V1 초기화 확인").assertIsDisplayed().assertHasClickAction()
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            compose.onNodeWithText("초기화 취소").performClick()
+        }
+        assertEquals(emptyList<String>(), events)
+        click("백그라운드 읽기 권한 확인")
+        compose.onNodeWithText("취소").performClick()
+        assertEquals(emptyList<String>(), events)
+        click("백그라운드 읽기 권한 확인")
+        compose.onNodeWithText("권한 요청 계속").assertIsDisplayed().assertHasClickAction().performClick()
+        click("자동 동기화 켜기")
+        compose.onNodeWithText("동의하고 켜기").performClick()
+        assertEquals(listOf("permission", "automatic:true"), events)
+        compose.runOnIdle { ui.value = ui.value.copy(automaticEnabled = true,
+            automaticBlockers = setOf(com.ny.my.health.core.BlockReason.SOURCE_ACCESS_REQUIRED), automaticRemoteStale = true) }
+        shown("날짜별 차단 사유: Health Connect 권한 필요")
+        shown("원격 파일이 오래된 상태입니다. 명시적 복구가 필요합니다.")
+        shown("자동 범위 미완료 날짜: 확인되지 않음 · 차단 날짜: 확인되지 않음")
+        click("자동 동기화 끄기")
+        assertEquals(listOf("permission", "automatic:true", "automatic:false"), events)
+    }
+
     private fun captureSynthetic(name: String) {
         val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
         PlatformTestStorageRegistry.getInstance().openOutputFile("v1-synthetic-ui/$name.png").use { output ->

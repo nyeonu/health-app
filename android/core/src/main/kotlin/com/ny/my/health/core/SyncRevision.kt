@@ -10,6 +10,8 @@ object SyncRevision {
         profiling: SyncProfiling? = null): DayRevision {
         require(validInstant(observedAt) && validDate(snapshot.snapshot.date))
         val scopes = snapshot.scopeByType
+        require(snapshot.snapshot.sleepSummary == null || scopes[DataType.SLEEP] == ReadScope.SUMMARY)
+        require(snapshot.snapshot.exerciseSummary == null || scopes[DataType.EXERCISE] == ReadScope.SUMMARY)
         require(scopes.isNotEmpty() && scopes.size <= 5)
         require(snapshot.blockedTypes == scopes.filterValues { it == ReadScope.BLOCKED }.keys)
         val positive = scopes.filterValues { it != ReadScope.BLOCKED }
@@ -54,6 +56,21 @@ object SyncRevision {
         }
         export(Instant.EPOCH).entries.sortedBy { it.key.name }.forEach { (dataset, file) ->
             add(dataset.name); add(file.relativePath); add(file.content)
+        }
+        val summaries = listOf("SLEEP" to snapshot.snapshot.sleepSummary, "EXERCISE" to snapshot.snapshot.exerciseSummary)
+        if (summaries.any { it.second != null }) {
+            add("aggregate-duration/1")
+            summaries.forEach { (type, summary) ->
+                add(type)
+                add(if (summary == null) "absent" else "present")
+                if (summary != null) {
+                    val duration = summary.duration
+                    add(if (duration == null) "absent" else "present")
+                    if (duration != null) { add(duration.seconds.toString()); add(duration.nano.toString()) }
+                    add(summary.dataOrigins.size.toString())
+                    summary.dataOrigins.sorted().forEach { add(it) }
+                }
+            }
         }
         val hash = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
         val key = previous?.revision?.takeIf { it.digest == hash } ?: RevisionKey(hash, observedAt)

@@ -110,7 +110,7 @@ internal fun HealthHomeScreen(
                 TextButton(onClick = { changeDestination(ManualDestination.LOCAL) }) { Text("로컬 폴더 선택") }
             }
             if (selectedDestination == ManualDestination.DRIVE && manualState != null && manualActions != null)
-                ManualDriveUi(manualState, manualActions, manualCategories, todayInSeoul)
+                ManualDriveUi(manualState, manualActions, manualCategories, todayInSeoul, state)
             if (selectedDestination == ManualDestination.LOCAL && safState != null && safActions != null)
                 SafManualUi(safState, safActions)
             if (selectedDestination == ManualDestination.LOCAL && manualState?.configured == true)

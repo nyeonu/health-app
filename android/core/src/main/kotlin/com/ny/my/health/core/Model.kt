@@ -2,6 +2,19 @@ package com.ny.my.health.core
 
 import java.time.Instant
 import java.time.LocalDate
+import java.time.Duration
+import java.util.Collections
+
+class AggregateDuration(duration: Duration?, dataOrigins: Set<String>) {
+    val duration: Duration? = duration.also { require(it == null || !it.isNegative) }
+    val dataOrigins: Set<String> = Collections.unmodifiableSet(LinkedHashSet(dataOrigins))
+    val minutes: Double?
+        get() = duration?.let { it.seconds / 60.0 + it.nano / 60000000000.0 }
+
+    override fun equals(other: Any?): Boolean =
+        other is AggregateDuration && duration == other.duration && dataOrigins == other.dataOrigins
+    override fun hashCode(): Int = 31 * (duration?.hashCode() ?: 0) + dataOrigins.hashCode()
+}
 
 enum class DataType { STEPS, WEIGHT, HEART_RATE, SLEEP, EXERCISE }
 
@@ -42,6 +55,8 @@ data class HealthSnapshot(
     val sleepSessions: List<SleepSession>,
     val exerciseSessions: List<ExerciseSession>,
     val grantedTypes: Set<DataType>,
+    val sleepSummary: AggregateDuration? = null,
+    val exerciseSummary: AggregateDuration? = null,
 )
 
 data class NormalizedDay(
@@ -52,6 +67,8 @@ data class NormalizedDay(
     val heartRateSamples: List<HeartRateSample>,
     val sleepSessions: List<SleepSession>,
     val exerciseSessions: List<ExerciseSession>,
+    val sleepSummary: AggregateDuration? = null,
+    val exerciseSummary: AggregateDuration? = null,
 )
 
 data class CsvFile(val relativePath: String, val content: String)

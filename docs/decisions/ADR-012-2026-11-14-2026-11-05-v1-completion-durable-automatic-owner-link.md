@@ -1,0 +1,53 @@
+# ADR-012: 자동 attempt와 retry lineage의 내구성 연결
+
+## 상태
+Proposed
+
+## 날짜
+2026-11-14
+
+## 티켓
+2026-11-05-v1-completion
+
+## 배경
+
+ADR-010의 실행 중 T2 전체 core 86개 중 기존 generic SCHEDULED start와 ledgerless scheduled engine 두 회귀가 확인됐다. 순수 core의 trigger, 설정 또는 불투명 retry key는 ledger 소유 여부를 증명하지 못한다. 종료 시 budget owner가 비워지고 opt-out 뒤 설정도 달라지므로 owner scan의 부재는 legacy라는 증거가 아니다. 기존 테스트를 유지하면서 실제 자동 retry의 원자성과 미완료 이력을 보존해야 한다.
+
+## 결정
+
+ADR-010의 한 신규 retry_budget table과 ACTIVE partial unique index에 더해 기존 단수 attempt table에 nullable storage-only `automatic_lineage_id TEXT REFERENCES retry_budget(lineage_id) ON UPDATE RESTRICT ON DELETE RESTRICT`를 추가한다. domain AttemptState, JSON format1, 기존 열과 데이터 의미는 바꾸지 않으며 legacy v1 attempt는 NULL이다. claim은 budget과 link를 원자 기록한다. budget claimVersion이 권위이며 별도 attempt version column은 없다.
+
+순수 `SyncState.validateMutation`에 memory-only `automaticOwnerRequired: Boolean = false`를 추가한다. 기본은 모든 legacy trigger의 generic null-owner 의미와 finished pending을 보존한다. 제공된 owner는 언제나 UUID/version, 현재 attempt id, non-manual trigger 및 유도 retry key를 검증하며 bound intent를 뜻한다. bound 자동 day/confirmation은 owner를 요구하고 ownerless pending은 matching unfinished attempt의 sole-payload superset union만 허용한다. generic 자동 start/finish는 bound context에서 금지하고 manual null 의미는 유지한다. 이 Boolean은 authorization이 아니다. 실제 SQLite private boundary는 positive persisted link와 ledger를 검증해 이를 도출하며 public transact caller는 선택할 수 없다. enabled config의 generic non-manual start도 별도로 차단한다. 실제 enabled worker는 prepare/access 전 전용 claim/finish를 사용하며 default off 및 due 전 외부 호출은 0이다.
+
+Link는 같은 generation, derived retry key, scope, requested scopes, frozen dates와 count를 일치시킨다. unfinished는 ACTIVE budget의 owner가 해당 attempt여야 하고 reverse owner도 같은 unfinished linked attempt를 가리켜야 한다. finished는 owner cleared와 적합한 status/due가 필요하다. missing parent/orphan 및 양방향 link, generation/scope/count/version 불일치는 opt-out 후에도 fail closed한다. attempt ID는 fresh하고 reclaim은 atomically 교체 및 version +1한다. finish/recovery/opt-out은 retained attempt link를 유지한다. gate 아래 eligible manual start는 기존 attempt가 finished일 때만 NULL link 새 row로 교체하며 budget/uncertainty를 보존한다. reset은 FK ON에서 attempt → budget → generation 순이다.
+
+Validated closed v1의 staged copy에서 budget parent를 먼저 만들고 attempt nullable FK를 ALTER, 예정 index와 user_version2를 같은 transaction에 적용한다. v1/v2 exact schema maps를 분리하고 migrated 및 fresh v2의 실제 sqlite_master/foreign_key_list parity, FK/quick check와 reopen을 검증한다. 기존 원본·sidecar/hot-journal 정책을 유지한다. FK disable, deferred FK, side DB 또는 미확인 backup API는 사용하지 않는다. API28 nullable REFERENCES ADD COLUMN은 source 수준의 타당성 평가이며 실제 API28 migration은 미수행이다. minSdk28 제약 및 기존 API35/36 실제 gate를 유지하고 별도 API28 hard gate는 추가하지 않는다.
+
+## 검토한 대안
+
+- trigger만 사용: 단순하지만 기존 scheduled generic 테스트가 실패하고 ledger 연결을 증명하지 못해 기각한다.
+- config만 사용: opt-out 이후 기존 bound attempt를 구분하지 못해 기각한다.
+- opaque hash와 cleared owner를 사용: 끝난 attempt의 누락된 ledger와 legacy를 구별할 수 없어 기각한다.
+- 기존 legacy 테스트 기대값 변경: 호환성 회귀를 감추므로 기각한다.
+- 외부 Boolean 또는 side DB: 호출자가 검증을 우회하거나 SQLite 원자성을 잃으므로 기각한다.
+
+## 결과와 비용
+
+Schema migration, exact DDL parity, 양방향 관계 검증 및 transaction CAS 책임이 생긴다. counts, observations, uncertainty와 partial scope 및 기존 retry 정책은 유지된다. orphan과 한쪽 link 누락은 검출하지만 권한 있는 private DB 조작으로 참조를 NULL로 만들고 관련 row도 일관되게 삭제한 상태는 정당한 legacy와 구분하지 못한다. MAC이나 하드웨어 기반 변조 증거는 주장하지 않는다. 실제 migration·rollback·reopen·worker 테스트와 독립 spec conformance 전까지 Proposed다.
+
+## 참고 자료
+
+- [승인 스펙](../2026-11-05-v1-completion/spec.md)
+- [공통 계획](../2026-11-05-v1-completion/plan.md)
+- [자동화 작업 계획](../2026-11-05-v1-completion/automation-ui/plan.md)
+- [대체한 ADR-010](ADR-010-2026-11-13-2026-11-05-v1-completion-automatic-retry-ledger.md)
+
+## 2026-11-22 동일 binding 세대 무효화 보정
+
+PR20 독립 검토에서 자동 opt-out의 새 generation이 기존 불확실한 쓰기·미완료 예산을 보지 못하는 경로를 확인했다. 이전 callback을 무효화하면서 현재 binding의 상태를 원자적으로 새 generation에 이월한다. day/dataset/prior confirmation은 새 generation으로 재키잉하되 원격 handle과 상태·확인 시각을 보존한다. 미종결 cohort의 frozen scopes/dates/관측·retriesUsed·claimVersion·status·due·시각은 보존하며 원래 owner 종료 정책을 따른다. 새 이월 ledger UUID/key는 SQLite PK 구분용이며 fresh initial이나 실패 예산 초기화가 아니다. 원본 ledger와 linked attempt는 이전 generation에 보관한다. 새 schema/API는 추가하지 않으며 실제 SQLite rollback·reopen·off/on·stale callback 회귀가 필요하다.
+
+역사 generation에는 account binding이 없으므로 private-drive 문자열로 여러 계정의 과거 handle을 합치는 대안은 기각한다. 현재 동일 binding의 Drive 재설정/invalidate에도 uncertainty·budget 우회를 허용하지 않고, generic foundation의 기존 세대 교체 의미는 유지한다. 이 보정은 사용자에게 새 동의를 받은 것으로 해석하지 않으며 본 ADR은 독립 적합성 검증 전까지 Proposed다.
+
+## 2026-11-22 동일 binding category 변경의 과거 profile
+
+교정6의 기록 존재 시 동일 계정 재설정 거절은 기존 수동 항목 변경을 막으므로 최종 정책으로 채택하지 않는다. 동일 현재 binding에서 category 변경은 기존 등록일과 모든 과거 profile/불확실성/미종결 예산을 새 generation에 원자 이월하고 현재 선택 category만 바꾼다. 과거 day/ledger의 well-formed frozen scopes는 현재 선택의 부분집합일 필요가 없지만 현재 읽기 권한으로 쓰지 않는다. 새 attempt/planner/reader 및 원자 claim은 현재 category subset을 강제한다. 과거 metadata와 현재 authorization을 분리해 선택을 제거했다 다시 추가해도 실패 count/due가 사라지지 않게 한다. schema/API 확대 없이 private decoder의 역사 유효성만 조정하며 나머지 검증을 보존한다. same-binding configure의 전면 거절·reset 우회와 과거 계정 handle의 임의 합치기는 기각한다. 실제 SQLite 및 수동 session 회귀와 독립 적합성 전까지 Proposed다.

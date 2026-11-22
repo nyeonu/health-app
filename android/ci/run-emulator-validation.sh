@@ -9,6 +9,30 @@ adb shell am force-stop com.google.android.apps.nexuslauncher
 if [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ]; then
   case "${TEST_SCOPE:-full}" in
     full) ;;
+    automatic-v1)
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/AutomaticSettingsInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: AutomaticSettingsInstrumentedTest' >&2
+        exit 1
+      fi
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/BackgroundAuthorizationInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: BackgroundAuthorizationInstrumentedTest' >&2
+        exit 1
+      fi
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/BackgroundPermissionFlowInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: BackgroundPermissionFlowInstrumentedTest' >&2
+        exit 1
+      fi
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/SyncWorkSchedulerInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: SyncWorkSchedulerInstrumentedTest' >&2
+        exit 1
+      fi
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/HealthHomeScreenInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: HealthHomeScreenInstrumentedTest' >&2
+        exit 1
+      fi
+      (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.AutomaticSettingsInstrumentedTest,com.ny.my.health.BackgroundAuthorizationInstrumentedTest,com.ny.my.health.BackgroundPermissionFlowInstrumentedTest,com.ny.my.health.SyncWorkSchedulerInstrumentedTest,com.ny.my.health.HealthHomeScreenInstrumentedTest')
+      exit 0
+      ;;
     saf-provider-starter)
       if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/SyntheticProviderStarterTest.kt' ]; then
         echo '고정 진단 테스트 소스가 없습니다: SyntheticProviderStarterTest' >&2
@@ -63,6 +87,30 @@ if [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ]; then
         exit 1
       fi
       (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SafManualFlowInstrumentedTest,com.ny.my.health.ManualDriveFlowInstrumentedTest')
+      exit 0
+      ;;
+    retry-migration)
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/SyncRetryBudgetMigrationInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: SyncRetryBudgetMigrationInstrumentedTest' >&2
+        exit 1
+      fi
+      (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SyncRetryBudgetMigrationInstrumentedTest')
+      exit 0
+      ;;
+    retry-store)
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/SyncRetryBudgetStoreInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: SyncRetryBudgetStoreInstrumentedTest' >&2
+        exit 1
+      fi
+      (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SyncRetryBudgetStoreInstrumentedTest')
+      exit 0
+      ;;
+    retry-session)
+      if [ ! -f 'android/app/src/androidTest/java/com/ny/my/health/SyncExecutionSessionInstrumentedTest.kt' ]; then
+        echo '고정 진단 테스트 소스가 없습니다: SyncExecutionSessionInstrumentedTest' >&2
+        exit 1
+      fi
+      (cd android && chmod +x gradlew && ./gradlew --no-daemon :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.ny.my.health.SyncExecutionSessionInstrumentedTest')
       exit 0
       ;;
     *)

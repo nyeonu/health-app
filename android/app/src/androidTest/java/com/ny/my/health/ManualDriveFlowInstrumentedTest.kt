@@ -16,6 +16,161 @@ import org.junit.runner.RunWith
 /** 실제 SQLite/session과 합성 외부 bridge를 연결한다. 실계정 로그인·원격 쓰기는 하지 않는다. */
 @RunWith(AndroidJUnit4::class)
 class ManualDriveFlowInstrumentedTest {
+    @Test fun sameAccountCategoryAdditionAndRemovalPreserveConfirmedExportAndRequireFreshForegroundProof() = runBlocking {
+        val f = ManualDriveNativeFixture()
+        try {
+            val enrolled = f.today.minusDays(1)
+            val initial = setOf(DataType.STEPS)
+            val added = setOf(DataType.STEPS, DataType.WEIGHT)
+            val removed = setOf(DataType.WEIGHT)
+            f.grants = added
+            val configured = f.store.configure(null, SyncConfiguration("private-drive", enrolled, false, initial),
+                PrivateDestinationBinding("DRIVE", f.account.name, f.account.type))
+            assertEquals(CommitStatus.COMMITTED, configured.status)
+            val requested = mutableListOf<Set<DataType>>()
+            val reader = object : ScopedHealthReader {
+                override suspend fun access(trigger: SyncTrigger) = f.reader.access(trigger)
+                override suspend fun readScoped(date: java.time.LocalDate, requestedScopes: Map<DataType, ReadScope>): ScopedSnapshot {
+                    requested += requestedScopes.keys.toSet()
+                    val snapshot = f.reader.readScoped(date, requestedScopes)
+                    return snapshot.copy(snapshot = snapshot.snapshot.copy(
+                        steps = if (DataType.STEPS in requestedScopes) 12L else null))
+                }
+            }
+            var remoteCalls = 0
+            val execution = SyncExecutionSession(f.store, reader, null, f.clock, { java.util.UUID.randomUUID().toString() })
+            val ports = object : ManualDrivePorts {
+                override val store: SyncStateStore = f.store
+                override val reader: ScopedHealthReader = reader
+                override suspend fun binding(generation: DestinationGeneration): BoundDriveAuthorization.AccountSelection? {
+                    val binding = f.reopen().readBinding(generation) ?: return null
+                    return BoundDriveAuthorization.pickerCandidate(true, 1, 1, true, binding.accountName, binding.accountType)
+                }
+                override suspend fun configure(expected: DestinationGeneration?, configuration: SyncConfiguration,
+                    account: BoundDriveAuthorization.AccountSelection) = f.store.configure(expected, configuration,
+                    PrivateDestinationBinding("DRIVE", account.name, account.type))
+                override suspend fun reopen(generation: DestinationGeneration) = f.store.reopenManualBlockers(generation)
+                override suspend fun runPrepared(generation: DestinationGeneration, prepare: suspend () -> DestinationSync) =
+                    execution.runPrepared(SyncTrigger.MANUAL, generation, prepare)
+                override fun transport(token: String) = object : DriveTransport {
+                    override suspend fun execute(method: String, url: String, contentType: String?, body: ByteArray?): DriveResponse {
+                        assertEquals("GET", method)
+                        assertEquals(BoundDriveAuthorization.ABOUT_URL, url)
+                        f.proofs++
+                        return DriveResponse(200, f.proofBody)
+                    }
+                }
+                override fun destination(transport: DriveTransport, generation: DestinationGeneration) = object : StorageDestination {
+                    override suspend fun reconcile(files: List<PlannedFile>): ReconciledFiles {
+                        remoteCalls++
+                        return ReconciledFiles(emptyList(), files, emptySet())
+                    }
+                    override suspend fun writePending(files: List<PlannedFile>, onConfirmed: suspend (FileConfirmation) -> Unit) {
+                        remoteCalls++
+                        for (file in files) onConfirmed(FileConfirmation(file.key, "synthetic-target-" + file.key.dataset.name, f.clock.instant()))
+                    }
+                }
+            }
+            val session = ManualDriveSession(ports, f.clock)
+            session.refresh()
+            session.setForeground(true)
+            session.setPrivateFolderConsent(true)
+            val first = checkNotNull(session.beginAuthorization())
+            assertTrue(session.acceptAuthorization(first, false, "synthetic-memory-only", f.scopes))
+            assertEquals(BatchStatus.COMPLETED, session.continueManual()!!.status)
+            val original = checkNotNull(configured.generation)
+            val targets = f.reopen().loadKnownDriveTargets(original, enrolled)
+            assertTrue(targets.values.flatten().contains("synthetic-target-DAILY"))
+            assertTrue(requested.isNotEmpty())
+            assertTrue(requested.all { it == initial })
+
+            var previous = first
+            var previousGeneration = original
+            for (categories in listOf(added, removed)) {
+                val readsBefore = f.rawReads
+                val proofBefore = f.proofs
+                val remoteBefore = remoteCalls
+                val picker = checkNotNull(session.beginAccountSelection())
+                val ticket = checkNotNull(session.selectAccount(true, picker, true, f.account.name, f.account.type, categories))
+                val current = checkNotNull(f.reopen().load().state)
+                assertNotEquals(previousGeneration, current.generation)
+                assertEquals(current.generation, ticket.generation)
+                assertEquals(categories, checkNotNull(current.configuration).categories)
+                assertEquals(enrolled, current.configuration!!.enrolledDay)
+                assertEquals(targets, f.reopen().loadKnownDriveTargets(current.generation, enrolled))
+                assertFalse(session.acceptAuthorization(previous, false, "stale-memory-only", f.scopes))
+                session.setForeground(false)
+                assertFalse(session.acceptAuthorization(ticket, false, "synthetic-memory-only", f.scopes))
+                assertNull(session.continueManual())
+                session.setForeground(true)
+                session.setPrivateFolderConsent(false)
+                assertFalse(session.acceptAuthorization(ticket, false, "synthetic-memory-only", f.scopes))
+                assertNull(session.continueManual())
+                assertEquals(readsBefore, f.rawReads)
+                assertEquals(proofBefore, f.proofs)
+                assertEquals(remoteBefore, remoteCalls)
+                session.setPrivateFolderConsent(true)
+                val fresh = checkNotNull(session.beginAuthorization())
+                assertTrue(session.acceptAuthorization(fresh, false, "synthetic-memory-only", f.scopes))
+                assertEquals(readsBefore, f.rawReads)
+                assertEquals(proofBefore, f.proofs)
+                assertEquals(remoteBefore, remoteCalls)
+                requested.clear()
+                assertEquals(BatchStatus.COMPLETED, session.continueManual()!!.status)
+                assertEquals(proofBefore + 1, f.proofs)
+                assertTrue(requested.isNotEmpty())
+                assertTrue(requested.all { it == categories })
+                previous = fresh
+                previousGeneration = current.generation
+            }
+        } finally { f.close() }
+    }
+
+    @Test fun automaticEnabledManualFlowRequiresForegroundConsentAndFreshProofWithoutCreatingRetryLineage() = runBlocking {
+        val f = ManualDriveNativeFixture()
+        try {
+            val configuration = SyncConfiguration("private-drive", f.today.minusDays(1), true, f.categories)
+            val configured = f.store.configure(null, configuration,
+                PrivateDestinationBinding("DRIVE", f.account.name, f.account.type))
+            assertEquals(CommitStatus.COMMITTED, configured.status)
+            val generation = checkNotNull(configured.generation)
+            assertEquals(CommitStatus.COMMITTED, f.store.setAutomaticCAS(generation, true, f.clock.instant()).status)
+            val session = f.session()
+            session.refresh()
+            assertNull(session.beginAuthorization())
+            session.setForeground(true)
+            assertNull(session.beginAuthorization())
+            session.setPrivateFolderConsent(true)
+            val ticket = checkNotNull(session.beginAuthorization())
+            assertEquals(generation, ticket.generation)
+            assertTrue(session.acceptAuthorization(ticket, false, "synthetic-memory-only", f.scopes))
+            assertEquals(0, f.proofs)
+            assertEquals(0, f.rawReads)
+            assertEquals(BatchStatus.COMPLETED, session.continueManual()!!.status)
+            assertEquals(1, f.proofs)
+            assertEquals(1, f.rawReads)
+            assertEquals(0, f.writes)
+            val reopened = f.reopen()
+            val saved = checkNotNull(reopened.load().state)
+            assertEquals(generation, saved.generation)
+            assertTrue(checkNotNull(saved.configuration).automatic)
+            val scoped = checkNotNull(reopened.loadForScope(generation, f.today,
+                f.reader.access(SyncTrigger.MANUAL)).state)
+            assertEquals(DayPhase.EMPTY, scoped.days.getValue(f.today.minusDays(1)).phase)
+            assertEquals(f.today.minusDays(1), scoped.coverage.scopeCheckedThrough)
+            assertNull(scoped.coverage.scopeUploadedThrough)
+            assertNull(scoped.coverage.uploadedThrough)
+            assertEquals(f.categories - DataType.STEPS, scoped.coverage.excludedTypes)
+            android.database.sqlite.SQLiteDatabase.openDatabase(f.file.path, null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READONLY).use { db ->
+                db.rawQuery("SELECT count(*) FROM retry_budget", null).use { rows ->
+                    assertTrue(rows.moveToFirst())
+                    assertEquals(0L, rows.getLong(0))
+                }
+            }
+        } finally { f.close() }
+    }
+
     @Test fun manualFlowRejectsStaleProofPauseResetAndDoubleContinueWhileReopeningActualSqliteState() = runBlocking {
         val f = ManualDriveNativeFixture()
         try {

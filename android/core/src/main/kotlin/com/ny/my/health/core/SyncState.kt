@@ -62,7 +62,7 @@ enum class CommitStatus { COMMITTED, STALE, INVALID, UNAVAILABLE }
 data class SyncCommit(val status: CommitStatus, val generation: DestinationGeneration?)
 data class SyncMutation(val attemptId: String?, val start: AttemptState?,
     val day: DayState?, val confirmation: FileConfirmation?,
-    val pendingTriggers: Set<SyncTrigger>?, val finishAt: Instant?)
+    val pendingTriggers: Set<SyncTrigger>?, val finishAt: Instant?, val automaticOwner: AutomaticOwner? = null)
 enum class BatchStatus { COMPLETED, PENDING, BLOCKED, MERGED, STALE, RETRYABLE }
 data class BatchOutcome(val status: BatchStatus, val confirmedFiles: Int,
     val coverage: CoverageSummary?)
@@ -181,7 +181,7 @@ fun DayState.isValid(generation: DestinationGeneration, enrolledDay: LocalDate, 
 
 /** 반환값은 후보의 유효성일 뿐 영속 커밋을 보증하지 않는다. */
 fun SyncState.validateMutation(expected: DestinationGeneration?, mutation: SyncMutation,
-    currentDay: DayState?, todayInSeoul: LocalDate): CommitStatus {
+    currentDay: DayState?, todayInSeoul: LocalDate, automaticOwnerRequired: Boolean = false): CommitStatus {
     val invalid = CommitStatus.INVALID
     val stale = CommitStatus.STALE
     val payloads = listOf(mutation.start, mutation.day, mutation.confirmation, mutation.pendingTriggers, mutation.finishAt)
@@ -192,16 +192,26 @@ fun SyncState.validateMutation(expected: DestinationGeneration?, mutation: SyncM
         mutation.confirmation?.isValid() == false || mutation.finishAt?.let { !validInstant(it) } == true) return invalid
     if (config != null && (attempt?.isValid(config.enrolledDay, todayInSeoul) == false ||
             days.values.any { !it.isValid(generation, config.enrolledDay, todayInSeoul) })) return invalid
+    if (mutation.automaticOwner?.let { !validUuid(it.lineageId) || !validUuid(it.attemptId) || it.claimVersion < 0 } == true) return invalid
     if (expected != generation) return stale
     if (config == null) return invalid
     mutation.start?.let { start ->
+        if (mutation.automaticOwner != null || (automaticOwnerRequired && start.trigger != SyncTrigger.MANUAL)) return invalid
         if (start.id != mutation.attemptId || start.scopeKey != scopeKey || start.requestedScopes != requestedScopes ||
             start.finishedAt != null || (attempt != null && (attempt.finishedAt == null || attempt.id == start.id))) return invalid
         return CommitStatus.COMMITTED
     }
     val active = attempt ?: return stale
     if (active.id != mutation.attemptId) return stale
-    if (mutation.pendingTriggers != null) return if (mutation.pendingTriggers.containsAll(active.pendingTriggers)) CommitStatus.COMMITTED else invalid
+    val automaticAttempt = active.trigger != SyncTrigger.MANUAL
+    val owner = mutation.automaticOwner
+    if (owner != null && owner.attemptId != active.id) return stale
+    if (owner != null && (!automaticAttempt || active.retryBudgetKey != automaticRetryBudgetKey(owner.lineageId))) return invalid
+    val bound = automaticAttempt && (automaticOwnerRequired || owner != null)
+    if (mutation.pendingTriggers != null) return if ((!bound || active.finishedAt == null) &&
+        mutation.pendingTriggers.containsAll(active.pendingTriggers)) CommitStatus.COMMITTED else invalid
+    if (bound && (owner == null || mutation.finishAt != null)) return invalid
+    if (!automaticAttempt && owner != null) return invalid
     if (active.finishedAt != null) return invalid
     if (mutation.finishAt != null) return if (active.startedAt != null && mutation.finishAt >= active.startedAt) CommitStatus.COMMITTED else invalid
     if (currentDay != null && !currentDay.isValid(generation, config.enrolledDay, todayInSeoul)) return invalid

@@ -5,10 +5,10 @@ import java.time.Instant
 
 class VersionedCsvExporter : CsvExporter {
     override fun export(day: NormalizedDay): List<CsvFile> = buildList {
-        if (day.steps != null || day.weightKg != null) {
+        if (day.steps != null || day.weightKg != null || day.sleepSummary?.minutes != null || day.exerciseSummary?.minutes != null) {
             add(file("daily", day, listOf(
                 listOf("schema_version", "date", "timezone", "steps", "weight_kg", "resting_hr_bpm", "sleep_min", "exercise_min", "generated_at"),
-                listOf("0.1", day.date, "Asia/Seoul", day.steps, day.weightKg, null, null, null, day.generatedAt),
+                listOf("0.1", day.date, "Asia/Seoul", day.steps, day.weightKg, null, day.sleepSummary?.minutes, day.exerciseSummary?.minutes, day.generatedAt),
             )))
         }
         if (day.exerciseSessions.isNotEmpty()) {

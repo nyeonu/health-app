@@ -216,7 +216,7 @@ class HealthConnectReader internal constructor(
         private const val PAGE_SIZE = 1000
         private const val MAX_PAGES = 100
         private const val MAX_HEART_RATE_SAMPLES = 100_000L
-        private val permissionByType = mapOf(
+        internal val permissionByType = mapOf(
             DataType.STEPS to HealthPermission.getReadPermission(StepsRecord::class),
             DataType.WEIGHT to HealthPermission.getReadPermission(WeightRecord::class),
             DataType.HEART_RATE to HealthPermission.getReadPermission(HeartRateRecord::class),

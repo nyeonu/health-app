@@ -13,12 +13,16 @@ on:
         default: full
         options:
           - full
+          - automatic-v1
           - saf-provider-starter
           - saf-store
           - saf-capability
           - saf-destination
           - saf-ui
           - saf-flow
+          - retry-migration
+          - retry-store
+          - retry-session
 
 permissions:
   contents: read

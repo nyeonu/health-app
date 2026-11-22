@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "status": "INITIAL_AUDIT_PASS_NATIVE_PENDING",
+  "status": "INITIAL_AUDIT_PASS_NATIVE_VERIFIED",
   "source_head": "cb981dfcb7a25c9a0d555f7fbe68e382560f6268",
   "source_tree": "08bb397e7bac862019075639d8d6b52d6a02d744",
   "recorded_at_utc": "2026-11-14T00:22:42.032788+00:00",
@@ -9984,5 +9984,27 @@
       "android/core/build.gradle.kts": "7e4d36b21c4dc458c66a4e2316d4f4140dba3dcbb7efca2a3998df9fc4b7ae6e"
     },
     "configuration_unchanged_verified_source": "cc30964a882f7798e71aca7e5c5f73138a1abf72"
+  },
+  "post_bootstrap_verification": {
+    "verified_at_utc": "2026-11-14T01:21:14.074480+00:00",
+    "source_head": "8b9f38e81d128640b4c9f442b74248628246dc1c",
+    "merged_master": "75cc443702a3467c87268d49ce52d4d75b2ed8a5",
+    "source_files_unchanged_from_audited_commit": true,
+    "native_run": 43534668761,
+    "native_per_api": 135,
+    "native_failures_errors_skips_duplicates": 0,
+    "history_recovery_settings_cleanup": [
+      8,
+      4,
+      8
+    ],
+    "sync_state_recovery_cleanup": [
+      17,
+      17
+    ],
+    "killed_holds_counted_as_pass": 0,
+    "jvm_run": 43534668764,
+    "jvm_tests": 181,
+    "scope": "인프라 개발 병합 검증; 전체V1와 실제기기/계정/provider/TalkBack 수용은 미완료"
   }
 }

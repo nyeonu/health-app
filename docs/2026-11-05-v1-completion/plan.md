@@ -417,9 +417,9 @@ internal fun SafManualUi(state: ManualSafState, actions: SafManualActions)
 - HC1.1.0 source HealthConnectFeatures.kt:41에 FEATURE_READ_HEALTH_DATA_IN_BACKGROUND, HealthPermission.kt:163에 PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND, PermissionController.kt:36에 getGrantedPermissions가 있다. worker마다 feature available+grant와 현재 category grant를 확인한다. 단일 runtime에 포함된 foreground-service 권한/service 선언은 library metadata이며 앱은 setForeground/상시 서비스를 호출하지 않는다. WorkManager 기본 diagnostics의 식별자 노출을 줄이기 위해 merged manifest의 DiagnosticsReceiver도 제거하고 app custom diagnostics는 allowlist만 쓴다. 실제 최초 grant 시각 API는 만들지 않는다. (확인: /workspace/tooling/health-connect-source/sources.jar 2026-11-05 직접 읽기)
 - auth21.4.0의 setAccount(Account), Context authorization client, hasResolution/accessToken/grantedScopes와 basement18.5.0의 AccountPicker/allowable account types가 설치 AAR javap로 확인됐다. 계정 제거 감지에 broad GET_ACCOUNTS를 추가하지 않는다. callback/result account가 선택 계정과 연결되었음을 확인할 수 없으면 blocked로 처리한다. (확인: 2026-11-05 JDK21 javap; app 기존 dependency)
 - 공식 WorkManager release notes는 2.11.0 stable(2025-10-22), minSdk23, CoroutineWorker의 runtime 포함을 확인한다. Google Maven runtime/testing 2.11.0 AAR의 실제 minCompileSdk는35, minAGP는8.6.0이며 runtime manifest minSdk23이다. POM Kotlin BOM은2.1.20, runtime coroutines-android는1.9.0이다. 현재 min28/compile36/AGP8.13.2/Kotlin2.2.20/coroutines1.10.2는 이 요구보다 높다. (확인: Context7 공식 release notes 및 https://dl.google.com/dl/android/maven2/androidx/work/ 아래 해당 POM/AAR를 2026-11-05 읽기 전용 조회)
-- 현재 cb981df 소스의 네 resolved graph는 release129/debug130/JVM135/instrumentation110 구성요소, 공개 Maven 합집합155좌표다. 2026-11-14 실제 OSV155조회가 HTTP200/오류0/취약점 일치0이며 source/tree/filehash·query/response/log hash를 대조했다. debug/release merger에서 HealthApplication·backup false·single process·다른 Startup metadata 유지 및 WorkManagerInitializer/DiagnosticsReceiver 제거를 확인했다. T1 local JVM181/lint/APK/testAPK와 audit는 통과했으며 post-bootstrap API35·36 실제 검증·독립 최종 검토 전 후속 기능 구현을 시작하지 않는다. (확인: docs/V1/dependency-audit.json, auto-t1-root-audit-proof.json 및 auto-t1-root-generated-output-proof.json)
+- 현재 cb981df 소스의 네 resolved graph는 release129/debug130/JVM135/instrumentation110 구성요소, 공개 Maven 합집합155좌표다. 2026-11-14 실제 OSV155조회가 HTTP200/오류0/취약점 일치0이며 source/tree/filehash·query/response/log hash를 대조했다. debug/release merger에서 HealthApplication·backup false·single process·다른 Startup metadata 유지 및 WorkManagerInitializer/DiagnosticsReceiver 제거를 확인했다. T1 local JVM181/lint/APK/testAPK와 audit 및 source8b9f38e의 post-bootstrap API35·36 각135 Native/기존host 전체가 실제 통과했다. 독립 품질·보안 최종 검토와 승인 spec 기반 인프라 checkpoint 검토 뒤 PR19는75cc443702a3467c87268d49ce52d4d75b2ed8a5로 병합됐다. 후속 구현은 아래 공통 계약 재고정·독립 readiness를 통과한 뒤 시작한다. (확인: docs/V1/dependency-audit.json, auto-t1-root-audit-proof.json 및 auto-t1-root-generated-output-proof.json)
 - unique periodic와 one-time은 별도 이름으로 enqueue되고 서로/manual을 배타화하지 않는다. WorkManager OS timing은 불확정이며 stop 뒤에도 remote writes가 이미 나갔을 수 있다. (확인: 공식 unique work/persistent work 문서; 스펙 6절)
-- custom Application Configuration.Provider + WorkerFactory를 사용하고 AndroidX Startup의 WorkManagerInitializer만 manifest merger remove하여 중복 초기화를 막는다. 수동 UI는 기존 manual reader의 세션을 유지하고 각 worker는 자신의 automatic reader와 새 SyncExecutionSession/DestinationSync를 사용한다. 서로 다른 세션은 동일 canonical DB path의 Entry/control/owner/gate를 공유하며 worker가 get(app)의 cached manual reader를 재사용하지 않는다. 정확한 merged manifest/초기화는 starter test에서 검증한다. (로컬 확인: cb981df HealthApplication/merged debug·release manifest와 JVM181/APK/lint, 실제 post-bootstrap 양 API starter/probe 검증은 대기)
+- custom Application Configuration.Provider + WorkerFactory를 사용하고 AndroidX Startup의 WorkManagerInitializer만 manifest merger remove하여 중복 초기화를 막는다. 수동 UI는 기존 manual reader의 세션을 유지하고 각 worker는 자신의 automatic reader와 새 SyncExecutionSession/DestinationSync를 사용한다. 서로 다른 세션은 동일 canonical DB path의 Entry/control/owner/gate를 공유하며 worker가 get(app)의 cached manual reader를 재사용하지 않는다. 정확한 merged manifest/초기화는 starter test에서 검증한다. (로컬 확인: cb981df HealthApplication/merged debug·release manifest와 JVM181/APK/lint, 실제 post-bootstrap 양 API starter/probe 포함 각135 Native 검증 통과, 자동 worker 연결은 후속T11)
 - SAF의 실제 returned flags만 persist하고 provider의 w/wt 의미는 구현별 차이가 있으므로 truncation+close+readback probe 성공 전 활성화하지 않는다. test provider는 test APK에만 등록한다. 실제 reboot/background capability 미확인은 별도 disabled 상태다. (확인: 스펙 4절, 공식 ContentResolver/DocumentsContract 계약)
 
 
@@ -456,26 +456,94 @@ internal interface ManualSafPorts {
 
 ```kotlin
 // AutomaticRetryContracts —
-// C/SyncRetryBudget.kt; health payload/token/URI/account는 없음
-// 아래 모든 input은 validated enum/hash/UUID/time/최대7 날짜만 허용
-// observedRevisions는 date→nullable digest; null은 아직 읽지 않음, budget identity 아님
-RetryBudget(lineageId, generation, scopeKey, dates, observedRevisions,
-            retriesUsed /*0..3*/, retryNotBefore, retryDelayMillis, claimVersion, ownerAttemptId,
-            status /*ACTIVE, COMPLETED, BLOCKED, EXHAUSTED*/, createdAt, updatedAt)
-// 신규 immutable 값: defensive copies; fresh metadata-only access로 계획, health records 없음
-InitialAutomaticProposal(expectedGeneration, scopeKey, requestedScopes, frozenDates,
-                         attemptId, trigger, plannedAt, accessFingerprint)
-// frozenDates: 정렬/중복 없음/최대7 완료 KST 날짜; attempt 시작 필드는 같은 proposal에서 생성
-// SqliteSyncStateStore의 기존 validated write/pathLock 내부에서 수행하는 신규 app APIs
-claimAutomaticAttempt(expectedGeneration, expectedLineageIdOrNull,
-                      expectedClaimVersionOrNull, initialProposalOrNull,
-                      expectedScopeKey, expectedRequestedScopes, expectedFrozenDates,
-                      attemptId, trigger, now): RetryClaim
-finishAutomaticAttempt(expectedGeneration, lineageId, attemptId, expectedClaimVersion,
-                       outcome, now): SyncCommit
-setAutomaticCAS(expectedGeneration, enabled, now): SyncCommit
-// contract RetryClaim: CLAIMED(attempt), DEFERRED(retryNotBefore), BUSY, STALE, BLOCKED, EXHAUSTED; unavailable는 고정 예외
-// separate store/sidecar DB/worker SharedPreferences budget은 만들지 않음
+enum class RetryBudgetStatus { ACTIVE, COMPLETED, BLOCKED, EXHAUSTED }
+class RetryBudget private constructor(
+    val lineageId: String, val generation: DestinationGeneration,
+    val scopeKey: ReadScopeKey, val requestedScopes: Map<DataType, ReadScope>,
+    val dates: List<LocalDate>, val observedRevisions: Map<LocalDate, String?>,
+    val retriesUsed: Int, val retryNotBefore: Instant?, val retryDelayMillis: Long?,
+    val claimVersion: Long, val ownerAttemptId: String?, val status: RetryBudgetStatus,
+    val createdAt: Instant, val updatedAt: Instant,
+) {
+    val retryBudgetKey: String
+    companion object {
+        fun validated(lineageId: String, generation: DestinationGeneration,
+            scopeKey: ReadScopeKey, requestedScopes: Map<DataType, ReadScope>,
+            dates: List<LocalDate>, observedRevisions: Map<LocalDate, String?>,
+            retriesUsed: Int, retryNotBefore: Instant?, retryDelayMillis: Long?,
+            claimVersion: Long, ownerAttemptId: String?, status: RetryBudgetStatus,
+            createdAt: Instant, updatedAt: Instant): RetryBudget
+    }
+}
+class InitialAutomaticProposal private constructor(
+    val expectedGeneration: DestinationGeneration, val scopeKey: ReadScopeKey,
+    val requestedScopes: Map<DataType, ReadScope>, val frozenDates: List<LocalDate>,
+    val attemptId: String, val trigger: SyncTrigger, val plannedAt: Instant,
+    val accessFingerprint: String,
+) {
+    companion object {
+        fun validated(expectedGeneration: DestinationGeneration, scopeKey: ReadScopeKey,
+            requestedScopes: Map<DataType, ReadScope>, frozenDates: List<LocalDate>,
+            attemptId: String, trigger: SyncTrigger, plannedAt: Instant,
+            accessFingerprint: String, enrolledDay: LocalDate,
+            todayInSeoul: LocalDate): InitialAutomaticProposal
+    }
+}
+data class AutomaticOwner(val lineageId: String, val attemptId: String, val claimVersion: Long)
+sealed interface AutomaticBudgetRead {
+    data class Ready(val budget: RetryBudget?): AutomaticBudgetRead
+    data object Stale: AutomaticBudgetRead
+}
+sealed interface RetryClaim {
+    data class Claimed(val attempt: AttemptState, val budget: RetryBudget): RetryClaim
+    data class Deferred(val retryNotBefore: Instant): RetryClaim
+    data object Busy: RetryClaim
+    data object Stale: RetryClaim
+    data object Blocked: RetryClaim
+    data object Exhausted: RetryClaim
+}
+sealed interface RetryValidation<out T> {
+    data class Valid<T>(val value: T): RetryValidation<T>
+    data object Invalid: RetryValidation<Nothing>
+}
+enum class AutomaticFinishOutcome { COMPLETED, RETRYABLE, BLOCKED }
+object AutomaticRetryModel {
+    fun accessFingerprint(access: ReadAccess): String
+    fun initialClaim(proposal: InitialAutomaticProposal, lineageId: String,
+        currentGeneration: DestinationGeneration, configuration: SyncConfiguration,
+        currentScopeKey: ReadScopeKey, currentRequestedScopes: Map<DataType, ReadScope>,
+        enrolledDay: LocalDate, todayInSeoul: LocalDate, now: Instant): RetryValidation<RetryClaim>
+    fun reClaim(budget: RetryBudget, expectedGeneration: DestinationGeneration,
+        expectedLineageId: String, expectedClaimVersion: Long, expectedScopeKey: ReadScopeKey,
+        expectedRequestedScopes: Map<DataType, ReadScope>, expectedFrozenDates: List<LocalDate>,
+        attemptId: String, trigger: SyncTrigger, now: Instant): RetryValidation<RetryClaim>
+    fun observeRevision(budget: RetryBudget, expectedGeneration: DestinationGeneration,
+        owner: AutomaticOwner, date: LocalDate, revisionDigest: String,
+        now: Instant): RetryValidation<RetryBudget>
+    fun finish(budget: RetryBudget, expectedGeneration: DestinationGeneration,
+        owner: AutomaticOwner, outcome: AutomaticFinishOutcome,
+        now: Instant): RetryValidation<RetryBudget>
+}
+
+
+
+// SyncMutation appends val automaticOwner: AutomaticOwner? = null.
+fun SyncState.validateMutation(expected: DestinationGeneration?, mutation: SyncMutation,
+    currentDay: DayState?, todayInSeoul: LocalDate,
+    automaticOwnerRequired: Boolean = false): CommitStatus
+sealed interface AutomaticPreflight {
+    data object Ready : AutomaticPreflight
+    data class Deferred(val retryNotBefore: Instant) : AutomaticPreflight
+    data object RecoveryRequired : AutomaticPreflight
+    data object Stale : AutomaticPreflight
+}
+// Concrete SqliteSyncStateStore members:
+suspend fun loadAutomaticBudget(expectedGeneration: DestinationGeneration, scopeKey: ReadScopeKey): AutomaticBudgetRead
+suspend fun preflightAutomaticAdmission(expectedGeneration: DestinationGeneration, now: Instant): AutomaticPreflight
+suspend fun claimAutomaticAttempt(expectedGeneration: DestinationGeneration, expectedLineageIdOrNull: String?, expectedClaimVersionOrNull: Long?, initialProposalOrNull: InitialAutomaticProposal?, expectedScopeKey: ReadScopeKey, expectedRequestedScopes: Map<DataType, ReadScope>, expectedFrozenDates: List<LocalDate>, attemptId: String, trigger: SyncTrigger, now: Instant): RetryClaim
+suspend fun finishAutomaticAttempt(expectedGeneration: DestinationGeneration, lineageId: String, attemptId: String, expectedClaimVersion: Long, outcome: AutomaticFinishOutcome, now: Instant): SyncCommit
+suspend fun setAutomaticCAS(expectedGeneration: DestinationGeneration, enabled: Boolean, now: Instant): SyncCommit
+suspend fun recoverAutomaticAttempt(expectedGeneration: DestinationGeneration, owner: AutomaticOwner, now: Instant): SyncCommit
 ```
 
 - `AutomaticRetryContracts` **정체성**: generation+scope+고정 최대7 날짜 cohort에 fresh UUID lineage를 준다. initial claim은0, 같은 미종결 lineage의 후속 automatic attempt를 시작하는 transaction에서1씩 증가하여 최대3이다. budget key는 lineage UUID의 domain-separated SHA-256이며 UNREAD/사전 read revision 해시로 만들지 않는다. WorkRequest id/runAttemptCount/new process/new attempt/periodic tick은 budget identity가 아니다.
@@ -488,22 +556,29 @@ setAutomaticCAS(expectedGeneration, enabled, now): SyncCommit
 - `AutomaticRetryContracts` **명시 복구**: 전경 retry/manual explicit trigger가 기존 `reopenManualBlockers`에 연결될 때 ledger의 eligible exhausted/blocked cohort를 명시 종료하고 새 initial batch를 허용하는 동작도 한 transaction으로 묶는다. 단순 앱 열기/periodic/catch-up/WorkManager 재등록은 reopen이 아니다. dataset rows/target/prior/unknown/remote stale는 그대로다. 새 generation/config reset을 retry 편법으로 쓰지 않는다.
 - `AutomaticRetryContracts` **claim 후 crash**: 외부 작업 이전이라도 claim을 되돌리지 않는다. 재시작 시 해당 claim은 소비된 것으로 유지하고 journal을 먼저 결과불명 복구한다. 최대치는 보수적이며 최초 외4번째 retry는 불가능해야 한다. source/remote permanent failure·unknown create는 retry 대상 아님. auth 준비 실패가 source보다 먼저 발생해 아직 day가 없으면 frozen cohort에 ACCOUNT_AUTHORIZATION_BLOCKED 행을 finish와 원자 기록하고 HC record read는0회다. production destination이 이미 분류한 lookup/PATCH IOException/429/500/502/503/504만 허용하며 source/auth generic exception을 transient로 추정하지 않는다.
 
-- `AutomaticRetryContracts` **최소 schema 제안**: 기존 DB `user_version=2`에 `retry_budget` 한 테이블 및 `(generation,scope_key)`당 ACTIVE 한 행을 강제하는 partial unique index만 추가한다. PK lineage UUID; generation FK; validated dates/revision vector JSON의 크기<=16KiB; retries0..3, validated nullable retryNotBefore와 retryDelayMillis(30/60/120초 및 retry index/status 관계), claimVersion>=0, 고정 status/UUID/hash/time/날짜 관계 검사. 기존 config/domain format1과 모든 기존 테이블은 유지한다. terminal rows도 해당 generation metadata로 보존하며 최대100000행/DB 기존 capacity guard에 포함한다. cap 초과는 STORE_UNAVAILABLE이며 자동 prune/reset 금지. reset의 명시 범위에서만 FK 순서에 맞춰 제거한다. ledger 조회는 generation/scope/status index와 최대7 날짜 metadata를 쓰고 legacy store와 같은 bounded/streaming 검증을 적용한다. 새 per-day N+1/read-all JSON 경로를 도입하지 않는다. 모든 store read/admission은 ledger row/cap/FK/owner 관계도 검증하며 reopenManualBlockers의 명시 복구와 ledger 종료를 같은 기존 write transaction에 통합한다. archived generation은 자동 실행에 재사용하지 않는다.
+- `AutomaticRetryContracts` **최소 schema 제안**: 기존 DB `user_version=2`에 `retry_budget` 한 테이블과 `(generation,scope_key)`당 ACTIVE 한 행을 강제하는 기존 계획의 partial unique index 및 기존 단수 `attempt` table의 nullable storage-only `automatic_lineage_id TEXT REFERENCES retry_budget(lineage_id) ON UPDATE RESTRICT ON DELETE RESTRICT`를 추가한다. PK lineage UUID; generation FK; validated requestedScopes/dates/revision vector의 전체 JSON 크기 합계<=16KiB (같은 한 테이블의 검증된 JSON 또는 column); retries0..3, validated nullable retryNotBefore와 retryDelayMillis(30/60/120초 및 retry index/status 관계), claimVersion>=0, 고정 status/UUID/hash/time/날짜 관계 검사. 기존 config/domain format1과 모든 기존 테이블은 유지한다. terminal rows도 해당 generation metadata로 보존하며 최대100000행/DB 기존 capacity guard에 포함한다. cap 초과는 STORE_UNAVAILABLE이며 자동 prune/reset 금지. reset의 명시 범위에서만 FK 순서에 맞춰 제거한다. ledger 조회는 해당 접근에 적합한 검증된 indexed scan과 최대7 날짜 metadata를 쓰고 legacy store와 같은 bounded/streaming 검증을 적용한다. 새 per-day N+1/read-all JSON 경로를 도입하지 않는다. 모든 store read/admission은 ledger row/cap/FK/owner 관계도 검증하며 reopenManualBlockers의 명시 복구와 ledger 종료를 같은 기존 write transaction에 통합한다. archived generation은 자동 실행에 재사용하지 않는다.
 
-- `AutomaticRetryContracts` **대안 비교**: (a) 기존 AttemptState의 dates/requestedScopes/retryBudgetKey/retriesUsed를 atomic carry하고 generation당 단일 미종결 cohort만 허용하는 대안은 현재 delete/insert 정책 변경으로 구현 가능성 자체를 배제하지 않는다. 다만 다른 scope의 blocked/exhausted cohort와 due/복구 경계를 보존하면서 정상 scope refresh를 허용하려면 현재 마지막 attempt 행 밖의 이력 계약이 필요하다. 단일 cohort로 모두 차단하는 제한이 spec의 scope별 pending/복구 의미를 보존하는지는 Proposed ADR에서 비교·독립 검토한다. hidden JSON으로 codec/size/validation을 우회하지 않는다. (b) 별도 budget file/DB/preferences는 attempt/day와 한 SQLite commit이 안 되어 claim crash/소진 표시 불일치가 생긴다. (c) runAttemptCount는 새 work/process/periodic/re-enqueue identity와 batch revision을 연결하지 못한다. (d) one additive validated table은 migration 비용이 있지만 기존 rows를 덮지 않고 같은 transaction을 제공하므로 선택 후보다. 되돌리기 비싼 schema/마이그레이션 결정이므로 기존 ADR-006/009를 덮지 않는 새 ADR Proposed가 parent 통합 시 필요하다. 본 준비 권한은 ADR 파일 작성까지 포함하지 않는다.
+- `AutomaticRetryContracts` **대안 비교**: (a) 기존 AttemptState의 dates/requestedScopes/retryBudgetKey/retriesUsed를 atomic carry하고 generation당 단일 미종결 cohort만 허용하는 대안은 현재 delete/insert 정책 변경으로 구현 가능성 자체를 배제하지 않는다. 다만 다른 scope의 blocked/exhausted cohort와 due/복구 경계를 보존하면서 정상 scope refresh를 허용하려면 현재 마지막 attempt 행 밖의 이력 계약이 필요하다. 단일 cohort로 모두 차단하는 제한이 spec의 scope별 pending/복구 의미를 보존하는지는 Proposed ADR에서 비교·독립 검토한다. hidden JSON으로 codec/size/validation을 우회하지 않는다. (b) 별도 budget file/DB/preferences는 attempt/day와 한 SQLite commit이 안 되어 claim crash/소진 표시 불일치가 생긴다. (c) runAttemptCount는 새 work/process/periodic/re-enqueue identity와 batch revision을 연결하지 못한다. (d) one additive validated table은 migration 비용이 있지만 기존 rows를 덮지 않고 같은 transaction을 제공하므로 선택 후보다. 되돌리기 비싼 schema/마이그레이션 결정이므로 기존 ADR-006/009를 덮지 않는 새 ADR Proposed가 parent 통합 시 필요하다. ADR-012는 실행 중 변경된 durable link 결정을 Proposed로 기록하며 ADR-010을 대체한다.
 
-- `AutomaticRetryContracts` **migration 계약**: read-only exact v1 schema+content+FK/cap 검증을 먼저 통과한다. v1 hot journal이면 기존 raw-save/canary 검증 경계로 먼저 복구하며 malformed/future schema는 원본 writable open 전 차단한다. canonical path lock 아래 migration owner marker를 noBackup 전용 sibling staging에 exclusive 획득하고 symlink/sidecar/source fingerprint를 검사한다. 기존 hot-journal 복구가 끝나고 모든 DB handle을 닫은 뒤, rollback journal이 남지 않고 WAL/SHM이 없음을 확인한 validated v1을 기존 Os.open/O_NOFOLLOW·descriptor identity·해시 검사 방식으로 sibling stage에 복사한다. path lock/owner를 유지한 상태에서 원본 fingerprint가 전후 같아야 하며 stage fsync와 read-only v1 전체 재검증을 통과해야 한다. Android에 존재하지 않는 backup API를 호출한다고 가정하지 않는다. 이 일관된 staged copy에서만 additive table/index+user_version2를 transaction으로 적용하고 재열기 전체 v2 validation 후 durable marker/atomic publish한다. hot/nonempty rollback journal을 무시한 main-file copy 금지. idle zero-length journal 외 미해결 sidecar는 안전 부재로 추측하지 않는다. published v2 재검증 뒤에만 migration 완료다. 중단 시 marker+검증된 source/stage fingerprint로 해당 단계만 재개하며 unknown bytes/불일치는 보존 BLOCKED다. 기존 reset marker/owner와 동시 소유 금지. v1 모든 generation/binding/day/dataset/attempt와 unknown/prior/gap/시각을 의미 그대로 보존한다. 현 production v1 configure는 자동false만 저장하므로 정상 이전 상태는 새 ledger empty로 이전한다. validated v1에 예기치 않은 automatic=true가 있으면 기존 retry 이력을 알 수 없으므로 원본을 보존하고 자동 admission을 차단하여 명시 복구를 요구한다. true를 임의false로 덮거나 새 initial budget을 부여하지 않는다. v1 unfinished manual journal은 새 자동 attempt로 승격하지 않는다. 미래 schema fixture는3 이상으로 고치고, 불명 schema/내용 실패 fixture는 계속 실패해야 한다. 상세 publish/ownership API가 현 hot-journal/reset 구현과 충돌하면 blocked로 보고하고 부모에서 보정한다.
+- `AutomaticRetryContracts` **migration 계약**: read-only exact v1 schema+content+FK/cap 검증을 먼저 통과한다. v1 hot journal이면 기존 raw-save/canary 검증 경계로 먼저 복구하며 malformed/future schema는 원본 writable open 전 차단한다. canonical path lock 아래 migration owner marker를 noBackup 전용 sibling staging에 exclusive 획득하고 symlink/sidecar/source fingerprint를 검사한다. 기존 hot-journal 복구가 끝나고 모든 DB handle을 닫은 뒤, rollback journal이 남지 않고 WAL/SHM이 없음을 확인한 validated v1을 기존 Os.open/O_NOFOLLOW·descriptor identity·해시 검사 방식으로 sibling stage에 복사한다. path lock/owner를 유지한 상태에서 원본 fingerprint가 전후 같아야 하며 stage fsync와 read-only v1 전체 재검증을 통과해야 한다. Android에 존재하지 않는 backup API를 호출한다고 가정하지 않는다. 이 일관된 staged copy에서만 budget parent table 생성 → attempt nullable FK ALTER → 예정 index 생성과 user_version2를 한 transaction으로 stage에 적용하고 재열기 전체 v2 validation 후 durable marker/atomic publish한다. hot/nonempty rollback journal을 무시한 main-file copy 금지. idle zero-length journal 외 미해결 sidecar는 안전 부재로 추측하지 않는다. published v2 재검증 뒤에만 migration 완료다. 중단 시 marker+검증된 source/stage fingerprint로 해당 단계만 재개하며 unknown bytes/불일치는 보존 BLOCKED다. 기존 reset marker/owner와 동시 소유 금지. v1 모든 generation/binding/day/dataset/attempt와 unknown/prior/gap/시각을 의미 그대로 보존한다. 현 production v1 configure는 자동false만 저장하므로 정상 이전 상태는 새 ledger empty로 이전한다. validated v1에 예기치 않은 automatic=true가 있으면 기존 retry 이력을 알 수 없으므로 원본을 보존하고 자동 admission을 차단하여 명시 복구를 요구한다. true를 임의false로 덮거나 새 initial budget을 부여하지 않는다. v1 unfinished manual journal은 새 자동 attempt로 승격하지 않는다. 미래 schema fixture는3 이상으로 고치고, 불명 schema/내용 실패 fixture는 계속 실패해야 한다. 상세 publish/ownership API가 현 hot-journal/reset 구현과 충돌하면 blocked로 보고하고 부모에서 보정한다.
 
 - `AutomaticSummaryContracts`: 승인 spec §4 자동 Aggregate 지향을 다음 additive 값으로 구현하는 해석이다. 부모 data-contract 의미 보완이 먼저 필요하며 원래 P0/manual bytes를 변경하지 않는다.
 
 ```kotlin
 // AutomaticSummaryContracts —
-// C/Model.kt; immutable defensive copy, 실행 메모리 전용
-AggregateDuration(val duration: Duration?, val dataOrigins: Set<String>)
-// HealthSnapshot 뒤에 nullable/default 추가; normalized도 동일한 optional 값
-sleepSummary: AggregateDuration? = null
-exerciseSummary: AggregateDuration? = null
-// DTO없음 = manual/미조회, DTO.duration=null = 성공한 aggregate의 missing metric
+class AggregateDuration(duration: Duration?, dataOrigins: Set<String>) {
+    val duration: Duration? = duration.also { require(it == null || !it.isNegative) }
+    val dataOrigins: Set<String> = Collections.unmodifiableSet(LinkedHashSet(dataOrigins))
+    val minutes: Double?
+        get() = duration?.let { it.seconds / 60.0 + it.nano / 60000000000.0 }
+
+    override fun equals(other: Any?): Boolean =
+        other is AggregateDuration && duration == other.duration && dataOrigins == other.dataOrigins
+    override fun hashCode(): Int = 31 * (duration?.hashCode() ?: 0) + dataOrigins.hashCode()
+}
+
+// Append to both HealthSnapshot and NormalizedDay:
+// val sleepSummary: AggregateDuration? = null, val exerciseSummary: AggregateDuration? = null
 ```
 
 - `AutomaticSummaryContracts` daily sleep_min/exercise_min은 Duration.seconds/60.0+nano/60000000000.0, no-data는 blank, 실제 zero만0.0. Normalizer는 granted 해당 category에서만 투영하고, SyncRevision.identify는 aggregate envelope가 있는 category의 scopedSnapshot scope가 SUMMARY인지 require하여 metadata와 값을 일치시킨다. 따라서 SUMMARY가 아닌 scope에서 summary를 받아 성공 revision으로 만들지 않는다. null/empty origins를 fabricated source로 채우지 않는다. origins는 해당 metric 요청 결과만 사용하고 메모리/semantic revision에만 두며 원본 record ID로 전환하지 않는다. CSV header/path/schema0.1과 raw session full bounds는 그대로다. daily의 scope 및 데이터 계약 설명으로 derived summary임을 구분하며 HR 평균을 resting 값으로 쓰지 않는다.
@@ -537,6 +612,17 @@ exerciseSummary: AggregateDuration? = null
 - `WorkManagerIsolationRegistry`: 실제 SAF merge `9ab774beac85bf7a96953bb0a0aa1b8098c76c69`와 WM 통합 `6c5f5b0412029054cc992adc09a2296bcf0c696c` 기준 Source Native는133개(critical15+나머지118, starter1포함)이다. T19후 normal기존132+격리starter1+신규normalprobe2=135개를 예상하되 반드시 실제class/method 집합으로 다시 확인한다. 과거121/critical14를 현재inventory로 쓰지 않는다.
 
 - `WorkManagerIsolationContracts` 확인: source299245214cc76c433ba9ee6909c0f786027dc56b의 full workflow43527182302가 API35·36 각각135 unique Native(critical15+remaining117+별도격리3), 기존132 보존, 오류/실패/skip/중복0, host20 및 sync-state recovery17+cleanup17·killed holds pass0로 실제 통과했다. 공식 ZIP digest와 XML/격리 원문·machine 결과/host 원문을 root가 대조했다(auto-t19-root-native-proof.json). 이는 production Application 도입 전 T19 증거이며 T1의 production bootstrap·새 manifest·현재 네 graph audit를 대신하지 않는다.
+
+- `AutomaticRetryContracts` **모델 불변식**: validated는 고정 메시지 IllegalArgumentException으로 invalid를 거절하고 모든 collection 입력/출력을 방어 복사한 불변 뷰로 제공한다. UUID/hash/date/instant 유효성, 정렬·중복 없는 날짜 1..7과 정확한 nullable observation keys, 비어 있지 않은 non-BLOCKED scopes와 scope fingerprint 일치, 자동 trigger, retriesUsed 0..3, claimVersion >= 0, createdAt <= updatedAt, canonical owner UUID를 검증한다. ACTIVE는 owner 존재 및 due/delay null 또는 owner 부재 및 due/delay 모두 존재만 허용하며 후자는 count 0/1/2에 30/60/120초다. terminal은 owner/due/delay null, EXHAUSTED는 count 3이다. checked arithmetic 실패는 invalid/store fail closed; now<due는 변이 없는 Deferred, 정각 이상은 CAS 성공 시만 count/version 증가다. waiting ACTIVE의 retryNotBefore는 updatedAt에 해당 retryDelayMillis를 checked arithmetic으로 더한 값과 정확히 같아야 한다. 생성자는 collection을 먼저 방어 복사한 snapshot을 검증한다. 순수 validator는 persisted ledger나 실제 read 출처를 보증하지 않는다.
+- `AutomaticRetryContracts` **preflight와 범위**: canonical gate와 정상 journal recovery 뒤 검증된 현재 generation 단일 SQLite snapshot에서 ACTIVE owner/due column만 indexed streaming한다(기존 100000 cap). 기존 partial UNIQUE `(generation,scope_key) WHERE status='ACTIVE'`의 generation ACTIVE scan을 EXPLAIN으로 검증해 충분하면 새 index를 추가하지 않는다. row 전체 검증은 별도 유지한다. owner 잔존 시 RecoveryRequired를 우선하며 process-death admission일 때만 기존 recovery를 재시도하고 live owner timeout takeover 금지. 그 외 미래 due 중 최대값으로 Deferred, 정확히 now면 Ready. BLOCKED/EXHAUSTED/COMPLETED는 전역 차단하지 않는다. Deferred는 Result.retry, auth/HC metadata/records/remote 및 count/version 포함 변이 0이다. Ready 후 fresh metadata로 scope를 결정하고 loadAutomaticBudget은 현재 scope의 ACTIVE/BLOCKED/EXHAUSTED 하나 또는 null을 반환, COMPLETED 제외, 중복 미종결은 손상으로 fail closed한다. generation stale은 Stale, invalid now/손상/unavailable은 고정 store 오류. 전체 budget 목록·JSON per-row decode·side DB·N+1 금지. 최종 claim에서 동일 scope CAS/due와 physical unknown/reconciliation을 다시 검사한다. 모든 설정 변경은 generation CAS를 유지한다.
+- `AutomaticRetryContracts` **owner와 busy union**: SyncMutation의 optional automaticOwner는 여섯 번째 payload가 아니다. start/day/confirmation/pendingTriggers/finishAt 중 정확히 하나다. 순수 core는 trigger/config/hash만으로 ledger binding을 추론하지 않는다. validateMutation의 memory-only automaticOwnerRequired 기본 false는 모든 legacy generic trigger의 기존 null-owner 의미와 finished pending을 보존한다. 제공된 owner는 항상 UUID/version, current attempt id, non-manual trigger, lineage에서 유도한 retry key를 검사하고 bound intent를 뜻한다. owner를 manual attempt에 붙이지 않는다. bound context 또는 supplied owner의 generic 자동 start/finish는 거절하고 unfinished attempt를 요구한다. bound day/confirmation은 owner가 필요하며 ownerless pending은 matching unfinished attempt의 sole payload superset union만 허용한다. manual null의 generic start/finish/finished pending은 보존한다. 순수 검증은 저장된 ledger나 실제 read provenance의 증명이 아니다. store transaction은 동시 pending union을 잃지 않으며 stale/invalid를 구분한다. bound day/confirmation의 generation/lineage/owner/version/frozen scope/date 및 실제 read revision/day hash는 같은 transaction에서 검사한다. 전용 claim/finish와 좁은 gate-held recovery/config invalidation만 자동 lifecycle을 원자 변경하며 live owner timeout takeover는 금지한다.
+- `AutomaticRetryContracts` **durable positive link (ADR-012)**: private SQLite admission은 persisted non-null `attempt.automatic_lineage_id`와 해당 budget을 양방향 검증해 automaticOwnerRequired를 도출한다. public transact caller는 Boolean을 공급하거나 기존 link를 지울 수 없다. supplied owner에 matching link가 없으면 거절한다. 별도로 validated config가 automatic enabled일 때 generic non-manual start를 거절하고 unresolved bound attempt/ledger를 교체해 우회하지 않는다. disabled legacy ledgerless generic 경로는 보존한다. 실제 enabled T5/T11 worker는 prepare/access 전에 dedicated claim/finish 경로로만 라우팅하며 default off 및 due 이전 auth/HC metadata/records/remote 호출은 0이다.
+- `AutomaticRetryContracts` **link 검증과 lifecycle**: claim은 budget과 non-null attempt link를 한 transaction에 쓴다. non-null link는 같은 generation budget, retry key, scope/requestedScopes/frozen dates/count를 일치시키고 unfinished는 ACTIVE ownerAttemptId가 현재 attempt와 맞아야 한다. reverse ACTIVE owner는 정확히 matching unfinished attempt link를 가리킨다. finished는 owner cleared와 finish 상태/due가 일치한다. missing parent/orphan/반대 방향 owner 누락 및 generation/scope/count/version 불일치는 disable 이후에도 fail closed한다. budget claimVersion이 유일한 authoritative version이며 fresh attempt ID와 atomic replacement 및 reclaim +1을 보장하고 별도 attempt version column은 두지 않는다. path lock과 write transaction에서 config/generation 및 authoritative ledger를 재확인한다. finish/recovery/opt-out은 retained attempt의 link를 유지한다. 기존 gate의 유효한 manual start는 이전 attempt가 finished일 때만 NULL link의 새 manual row로 교체하며 이전 budget/uncertainty는 보존한다. reset은 FK ON에서 attempt → budget → generation 순으로 삭제한다. no FK disable/deferred FK/별도 DB. private DB를 권한 있게 조작하여 link를 NULL로 만들고 관련 row도 일관되게 지우는 경우는 구분할 수 없으며 cryptographic tamper detection을 주장하지 않는다.
+- `AutomaticRetryContracts` **schema 검증**: 원본 v1 exact schema/content를 검증·close하고 staged copy에서 budget parent 생성 후 nullable attempt FK를 ALTER하고 planned index/version을 설정한다. legacy attempt는 NULL이고 기존 domain AttemptState/JSON format1/기존 columns 및 데이터 의미는 유지한다. v1/v2 exact schema maps를 별도로 사용하며 migrated와 fresh v2의 실제 sqlite_master 및 foreign_key_list parity, FK check/quick_check와 reopen을 검증한다. source/sidecar 보존 및 기존 hot-journal 경계를 유지한다. API 28에서 nullable REFERENCES ADD COLUMN은 source 수준의 타당성 평가일 뿐 실제 API 28 migration은 미수행이다. minSdk28 제약을 유지하고 기존 API 35/36 실제 gate 외 새 API28 hard gate를 추가하지 않는다.
+- `AutomaticRetryContracts` **finish/recovery**: 최초 version 0, 성공 reclaim만 +1, observe/finish는 유지한다. 정상 COMPLETED는 모든 frozen rows가 동일 scope checked EMPTY 또는 intended datasets CONFIRMED이고 blocker/unknown/REMOTE_STALE 없음이 같은 transaction에서 확인될 때만 허용한다. RETRYABLE은 기존 transient만: count 0/1/2에 30/60/120초, count 3은 EXHAUSTED와 미완료 날짜 blocker; 영구 BLOCKED 및 분류 불가 PENDING/interruption은 BLOCKED/no due, 불확실성과 확정 내역을 보존한다. eligible explicit manual recovery는 기존 네 eligible blocker만 reopen하고 비eligible 혼합이나 근거가 모호하면 거부하며 같은 transaction에서 해당 BLOCKED/EXHAUSTED lifecycle을 COMPLETED로 종료한다. counts, nullable observations, rows, prior/unknown/REMOTE_STALE 및 uncertainty를 보존하며 health success/coverage를 뜻하지 않는다. 새 status/column/retry rights/prune 금지. recovery API는 process-death admission과 gate에서 frozen rows에 afterInterruption 및 finish/BLOCKED를 원자 적용하고 count/vector/version 보존한다. stale은 변이 0; malformed/unavailable은 owner와 recoveryNeeded를 보존한다.
+- `AutomaticRetryContracts` **오류 및 identity**: invalid claim은 input을 포함하지 않는 고정 IllegalArgumentException, stale CAS는 RetryClaim.Stale, finish/set invalid는 SyncCommit INVALID, stale은 STALE, unavailable은 기존 고정 store 오류다. attempt scheduledAt은 최초 proposal.plannedAt, reclaim은 now; startedAt은 claim now, finishedAt null, frozen scopes/dates, trigger, key/count, 빈 pendingTriggers로 만든다. metadata fingerprint freshness 비교는 T5 session/adapter 책임이며 DB가 HC를 읽지 않는다. identity는 revision/work ID/runAttemptCount가 아니다.
+- `AutomaticRetryContracts` **hash golden**: 각 UTF-8 component를 unsigned 4-byte big-endian 길이 prefix 후 SHA-256 lowercase hex64. lineage components `automatic-retry/1`, `00000000-0000-4000-8000-000000000001` → `2ae9b57cbb27eccbfdf58955bbbeb1d0ee1bd81e0d2af0463f67c5c4aa54b034`. access는 `automatic-access/1`, availability 1/0, 정렬 granted 개수와 이름, 정렬 scope 개수와 type/scope 쌍. components `automatic-access/1,1,2,SLEEP,STEPS,2,SLEEP,SUMMARY,STEPS,SUMMARY` → `1c28d20a593cd831089fc8b7b157d529cf54146c376f293173f897d31b3bcd9f`; `automatic-access/1,0,0,0` → `fc7f546dd2128a4224bd2904de0cb8fddd24ae37a328ad3ebb604883bc05262b`. UUID canonical lowercase 검증. T2 golden tests는 독립 벡터를 사용한다.
+- `AutomaticSummaryContracts` 단일 AggregateDuration은 입력 origins를 복사해 unmodifiable로 노출하며 값 equals/hashCode, derived nullable minutes를 제공한다. 음수 거절, 최대 Duration은 finite, 1440분 상한 없음. DTO null과 metric null은 blank, 실제 ZERO만 0.0. T5는 readScoped와 순수 SyncRevision.identify(normalize/CSV)만 source catch로 묶고 CancellationException 재전파, SourceReadException의 SOURCE_LIMIT_EXCEEDED/SOURCE_ACCESS_REQUIRED 보존, 나머지는 비 transient SOURCE_READ_FAILED. store commit 및 destination IO는 catch 밖이다. 해당 날짜 revision 실패 시 그 날짜 remote write 0; 앞서 완료된 날짜 write는 유지한다.
 
 ## 3. 추적성
 
@@ -646,3 +732,40 @@ SAF 실제 merge9ab774b 이후 검증된WM6개Android파일과기존실행/audit
 ### T19 구현 검토 교정3 — 격리 invocation 생명주기·증거 보존
 
 3510bee 독립 검토에서 connected teardown 뒤 재설치 누락, 실패 raw의 PID 외 개인정보 미차단, 다중 top-level class inventory 오귀속, timeout 뒤 기기 invocation 정리 누락을 확인했다. 기존 135 unique 예상 identity·모든 기존 회귀·bounded 실제 프로세스 입증·공개 개인정보 금지 기준을 유지하며 T19 세 파일 중 host script만 국소 교정한다. 준비 교정1·2를 보존하고 이번을 원래 T19의 교정3으로 누적한다. 기본 두 회차 이후의 새 근거를 갖춘 같은 V1 가역 교정은 소유자 자동 승인 위임(AGENTS.md)에 따라 수행하며 별도 독립 재검토와 양 API full 실제 검증은 유지한다. 원문 공개 요구는 승인 spec의 개인정보 금지 우선순위에 따라 검증된 합성 protocol 원문에 한정한다.
+
+### 실제 PR19 병합 및 후속 공통 계약 준비 (2026-11-14 UTC)
+
+PR19 current-head8b9f38e의 Native43534668761과 JVM43534668764가 모두 SUCCESS/CLEAN이며 양API135 unique/실패·오류·skip·중복0, history20 및 sync-state17+17/killedholdsPASS0을 root가 공식ZIPdigest/원본으로 대조했다. 별도 fresh 품질·보안·spec slice 검토와 한글댓글6869176673 후75cc443702a3467c87268d49ce52d4d75b2ed8a5로 정상병합했다. master merge tree가 검증 head tree와 동일함을 확인해 이 준비worktree를 fast-forward했다. T1은 완료이며 전체V1/실기기 수용은 미완료다. 구체화된 후속계약은 제품 구현 전에 parent/ADR Proposed를 commit하고 child parent_rev를 재고정·19brief 재조립·fresh 독립readiness 검토를 수행한다. 기존 준비교정1·2와 원래task별 누적회차를 보존한다.
+
+### T2 교정4·5 — 실제 첫 검증의 수동 호환 및 모델 완결성
+
+최초T2 core실행85개 중 기존 SyncStateTest.kt:174가실패했다. 실제baseline75cc/PR19에서는 MANUAL attempt의 finished pending union을 COMMITTED로검증해84개core가통과했고, 자동ownerless정책의미완료조건을모든trigger에넓힌문구가기존수동보존계약과충돌했다. 교정4는 unfinished제약을자동attempt에한정하고기존수동test/기대값을그대로보존한다. 교정5는 root의원문/diff대조에서확인한 validated waiting due와 updatedAt+delay의불일치허용 및필수owner/불변성/경계검증누락을같은기존정책으로완성한다. 새retry권리/타입/column/외부동작은추가하지않고T2원래3파일만수정한다. 준비1·2·계약구체화3을보존하며이번4와5를원래T2에누적한다. 각원인가설과수정범위를먼저기록한단일제한수정/검증을소유자기존V1가역교정위임으로진행한다. 실패시추가루프없이보고한다.
+
+### T3 준비 교정1 — schema/store 연결과 future fixture 소유 분리
+
+실제 source 검사에서 reset의 attempt 다음 generation 삭제 및 capacity가 retry_budget를 포함하지 않는 것을 확인했다. v2에 한 table과 FK를 추가하는 기존계약을 완성하려면 T3가 기존 store의 최소 capacity/전체ledger검증 호출/reset 순서를 연결해야 한다. T3는 기존4파일에 SqliteSyncStateStore.kt를 더한5파일로 한정한다. 상세 atomicclaim/ownerderivedmutation은 여전히 T4이고 같은store파일은 T3완료후 순차인계한다. 기존 session nativefixture의 version2 unsupported는 v2정상도입후더이상future아니므로 같은 assertion/손상거부 의미를 보존한 version3 fixture교정을 별도T20단일파일로분리해T3와병렬수행한다. T4는T3/T20의같은head전체Native검증뒤시작한다. 원래19task의범위/5PRgate는유지하고호환성보정T20만추가하며새기능/권한/의존성/스키마는추가하지않는다. 기존공통prep1/2·계약3·R6를보존하고이번은T3prep교정1이다.
+
+### T20 호환성 보정1 — v2 nullable 열 추가 뒤 기존 손상 fixture SQL
+
+기존SqliteSyncStateStoreInstrumentedTest:815의 INSERT INTO attempt VALUES는v1의12열을가정한다. v2에nullable link가추가되어13열이되면원래손상내용을검증하기전에SQL열수오류로중단된다. 기존12열명시columnlist만추가해같은12값·같은손상·같은assertion을보존한다. T20소유에이기존fixture파일을더해총2파일로한정하며T3제품/새migrationfixture와disjoint이고T4/T5순차인계를유지한다. 신규schema나검증완화가아니며T3와같은head의실제양API/host검증전T20done처리하지않는다.
+
+### T21 — 전체 gate와 분리된 고정 자동 retry 진단 경로
+
+실제기존full Native43527182302는API35 43m24s/API36 35m18s이고XML의기존SQLite4개hot method 합계1297/995초가길다(ci-full-sharding-feasibility.md 실제원본). 현재T3 full43550859281는0cf03a9에서그대로실행하며범위/순서/host/timeout을바꾸지않는다. 교차emulator순서변경이있는sharding은채택하지않는다. 새T3/T4/T5의오류피드백만빨리받도록기존workflow_dispatch 고정진단case패턴에세개의정적allowlist를추가한다. retry-migration→SyncRetryBudgetMigrationInstrumentedTest, retry-store→SyncRetryBudgetStoreInstrumentedTest, retry-session→SyncExecutionSessionInstrumentedTest이며classsource없으면실패한다. PR event와manual full은기존fullrunner를byte그대로실행하고선택진단을full/hostPASS로사용하지않는다. T21은독립diagnostics branch의workflow/shell두파일뿐이며제품source와disjoint하게진행한다. 현재T3의양API8개진단을실제실행해선택/오류/elapsed를기록하되baseline과조건이다르므로전체성능개선비율이나SLA를주장하지않는다. user의V1자동승인/병렬속도개선위임내가역CI보조경로이며새의존성/권한/공개artifact정책변경없다. 정상PR병합전currenthead의전체양API/host와fresh독립review는불변이다.
+
+### T20 보정2 — 남은 manual 저장소 future fixture의 v2 충돌
+
+1680221 전체43553867643의API36공식로그는ManualDriveStoreInstrumentedTest의unsupported분기104줄이여전히version2를설정해거부assertion에실패함을보였다. 해당DB는SyncStateDatabase로현재정상v2이므로future3으로입력만교정한다. T20에이기존fixture파일을추가해총3파일이며기존모든assertion/다른손상/handle값은유지한다. Native전체의version2대입을다시검색한나머지SqliteHistoryStoreInstrumentedTest138은별도history DB schema1의정상futurefixture라수정하지않는다. 실행중API35는같은원인의낭비를피해취소요청하고실패full을PASS로사용하지않는다. 기존고정saf-store로현재class2개를먼저양API검증한뒤새head의전체143/host를실행한다. 원래T20보정1을보존하고이번2를누적하며제품/스키마/허용권한변경없다.
+
+
+### 2026-11-22 실행 cadence 우선 적용
+
+소유자의 최신 V1 완료 우선 지시에 따라 `docs/2026-11-22-v1-release/plan.md`의 검토된 작업별 인터페이스 및 영향 테스트와 해당 실제 SQLite class 검증 후 종속 통합을 진행한다. 이 지시는 위 과거 T3/T20 뒤 T4 시작 전 같은 head 전체 Native 실행 순서만 대체하며, 과거 결과와 복구 횟수는 변경하지 않는다. 통합 PR 병합 전과 최종 1.0 head의 양 API 전체 Native 및 모든 기존 host, JVM, lint, APK, 독립 검토·건강정보·보안·실제 수용 gate는 그대로 필수다. 새 baseline a70 전체 CI 44966834193은 별도 실행 중이며 결과 확인 전 PASS가 아니다.
+
+### 2026-11-22 T1 인증 finalization 전달 보정
+
+기존 auth 실패 frozen-date blocker 원자성 정책을 변경하지 않고 AutomaticFinishOutcome에 ACCOUNT_AUTHORIZATION_BLOCKED 값을 추가해 store에 해당 분류를 전달한다. 모델 ledger 상태는 BLOCKED이며 generic BLOCKED에서 인증 실패를 추정하지 않는다. 기존 store 여섯 서명 및 schema는 유지한다. 상세 작업·복구 집계는 1.0 계획 T1 보정1이다.
+
+### 2026-11-22 명시 manual의 미준비 claim 복구 명확화
+
+finished BLOCKED lineage가 observed revision 전부 null이고 frozen dates의 day journal이 하나도 없으면 아직 준비되지 않은 중단 claim이다. fresh proof 이후의 명시 manual reopen에서 해당 lineage만 lifecycle 종료할 수 있으며 건강 성공/EMPTY를 만들지 않는다. 비eligible 기존 journal/budget은 보존하여 manual 전체를 차단하지 않는다. 기존4종 blocker 해제·uncertain/stale 보존 및 자동 tick/app-open의 retry 재설정 금지는 유지한다.

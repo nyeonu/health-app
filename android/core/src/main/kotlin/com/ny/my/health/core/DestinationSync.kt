@@ -17,12 +17,13 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
     private class Halt(val status: BatchStatus) : RuntimeException()
     private class DestinationFailed(val reason: BlockReason) : RuntimeException()
 
-    suspend fun run(trigger: SyncTrigger, generation: DestinationGeneration, attemptId: String): BatchOutcome {
+    suspend fun run(trigger: SyncTrigger, generation: DestinationGeneration, attemptId: String,
+        automaticOwner: AutomaticOwner? = null, finishAttempt: Boolean = true): BatchOutcome {
         var confirmed = 0
         var activeDay: DayState? = null
         var activeAttempt: AttemptState? = null
         fun mutation(day: DayState? = null, confirmation: FileConfirmation? = null,
-            finish: java.time.Instant? = null) = SyncMutation(attemptId, null, day, confirmation, null, finish)
+            finish: java.time.Instant? = null) = SyncMutation(attemptId, null, day, confirmation, null, finish, automaticOwner)
         suspend fun commit(value: SyncMutation) {
             when (store.transact(generation, value).status) {
                 CommitStatus.COMMITTED -> Unit
@@ -112,24 +113,29 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                     commit(mutation(day = previous.copy(phase = DayPhase.BLOCKED, checkedAt = null,
                         blocker = BlockReason.HISTORY_ACCESS_REQUIRED)))
                     activeDay = null
+                    if (automaticOwner != null) break
                     continue
                 }
                 val unresolved = store.loadUnresolvedCreates(generation, date) ?: throw Halt(BatchStatus.STALE)
                 current()
-                val snapshot = try {
-                    profiling?.measure(ProfileStage.HEALTH_READ) { reader.readScoped(date, attempt.requestedScopes) }
+                val source = try {
+                    val snapshot = profiling?.measure(ProfileStage.HEALTH_READ) { reader.readScoped(date, attempt.requestedScopes) }
                         ?: reader.readScoped(date, attempt.requestedScopes)
-                }
-                catch (cancel: CancellationException) { throw cancel }
+                    snapshot to SyncRevision.identify(snapshot, previous, clock.instant(), profiling)
+                } catch (cancel: CancellationException) { throw cancel }
                 catch (error: Exception) {
                     commit(mutation(day = previous.copy(phase = DayPhase.BLOCKED, checkedAt = null,
                         blocker = (error as? SourceReadException)?.reason ?: BlockReason.SOURCE_READ_FAILED)))
+                    activeDay = null
+                    if (automaticOwner != null) break
                     continue
                 }
-                val revision = SyncRevision.identify(snapshot, previous, clock.instant(), profiling)
+                val (snapshot, revision) = source
                 if (snapshot.blockedTypes.isNotEmpty()) {
                     commit(mutation(day = previous.copy(phase = DayPhase.BLOCKED, scopes = revision.scopes,
                         checkedAt = null, blocker = BlockReason.SOURCE_ACCESS_REQUIRED)))
+                    activeDay = null
+                    if (automaticOwner != null) break
                     continue
                 }
                 fun prior(dataset: Dataset): FileConfirmation? {
@@ -226,6 +232,7 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                     }
                 } catch (failure: DestinationFailed) {
                     journalDestinationFailure(failure.reason)
+                    if (automaticOwner != null) break
                     continue
                 }
                 day = store.loadDay(generation, date, attempt.scopeKey) ?: throw Halt(BatchStatus.STALE)
@@ -240,16 +247,18 @@ class DestinationSync(private val store: SyncStateStore, private val reader: Sco
                     if (file.phase == FilePhase.RUNNING) file.copy(phase = FilePhase.INDETERMINATE) else file
                 })
                 commit(mutation(day = day)); activeDay = null
+                if (automaticOwner != null && phase !in setOf(DayPhase.CONFIRMED, DayPhase.EMPTY)) break
             }
-            commit(mutation(finish = clock.instant()))
+            if (finishAttempt) commit(mutation(finish = clock.instant()))
             val endingToday = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")))
             val final = store.loadForScope(generation, endingToday, access)
             if (final.status != StateStatus.READY || final.state?.generation != generation) throw Halt(BatchStatus.BLOCKED)
             val rows = attempt.dates.map { store.loadDay(generation, it, attempt.scopeKey) }
             val status = when {
-                rows.any { it == null } -> BatchStatus.PENDING
+                automaticOwner == null && rows.any { it == null } -> BatchStatus.PENDING
                 rows.any { it?.phase in setOf(DayPhase.BLOCKED, DayPhase.REMOTE_STALE) } -> BatchStatus.BLOCKED
                 rows.any { it?.blocker == BlockReason.DESTINATION_TRANSIENT_FAILURE } -> BatchStatus.RETRYABLE
+                rows.any { it == null } -> BatchStatus.PENDING
                 rows.all { it?.isUploaded() == true || (it?.phase == DayPhase.EMPTY && it.isChecked()) } -> BatchStatus.COMPLETED
                 else -> BatchStatus.PENDING
             }
