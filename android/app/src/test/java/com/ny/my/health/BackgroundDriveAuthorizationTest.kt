@@ -3,6 +3,7 @@ package com.ny.my.health
 import com.ny.my.health.core.DestinationGeneration
 import com.ny.my.health.core.DriveResponse
 import com.ny.my.health.core.DriveTransport
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -76,4 +77,61 @@ class BackgroundDriveAuthorizationTest {
         assertEquals(8, calls)
         assertFalse(authorizer.toString().contains("fresh-token"))
     }
+
+    @Test
+    fun `Suspending durable checks block stale callbacks and stale proof before reads and propagate cancellation`() = runBlocking {
+        val account = BoundDriveAuthorization.AccountSelection("selected@example.invalid", "com.google")
+        val generation = DestinationGeneration("synthetic-generation")
+        val result = BackgroundDriveAuthorization.Result(false, "fresh-token", listOf(BoundDriveAuthorization.DRIVE_FILE_SCOPE))
+        var proofs = 0
+        var reads = 0
+        val adapter = BackgroundDriveAuthorization.Adapter { _, deliver -> deliver(result) }
+        val authorizer = BackgroundDriveAuthorization(adapter)
+        val factory: (String) -> DriveTransport = { token ->
+            assertEquals("fresh-token", token)
+            object : DriveTransport {
+                override suspend fun execute(method: String, url: String, contentType: String?, body: ByteArray?): DriveResponse {
+                    proofs++
+                    return DriveResponse(200, """{"user":{"emailAddress":"selected@example.invalid","me":true}}""")
+                }
+            }
+        }
+        suspend fun staleAt(target: Int) {
+            var checks = 0
+            val pending = CompletableDeferred<Boolean>()
+            val job = async(start = CoroutineStart.UNDISPATCHED) {
+                runCatching {
+                    authorizer.authorize(account, generation, {
+                        checks++
+                        if (checks == target) pending.await() else true
+                    }, factory) { reads++ }
+                }.exceptionOrNull()
+            }
+            assertEquals(target, checks)
+            assertFalse(job.isCompleted)
+            pending.complete(false)
+            assertTrue(job.await() is BoundDriveAuthorizationException)
+        }
+        staleAt(2)
+        assertEquals(0, proofs)
+        assertEquals(0, reads)
+        staleAt(3)
+        assertEquals(1, proofs)
+        assertEquals(0, reads)
+        var checks = 0
+        val pending = CompletableDeferred<Boolean>()
+        val cancelled = async(start = CoroutineStart.UNDISPATCHED) {
+            authorizer.authorize(account, generation, {
+                checks++
+                if (checks == 2) pending.await() else true
+            }, factory) { reads++ }
+        }
+        assertEquals(2, checks)
+        assertFalse(cancelled.isCompleted)
+        cancelled.cancelAndJoin()
+        assertTrue(cancelled.isCancelled)
+        assertEquals(1, proofs)
+        assertEquals(0, reads)
+    }
+
 }

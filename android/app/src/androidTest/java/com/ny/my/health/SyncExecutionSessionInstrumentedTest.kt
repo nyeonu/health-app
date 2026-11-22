@@ -132,6 +132,9 @@ class SyncExecutionSessionInstrumentedTest {
             f.steps++
             val later = Clock.fixed(f.time.plusSeconds(30), ZoneOffset.UTC)
             f.reconcile = { ReconciledFiles(emptyList(), it, emptySet()) }
+            f.write = { files, confirm -> files.forEach {
+                confirm(FileConfirmation(it.key, "synthetic-target-${it.key.dataset.name}", later.instant()))
+            } }
             assertEquals(BatchStatus.COMPLETED, session(later).runAutomaticPrepared(SyncTrigger.CATCH_UP, f.generation) { f.engine(sessionClock = later) }.status)
             val last = (f.store().loadAutomaticBudget(f.generation, f.key) as AutomaticBudgetRead.Ready).budget
             assertNull(last)

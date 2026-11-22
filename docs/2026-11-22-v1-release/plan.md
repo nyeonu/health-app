@@ -16,8 +16,9 @@ tasks:
   - {id: T5, title: 자동 session 연결, depends_on: [T1, T11], status: in_progress, tier: standard}
   - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: done, tier: standard}
   - {id: T7, title: WorkManager 실행과 예약, depends_on: [T3, T6], status: in_progress, tier: standard}
-  - {id: T8, title: 자동 설정과 상태, depends_on: [T7], status: pending, tier: standard}
-  - {id: T9, title: 화면 연결과 접근성, depends_on: [T8], status: pending, tier: standard}
+  - {id: T8, title: 자동 설정과 상태, depends_on: [T1], status: in_progress, tier: standard}
+  - {id: T13, title: 자동 활성 시 수동 Drive 공존, depends_on: [T1], status: in_progress, tier: standard}
+  - {id: T9, title: 화면 연결과 접근성, depends_on: [T8, T13], status: pending, tier: standard}
   - {id: T11, title: 자동 engine 경계, depends_on: [], status: done, tier: standard}
   - {id: T12, title: 실제 동작에 맞는 개인정보 안내, depends_on: [], status: done, tier: standard}
   - {id: T10, title: 1.0 APK 후보와 안내, depends_on: [T9, T12], status: pending, tier: standard}
@@ -217,7 +218,7 @@ class SyncWorkScheduler(context: Context) {
 
 ### T8: 자동 설정과 상태
 
-- **depends_on**: [T7]; **tier**: standard; **status**: pending.
+- **depends_on**: [T1]; T7 검증·통합은 완료 선행 조건; **tier**: standard; **status**: in_progress.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -225,13 +226,14 @@ class SyncWorkScheduler(context: Context) {
   | `A/SyncViewModel.kt` | 수정 |
   | `A/ManualDriveUi.kt` | 수정 |
   | `AT/AutomaticSettingsTest.kt` | 신규 |
+  | `AI/AutomaticSettingsInstrumentedTest.kt` | 신규 |
 - **인터페이스**: 2절 `AutomaticStatusContracts`, `AutomaticSchedulerApi` 참조. 기존 `SyncUiState`와 actions를 확장하고 별도 DTO를 추측하지 않는다.
 - **작성할 테스트**:
   - "명시 opt-in/off, generation 무효화, 취소/늦은 callback, reset과 queued/blocked/gap 투영. 관련 JVM 테스트 통과가 완료 기준이다."
 
 ### T9: 화면 연결과 접근성
 
-- **depends_on**: [T8]; **tier**: standard; **status**: pending.
+- **depends_on**: [T8, T13]; **tier**: standard; **status**: pending.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -284,6 +286,20 @@ T1/T2/T3는 파일이 겹치지 않아 병렬 가능하다. 각 작업의 실제
   | `A/PrivacyActivity.kt` | 수정 |
 - **기준**: 독립 보안 검토의 foreground-only/예약 없음 오표기를 수정한다. 수동 Drive·SAF, 명시 opt-in한 자동 Drive의 background 권한 및 범위, 끄기와 시스템 권한 철회, 로컬 reset과 원격파일 삭제의 차이를 실제 승인 동작에 맞게 설명한다. backend/상시서비스/정각·완료 보장/실제 수용을 주장하지 않는다. 최소 계정 binding은 앱 비공개 noBackup DB, token은 메모리라는 기존 경계를 유지한다.
 - **완료 기준**: static copy만 변경하고 실제 source/승인 계약과 대조한다. 앱 컴파일과 기존 개인정보 화면/최종 Native gate를 유지하며 저위험 정적 문구에 구현을 복제하는 별도 테스트는 추가하지 않는다.
+
+### T13: 자동 활성 시 수동 Drive 공존
+
+- **depends_on**: [T1]; **tier**: standard; **status**: in_progress.
+- **변경 파일**
+
+  | 파일 | 구분 |
+  |---|---|
+  | `A/ManualDriveSession.kt` | 수정 |
+  | `AI/ManualDriveFlowInstrumentedTest.kt` | 수정 |
+- **기준**: T8 실제 연결 검토에서 checkCurrent의 !config.automatic 조건이 자동을 켜면 기존 전경 수동 Drive까지 막음을 확인했다. 승인 spec은 수동 경로 유지와 manual/worker 공용 gate 공존을 요구한다. 이 불필요한 automatic=false 제약만 제거하고 generation/categories/account/epoch/foreground/private consent 및 fresh proof 검사는 모두 유지한다. SAF의 자동 차단 조건은 유지한다.
+- **작성할 테스트**:
+  - "실제 SQLite automatic=true 구성에서도 전경 별도 동의와 새 계정 proof를 거친 manual 읽기가 동작하고 automatic flag를 끄거나 retry lineage를 생성하지 않는다. 동의/foreground/late generation 거부 회귀는 유지한다. 기존 해당 class 및 saf-flow 진단 양 API 또는 최종 full에서 실제 검증한다."
+- **완료 기준**: 소스·회귀 검증 후 T9가 같은 native file을 순차 인계한다. 별도 UI나 의존성은 추가하지 않는다.
 
 ## 5. 전체 검증
 
@@ -392,3 +408,31 @@ T5의 실제 API/worker marker는 컴파일 통과했고 하부 T1 원자 SQLite
 T7 실제 연결 검토에서 BackgroundDriveAuthorization의 동기 isCurrent 콜백으로 suspend-only SQLite의 current generation/automatic을 SDK 응답 후 about 직전에 확인할 수 없음을 발견했다. 동기 runBlocking/main-thread 우회나 새 메모리 캐시를 만들지 않는다. 해당 새 background authorizer의 콜백만 suspend () -> Boolean으로 바꾸고 시작/SDK 응답 후 about 전/about 후 block 진입 전의 fresh durable 검사를 await한다. 기존 BoundDriveAuthorization 공개 수동 API는 그대로이며 그 내부 동기 guard에는 ticket sequence/현재 coroutine Job 활성만 사용한다. worker는 store.load()의 generation+automatic을 suspend로 검사한다. token/engine은 gate owner 실행의 메모리에만 두고 callback/engine을 job 간 저장하지 않는다.
 
 기존 T3 authorizer와 해당 JVM 테스트2파일만 보정해 검사 자체의 suspension과 SDK 응답 이후 무효화 시 about0, about 이후 무효화 시 block0·취소 전파를 검증한다. 새 의존성/권한/정책/스키마는 없으며 T3 교정1로 집계한다. 이 보정의 실제 SDK runtime은 기존 약속대로 최종 양API Native에 유지한다.
+
+### T8 격리 staging 병렬화
+
+T1 실제 CAS/복구는 양API14개 통과했고 T7 scheduler의4개 public API 및 실제 SDK 서명이 확정되었다. T8의 disjoint ViewModel/actions/settings test3파일 구현은 T7 native/worker 검증 대기와 병렬 staging한다. root는 T7만 고정 snapshot에 옮겨 T8 WIP 없이 먼저 검증하며 T8 자체 검증/완료/최종통합은 검증된 T7 source 위에서 수행한다. generation invalidate 후 cancel, 자동off 복원시 enqueue/SDK 호출없음 및 기존 manual/SAF 의미를 보존한다. 관련 gate 실패시 T8 source를 보존하고 검증만 보류한다.
+
+### T8 연결 검토 보정 — 기존 수동 Drive의 자동 flag guard
+
+원래 수동 경로 보존 기준의 누락을 실제 source line322에서 확인해 T13 2파일 가역 수정으로 분리한다. T8의3파일/자동설정 작업과 disjoint이며 T9 같은 테스트파일 수정 전에 완료한다. 새로운 수동 실행 권한이나 백그라운드 SAF를 허용하지 않는다. 기존 승인 동작의 연동 교정이고 해당 검토를 T8 준비 근거로 보존한다.
+
+### 원래 T5 교정5 — retry 시각의 합성 confirmation fixture
+
+1745646 대상 Native44971406816의 양API 원본XML은 각각23건 중22 PASS/1 FAIL, automaticRetryKeepsLineageAndConsumesBudgetWhenSourceRevisionChanges의135행에서 COMPLETED 대신 BLOCKED다. 실제 source 대조로 두 번째 실행은 clock+30초인데 fixture confirmation은 원래 time을 고정해 file.startedAt보다 이전 확인 시각을 전달하며 기존 core validator가 거부함을 확인했다. production 확인 시각 검증이나 기대 COMPLETED는 유지하고 해당 새 테스트의 retry write callback만 later.instant()의 확인으로 정합화한다. retriesUsed=1/같은 lineage/새 revision의 검증도 유지한다. 기존 session 제품 코드는 변경하지 않고 기존 native 파일1개만 수정한다. 원래T5 교정1~4를 보존하여 이번5로 누적하며 다른22건 통과는 보존한다. 수정 후 같은 class 양API 실제 진단을 재수행한다.
+
+### T13 교정1 — configure의 명시 default-off fixture
+
+root 정적 대조는 T13 새 테스트가 configure(automatic=true)를 전달하지만 실제 store.configure는 설계대로 항상 false를 저장함을 확인했다. 해당 테스트는 configure 후 setAutomaticCAS(generation,true)를 명시 수행해 실제 켜진 구성을 만들고 이후 manual 검사/automatic=true 유지 기대를 그대로 검증한다. 제품 guard 수정이나 configure의 default-off 정책은 변경하지 않는다. 기존 native 테스트1파일만 보정한다.
+
+### T7 교정1 — 예상 밖 worker 실패와 production factory 증거
+
+독립 리뷰는 worker가 execute의 예상 밖 예외를 Result.success로 기록함과 native 테스트가 custom test factory만 검증함을 지적했다. unknown exception은 failure로 반환하고 CancellationException은 재전파하며, BLOCKED/STALE 정상 no-op과 RETRYABLE 재대기 의미는 구분한다. production runner는 DB READY/current gen/automatic/Drive binding을 먼저 확인하고 stale/default-off에서 SDK 구성·health read를 하지 않는다. 실제 production WorkManager configuration의 factory와 실제 worker builder/DB no-op 실행을 native에서 검증하며 실제 constraints 충족을 임의 가정하지 않는다. 기존4파일 안에 한정하고 새 test helper 전역 초기화/registry는 추가하지 않는다.
+
+### T8 교정1 — 미확인 동의·수집기 실패·중단된 변경 요청
+
+독립 리뷰의 세 Important를 같은 설정 경계에서 보정한다. 저장소 CORRUPT/UNAVAILABLE을 꺼짐으로 단정하지 않고 별도 known/unknown 상태와 확인·복구 안내로 표시한다. WorkInfo 자식 coroutine 내부에서 일반 예외를 가시적 미확인 상태로 처리하고 CancellationException은 재전파한다. controller는 실제 변경 child Job을 등록하고 invalidate에서 취소하여 기존 store.write의 transaction commit 전 coroutine.ensureActive 경계를 사용한다. commit 완료 이후의 취소를 되돌린다고 주장하지 않으며 명시 off/reset은 generation CAS로 별도 처리한다. beforeCommit에서 중단시킨 실제 SQLite 변경을 invalidate/cancel한 뒤 rollback과 automatic=false 유지·enqueue0을 native 회귀로 입증한다. 이를 위한 native 파일1개를 추가해 T8 총4파일이다. 기존 controller/unit 테스트와 manual/SAF 동작은 보존한다. FAILED/CANCELLED WorkInfo도 명시적으로 표시하며 건강 완료로 라벨링하지 않는다. store API/새 lock/cache/권한/의존성은 추가하지 않는다.
+
+### T3 suspend 검사 완료 및 대상 검증 재시작
+
+T3 교정1은 root 격리 snapshot에서 app107 JVM 테스트 실패/오류/skip0 및 실제 계측 소스 컴파일 PASS42s를 확인했고 main의 두 파일과 byte 일치했다. T5 교정5는 confirmation 시각만 바로잡아 제품 세션 source는1745646과 동일하다. T13 교정1은 default-off configure 이후 명시 setAutomaticCAS(true)를 사용한다. 두 실제 Native 고정 진단을 같은 새 checkpoint에서 다시 수행하며 결과 전에는 완료로 판정하지 않는다.

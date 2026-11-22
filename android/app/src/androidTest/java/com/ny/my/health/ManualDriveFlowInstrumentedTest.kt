@@ -16,6 +16,51 @@ import org.junit.runner.RunWith
 /** 실제 SQLite/session과 합성 외부 bridge를 연결한다. 실계정 로그인·원격 쓰기는 하지 않는다. */
 @RunWith(AndroidJUnit4::class)
 class ManualDriveFlowInstrumentedTest {
+    @Test fun automaticEnabledManualFlowRequiresForegroundConsentAndFreshProofWithoutCreatingRetryLineage() = runBlocking {
+        val f = ManualDriveNativeFixture()
+        try {
+            val configuration = SyncConfiguration("private-drive", f.today.minusDays(1), true, f.categories)
+            val configured = f.store.configure(null, configuration,
+                PrivateDestinationBinding("DRIVE", f.account.name, f.account.type))
+            assertEquals(CommitStatus.COMMITTED, configured.status)
+            val generation = checkNotNull(configured.generation)
+            assertEquals(CommitStatus.COMMITTED, f.store.setAutomaticCAS(generation, true, f.clock.instant()).status)
+            val session = f.session()
+            session.refresh()
+            assertNull(session.beginAuthorization())
+            session.setForeground(true)
+            assertNull(session.beginAuthorization())
+            session.setPrivateFolderConsent(true)
+            val ticket = checkNotNull(session.beginAuthorization())
+            assertEquals(generation, ticket.generation)
+            assertTrue(session.acceptAuthorization(ticket, false, "synthetic-memory-only", f.scopes))
+            assertEquals(0, f.proofs)
+            assertEquals(0, f.rawReads)
+            assertEquals(BatchStatus.COMPLETED, session.continueManual()!!.status)
+            assertEquals(1, f.proofs)
+            assertEquals(1, f.rawReads)
+            assertEquals(0, f.writes)
+            val reopened = f.reopen()
+            val saved = checkNotNull(reopened.load().state)
+            assertEquals(generation, saved.generation)
+            assertTrue(checkNotNull(saved.configuration).automatic)
+            val scoped = checkNotNull(reopened.loadForScope(generation, f.today,
+                f.reader.access(SyncTrigger.MANUAL)).state)
+            assertEquals(DayPhase.EMPTY, scoped.days.getValue(f.today.minusDays(1)).phase)
+            assertEquals(f.today.minusDays(1), scoped.coverage.scopeCheckedThrough)
+            assertNull(scoped.coverage.scopeUploadedThrough)
+            assertNull(scoped.coverage.uploadedThrough)
+            assertEquals(f.categories - DataType.STEPS, scoped.coverage.excludedTypes)
+            android.database.sqlite.SQLiteDatabase.openDatabase(f.file.path, null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READONLY).use { db ->
+                db.rawQuery("SELECT count(*) FROM retry_budget", null).use { rows ->
+                    assertTrue(rows.moveToFirst())
+                    assertEquals(0L, rows.getLong(0))
+                }
+            }
+        } finally { f.close() }
+    }
+
     @Test fun manualFlowRejectsStaleProofPauseResetAndDoubleContinueWhileReopeningActualSqliteState() = runBlocking {
         val f = ManualDriveNativeFixture()
         try {

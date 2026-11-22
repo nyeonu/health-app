@@ -319,7 +319,7 @@ internal class ManualDriveSession(
         val read = ports.store.load()
         check(read.status == StateStatus.READY && read.state?.generation == expected.generation)
         val config = checkNotNull(read.state?.configuration)
-        check(!config.automatic && config.categories == state.value.categories)
+        check(config.categories == state.value.categories)
         check(ports.binding(expected.generation) == expected.account)
         check(permitted() && config.categories.any { it in state.value.grantedCategories })
         check(isCurrent(expected, capturedEpoch))
