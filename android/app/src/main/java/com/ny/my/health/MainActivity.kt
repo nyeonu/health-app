@@ -29,7 +29,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.HealthConnectFeatures
 import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.permission.HealthPermission
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
@@ -91,6 +94,48 @@ class MainActivity : ComponentActivity() {
         PermissionController.createRequestPermissionResultContract(),
     ) { model.healthConsentReturned() }
 
+    private var backgroundPermissionPending = false
+    private var backgroundPermissionResultPending = false
+    internal var backgroundFeatureAvailable: () -> Boolean = {
+        HealthConnectClient.getSdkStatus(this) == HealthConnectClient.SDK_AVAILABLE &&
+            HealthConnectClient.getOrCreate(this).features.getFeatureStatus(
+                HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_IN_BACKGROUND,
+            ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
+    }
+    internal var launchBackgroundPermission: () -> Unit = {
+        backgroundPermission.launch(setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND))
+    }
+    private val backgroundPermission = registerForActivityResult(
+        PermissionController.createRequestPermissionResultContract(),
+    ) { backgroundPermissionResult() }
+
+    internal fun backgroundPermissionResult() {
+        if (!backgroundPermissionPending) return
+        backgroundPermissionPending = false
+        backgroundPermissionResultPending = true
+        drainBackgroundPermissionResult()
+    }
+
+    private fun drainBackgroundPermissionResult() {
+        if (!backgroundPermissionResultPending || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) ||
+            !model.manual.state.value.foreground) return
+        backgroundPermissionResultPending = false
+        model.backgroundPermissionReturned()
+    }
+
+    internal fun requestBackgroundPermission() {
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || bridgeBusy() || backgroundPermissionResultPending) return
+        val available = try { backgroundFeatureAvailable() } catch (_: Exception) { false }
+        if (!available) { model.backgroundPermissionUnavailable(); return }
+        if (!model.beginBackgroundPermissionRequest()) return
+        backgroundPermissionPending = true
+        try { launchBackgroundPermission() }
+        catch (_: Exception) {
+            backgroundPermissionPending = false
+            model.backgroundPermissionLaunchFailed()
+        }
+    }
+
     // 요청 객체는 launch별로 고정하며 외부 결과가 돌아오기 전에는 슬롯을 교체하지 않는다.
     private class BridgeRequest(val id: Long, val generation: com.ny.my.health.core.DestinationGeneration?) {
         var valid = true
@@ -103,7 +148,7 @@ class MainActivity : ComponentActivity() {
     private var consentRequest: BridgeRequest? = null
     private var pickerResult: ((Boolean, Boolean, String?, String?) -> Unit)? = null
     private var authorizationResult: ((Boolean, String?, List<String>) -> Unit)? = null
-    private fun bridgeBusy() = pickerRequest != null || activeAuthorization != null || consentRequest != null || safRequest != null
+    private fun bridgeBusy() = pickerRequest != null || activeAuthorization != null || consentRequest != null || safRequest != null || backgroundPermissionPending
     private fun current(request: BridgeRequest): Boolean = request.valid &&
         request.generation == model.manual.state.value.generation && model.manual.state.value.privateFolderConsent &&
         model.manual.state.value.grantedCategories.isNotEmpty() &&
@@ -228,6 +273,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        backgroundPermissionPending = savedInstanceState?.getBoolean("backgroundPermissionPending") == true
+        backgroundPermissionResultPending = savedInstanceState?.getBoolean("backgroundPermissionResultPending") == true
         // 본문 제목을 사용하고 시스템 바 경계는 Compose에서 일관되게 처리한다.
         requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         // edge-to-edge 초기화 전에 보존된 Window의 inset 처리를 맞춘다.
@@ -296,6 +343,8 @@ class MainActivity : ComponentActivity() {
                                 } catch (_: Exception) { model.healthConsentLaunchFailed() }
                             },
                             refreshGrants = model::refreshPermissions,
+                            setAutomatic = model::setAutomatic,
+                            requestBackgroundPermission = ::requestBackgroundPermission,
                             selectAccount = { if (model.committedDestination.value.selectionAllowed) model.selectManualAccount(manualBridge) },
                             authorize = { if (driveCurrent) model.authorizeManual(manualBridge) },
                             continueManual = { if (driveCurrent) model.continueManual() },
@@ -334,9 +383,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("backgroundPermissionPending", backgroundPermissionPending)
+        outState.putBoolean("backgroundPermissionResultPending", backgroundPermissionResultPending)
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onResume() {
         super.onResume()
         model.resume {
+            drainBackgroundPermissionResult()
             val safPending = pendingSafResult
             pendingSafResult = null
             if (model.saf.state.value.foreground) safPending?.invoke()

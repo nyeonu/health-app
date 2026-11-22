@@ -13,15 +13,16 @@ tasks:
   - {id: T2, title: 요약 모델, depends_on: [], status: done, tier: standard}
   - {id: T3, title: 계정 고정 silent 인증, depends_on: [], status: done, tier: standard}
   - {id: T4, title: 요약 CSV와 revision, depends_on: [T2], status: done, tier: standard}
-  - {id: T5, title: 자동 session 연결, depends_on: [T1, T11], status: in_progress, tier: standard}
+  - {id: T5, title: 자동 session 연결, depends_on: [T1, T11], status: done, tier: standard}
   - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: done, tier: standard}
   - {id: T7, title: WorkManager 실행과 예약, depends_on: [T3, T6], status: in_progress, tier: standard}
   - {id: T8, title: 자동 설정과 상태, depends_on: [T1], status: in_progress, tier: standard}
-  - {id: T13, title: 자동 활성 시 수동 Drive 공존, depends_on: [T1], status: in_progress, tier: standard}
-  - {id: T9, title: 화면 연결과 접근성, depends_on: [T8, T13], status: pending, tier: standard}
+  - {id: T13, title: 자동 활성 시 수동 Drive 공존, depends_on: [T1], status: done, tier: standard}
+  - {id: T9, title: 화면 연결과 접근성, depends_on: [T1], status: in_progress, tier: standard}
   - {id: T11, title: 자동 engine 경계, depends_on: [], status: done, tier: standard}
   - {id: T12, title: 실제 동작에 맞는 개인정보 안내, depends_on: [], status: done, tier: standard}
-  - {id: T10, title: 1.0 APK 후보와 안내, depends_on: [T9, T12], status: pending, tier: standard}
+  - {id: T14, title: 기존 runner의 1.0 고정 진단, depends_on: [], status: in_progress, tier: standard}
+  - {id: T10, title: 1.0 APK 후보와 안내, depends_on: [T12], status: done, tier: standard}
 ---
 
 # V1 completion delivery plan
@@ -172,7 +173,7 @@ class SyncWorkScheduler(context: Context) {
 
 ### T5: 자동 session 연결
 
-- **depends_on**: [T1, T11]; **tier**: standard; **status**: in_progress.
+- **depends_on**: [T1, T11]; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -233,7 +234,7 @@ class SyncWorkScheduler(context: Context) {
 
 ### T9: 화면 연결과 접근성
 
-- **depends_on**: [T8, T13]; **tier**: standard; **status**: pending.
+- **depends_on**: [T1]; T8 검증 및 T13 같은 native 파일 인계는 완료 선행 조건; **tier**: standard; **status**: in_progress.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -241,14 +242,14 @@ class SyncWorkScheduler(context: Context) {
   | `A/HealthHomeScreen.kt` | 수정 |
   | `A/MainActivity.kt` | 수정 |
   | `AI/HealthHomeScreenInstrumentedTest.kt` | 수정 |
-  | `AI/ManualDriveFlowInstrumentedTest.kt` | 수정 |
+  | `AI/BackgroundPermissionFlowInstrumentedTest.kt` | 신규 |
 - **인터페이스**: 2절 `AutomaticStatusContracts` 참조. 기존 manual 및 SAF 흐름을 유지한다.
 - **작성할 테스트**:
   - "설정/동의/실행/reset 접근성 semantics, 밝은/어두운 화면과 큰 글자, restore 부수효과 없음, gap과 blocker 표시. 해당 instrumentation 양 API 통과가 완료 기준이다. 실제 TalkBack은 별도 pending이다."
 
 ### T10: 1.0 APK 후보와 안내
 
-- **depends_on**: [T9, T12]; **tier**: standard; **status**: pending.
+- **depends_on**: [T12]; T9 compiler 통과 후 후보를 준비하고 최종 Native 완료는 수용 선행 조건; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -289,7 +290,7 @@ T1/T2/T3는 파일이 겹치지 않아 병렬 가능하다. 각 작업의 실제
 
 ### T13: 자동 활성 시 수동 Drive 공존
 
-- **depends_on**: [T1]; **tier**: standard; **status**: in_progress.
+- **depends_on**: [T1]; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -300,6 +301,19 @@ T1/T2/T3는 파일이 겹치지 않아 병렬 가능하다. 각 작업의 실제
 - **작성할 테스트**:
   - "실제 SQLite automatic=true 구성에서도 전경 별도 동의와 새 계정 proof를 거친 manual 읽기가 동작하고 automatic flag를 끄거나 retry lineage를 생성하지 않는다. 동의/foreground/late generation 거부 회귀는 유지한다. 기존 해당 class 및 saf-flow 진단 양 API 또는 최종 full에서 실제 검증한다."
 - **완료 기준**: 소스·회귀 검증 후 T9가 같은 native file을 순차 인계한다. 별도 UI나 의존성은 추가하지 않는다.
+
+### T14: 기존 runner의 1.0 고정 진단
+
+- **depends_on**: []; **tier**: standard; **status**: in_progress.
+- **변경 파일**
+
+  | 파일 | 구분 |
+  |---|---|
+  | `.github/workflows/android-emulator-tests.yml` | 수정 |
+  | `android/ci/run-emulator-validation.sh` | 수정 |
+- **기준**: 기존 T21 workflow_dispatch 고정 allowlist 패턴에 automatic-v1 옵션만 추가한다. AutomaticSettingsInstrumentedTest, BackgroundAuthorizationInstrumentedTest, BackgroundPermissionFlowInstrumentedTest, SyncWorkSchedulerInstrumentedTest, HealthHomeScreenInstrumentedTest의5개 source 존재를 확인하고 그 class만 실행한다. 실제 XML method inventory/digest를 대조한다.
+- **제약**: PR event와 manual full의 기존 runner/격리 host/테스트/timeout/업로드/permissions는 byte 그대로 유지한다. 동적 selector, sharding, 새 framework/의존성/인프라나 full PASS 대체는 없다. unknown scope나 source 부재는 실패한다.
+- **검증**: bash -n, 기존 full body byte 비교 및 실제 양API 해당 진단; 최종 PR에는 양API whole full을 별도로 필수 실행한다.
 
 ## 5. 전체 검증
 
@@ -436,3 +450,29 @@ root 정적 대조는 T13 새 테스트가 configure(automatic=true)를 전달�
 ### T3 suspend 검사 완료 및 대상 검증 재시작
 
 T3 교정1은 root 격리 snapshot에서 app107 JVM 테스트 실패/오류/skip0 및 실제 계측 소스 컴파일 PASS42s를 확인했고 main의 두 파일과 byte 일치했다. T5 교정5는 confirmation 시각만 바로잡아 제품 세션 source는1745646과 동일하다. T13 교정1은 default-off configure 이후 명시 setAutomaticCAS(true)를 사용한다. 두 실제 Native 고정 진단을 같은 새 checkpoint에서 다시 수행하며 결과 전에는 완료로 판정하지 않는다.
+
+### 마지막 화면의 격리 staging 및 compiler 준비
+
+T7의 실제 SDK/production factory source와 T8의 SyncUiState/ManualDriveActions API가 고정되어 T9의 disjoint Activity/HomeScreen 연결은 후보 compiler/Native 대기와 병렬 staging한다. T13 native 파일은 checkpoint4358ff9로 소유가 이전됐지만 T13 실제 진단 완료 전에는 T9가 해당 ManualDriveFlow 테스트파일을 수정하지 않는다. root의 격리 compiler 실행은 타입/API 준비 확인일 뿐 해당 runtime 통과·완료로 쓰지 않는다. T7/T8/T9 실제 runtime 검증·최종 통합/병합은 앞선 실제 SQLite 및 최종 현재head 전체 gate가 모두 통과해야 한다. source/테스트는 실패 시 보존하고 필요한 원인 작업만 한정 보정한다.
+
+### T5·T13 실제 검증 완료 및 마지막 통합 준비
+
+4358ff9의 retry-session44972727379 양API23/23, saf-flow44972729910 양API9/9를 root가 공식ZIP SHA256/원본XML/source method 집합과 대조했다. 각각 실패·오류·skip·중복·누락·추가0이다. T5 교정5는 실제 기존 확인시각 검증을 유지한 fixture 정합화로 완료했고 T13은 자동=true에서도 별도 수동 동의/proof 경로를 보존함을 실제 SQLite로 검증했다. T7/R1 및 T8/R1 독립 중간 재검토 APPROVE와 root 격리 compile/JVM core94+app115=209/실패·오류·skip·중복0을 확인했다. worker/settings/UI의 새 Native는 최종 현재head full에서 계속 pending이다.
+
+### 1.0 후보 마무리 단계
+
+T9 화면3파일은 root 격리 Kotlin 및 Native 소스 컴파일 PASS18s다. 기존 T13 manual/SAF9개는 양API로 재사용하며 별도 중복 테스트를 만들지 않았다. T10은 버전/사용안내 후보를 준비해 동일 최종 version의 whole Native를 검증하도록 배치한다. 빌드·실기기·계정 미확인은 설명에 유지하며 Play 공개 배포나 실제 권한/동기화 수용을 승인한 것으로 쓰지 않는다.
+
+### T9 교정1 및 T8 교정2 — 별도 background 권한 복귀 경계
+
+독립 화면 리뷰는 background 결과가 기존 Google/Drive 전경 큐에 들어가 BLOCKED·재차 pause에서 버려져 pendingConsent가 남는 실제 경로를 확인했다. background launch/result pending boolean을 별도 보관·복원하고 RESUMED 복귀 시 Drive phase와 무관하게 한 번 소비한다. pause에서 결과를 지우지 않으며 결과 처리는 pending 정리와 metadata뿐이고 자동 활성·record·upload·credential 복원은 하지 않는다. 실제 Activity/제어 가능한 production-used permission boundary를 새 BackgroundPermissionFlowInstrumentedTest에서 검증한다. 새 테스트는 실제 OS 권한 부여 증거로 쓰지 않는다.
+
+T8은 기존 owned UI/VM에서 background 권한 목적 확인/취소 dialog와 별도의 beginBackgroundPermissionRequest, backgroundPermissionUnavailable, backgroundPermissionLaunchFailed metadata-only hooks를 제공한다. T9 실제 launcher는 fresh SDK background feature AVAILABLE일 때만 요청하고 unavailable/unknown은 요청하지 않고 고정 이유를 표시한다. manual5권한 배열은 유지한다. 기존 enable 동의와 권한 부여만으로 자동 활성되지 않는 원칙을 유지한다. T9 4파일(기존3+새Activity test), T8 기존4파일 안으로 한정하고 새 SDK/dependency/권한/비밀 bundle 저장은 없다. T9 교정1/T8 교정2이며 앞 회차는 보존한다. schema/store/worker가 아닌 UI 복귀 경계만 보정한다.
+
+### 기존 고정 진단의 최소 확장
+
+새 worker/permission/설정 Native 오류를 기존 약40분 full 전체의 끝에서 처음 발견하지 않도록 이미 승인된 T21의 정적 allowlist 옵션을 T14 2파일로 확장한다. 기존 full/PR 경로는 그대로이고 짧은 진단을 whole gate로 사용하지 않는다. 새 CI framework 제외 범위를 유지하며 같은 runner의 고정 선택만 추가한다. 소유자의 기능1.0/병렬속도 위임 안의 검증 배치 조정이다.
+
+### 1.0 후보 로컬 최종 빌드
+
+root가 main의 고정된 전체 후보에서 core:test app:testDebugUnitTest assembleDebug lintDebug assembleDebugAndroidTest를 직접 실행해 BUILD SUCCESSFUL2m30s를 확인했다. XML core94/app116=210, failure/error/skip/중복0. lint0 errors/19 warnings(14개 새 버전 알림과 기존5개)이며 dependency upgrade를 수행하지 않았다. aapt2로 package com.ny.my.health/versionName1.0.0/versionCode2/min28/target36을 확인했다. 새 worker/설정/권한/화면 Native5개class 고정 진단 및 최종 full은 여전히 별도 필수다. T8R2/T9R1 독립 중간 재검토도 APPROVE이며 실제 OS권한/기기/계정 수용을 의미하지 않는다.

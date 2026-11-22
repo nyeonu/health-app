@@ -6,6 +6,16 @@ import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
+import com.ny.my.health.core.BlockReason
+import com.ny.my.health.core.DayPhase
+import com.ny.my.health.core.CommitStatus
+import com.ny.my.health.core.CoverageSummary
+import com.ny.my.health.core.ReadAccess
+import com.ny.my.health.core.ReadScope
+import com.ny.my.health.core.SyncCommit
+import com.ny.my.health.core.SyncPlanner
+import com.ny.my.health.core.SyncTrigger
 import com.ny.my.health.core.AuthorizationDiagnostics
 import com.ny.my.health.core.AuthorizationDiagnostics.Failure
 import com.ny.my.health.core.DataType
@@ -27,6 +37,12 @@ import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -54,6 +70,15 @@ internal data class SyncUiState(
     val transientRemoteStatus: SyncStatus? = null,
     val transientConfirmedFiles: Int? = null,
     val phoneProfiling: PhoneProfilingUiState = PhoneProfilingUiState(),
+    val automaticEnabled: Boolean = false,
+    val automaticKnown: Boolean = false,
+    val automaticAvailable: Boolean = false,
+    val automaticBusy: Boolean = false,
+    val automaticCoverage: CoverageSummary? = null,
+    val automaticWork: Set<WorkInfo.State> = emptySet(),
+    val automaticBlockers: Set<BlockReason> = emptySet(),
+    val automaticRemoteStale: Boolean = false,
+    val automaticMessage: String? = null,
 ) {
     val busy: Boolean get() = refreshing || pendingConsent || syncing || history?.operation?.let { it != HistoryOperation.IDLE } == true
 }
@@ -70,6 +95,82 @@ internal fun SyncUiState.invalidateCurrentAttempt(): SyncUiState = copy(
     phoneProfiling = PhoneProfilingUiState(enabled = phoneProfiling.enabled),
     message = "로컬 동의와 현재 시도 표시를 지웠습니다. 저장된 기록을 확인해 주세요.",
 )
+
+/** 요청 교체와 저장소 CAS 뒤 취소의 순서를 한 곳에서 유지한다. */
+internal class AutomaticSettingsController(
+    private val commit: suspend (DestinationGeneration, Boolean) -> SyncCommit,
+    private val isCurrent: suspend (DestinationGeneration, Boolean) -> Boolean,
+    private val cancel: (DestinationGeneration) -> Unit,
+    private val schedule: (DestinationGeneration) -> Unit,
+    private val catchUp: (DestinationGeneration) -> Unit,
+) {
+    @Volatile private var request = 0L
+    @Volatile private var mutationJob: Job? = null
+    fun invalidate(): Long {
+        mutationJob?.cancel()
+        return ++request
+    }
+    fun current(ticket: Long): Boolean = ticket == request
+    fun cancelReplaced(previous: DestinationGeneration?, verified: DestinationGeneration?) {
+        if (previous != null && verified != null && previous != verified) cancel(previous)
+    }
+    suspend fun change(ticket: Long, generation: DestinationGeneration, enabled: Boolean): Boolean = coroutineScope {
+        if (!current(ticket)) return@coroutineScope false
+        val child = async(start = CoroutineStart.LAZY) { changeCurrent(ticket, generation, enabled) }
+        mutationJob = child
+        try { child.await() } finally { if (mutationJob === child) mutationJob = null }
+    }
+    private suspend fun changeCurrent(ticket: Long, generation: DestinationGeneration, enabled: Boolean): Boolean {
+        if (!current(ticket)) return false
+        val result = commit(generation, enabled)
+        if (result.status != CommitStatus.COMMITTED) return false
+        if (!enabled) cancel(generation)
+        val next = result.generation ?: return false
+        if (!current(ticket) || !isCurrent(next, enabled) || !current(ticket)) return false
+        if (enabled) {
+            schedule(next)
+            if (!current(ticket) || !isCurrent(next, true) || !current(ticket)) return false
+            catchUp(next)
+        }
+        return true
+    }
+    suspend fun restore(ticket: Long, generation: DestinationGeneration, enabled: Boolean) {
+        if (!enabled || !current(ticket) || !isCurrent(generation, true) || !current(ticket)) return
+        schedule(generation)
+        if (!current(ticket) || !isCurrent(generation, true) || !current(ticket)) return
+        catchUp(generation)
+    }
+}
+
+internal enum class AutomaticWorkRead { CURRENT, STALE, UNKNOWN }
+
+/** 구독 오류와 저장소 확인 불가를 취소와 구별해 화면에 전달한다. */
+internal suspend fun collectAutomaticWork(
+    flow: Flow<List<WorkInfo>>, current: () -> Boolean,
+    read: suspend () -> AutomaticWorkRead, publish: (Set<WorkInfo.State>) -> Unit,
+    unknown: () -> Unit,
+) {
+    try {
+        flow.collect { infos ->
+            if (current()) when (read()) {
+                AutomaticWorkRead.CURRENT -> if (current()) publish(infos.map { it.state }.toSet())
+                AutomaticWorkRead.UNKNOWN -> if (current()) unknown()
+                AutomaticWorkRead.STALE -> Unit
+            }
+        }
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { if (current()) unknown() }
+}
+
+internal fun automaticAccessAllowed(drive: Boolean, access: ReadAccess, categories: Set<DataType>): Boolean =
+    drive && access.available && categories.any { type ->
+        type in access.granted && (access.scopeByType[type] == ReadScope.SUMMARY ||
+            (type == DataType.WEIGHT && access.scopeByType[type] == ReadScope.EXPLICIT_DAY))
+    }
+
+internal fun mayRequestBackgroundPermission(foreground: Boolean, state: SyncUiState,
+    authorizationPending: Boolean, tokenPresent: Boolean): Boolean =
+    foreground && !state.busy && !state.readyToUpload && !authorizationPending && !tokenPresent
 
 internal enum class ManualDestination { DRIVE, LOCAL }
 internal data class CommittedDestination(val generation: DestinationGeneration? = null,
@@ -109,6 +210,132 @@ class SyncViewModel internal constructor(application: Application,
     private val mutableCommittedDestination = MutableStateFlow(CommittedDestination())
     internal val committedDestination = mutableCommittedDestination.asStateFlow()
     private var destinationRead = 0L
+    private var lastVerifiedGeneration: DestinationGeneration? = null
+    private val automaticReader by lazy { AutomaticHealthReader(application) }
+    private val scheduler by lazy { SyncWorkScheduler(application) }
+    private var automaticWorkJob: Job? = null
+    private val automaticController = AutomaticSettingsController(
+        commit = { generation, enabled -> syncStore.setAutomaticCAS(generation, enabled, clock.instant()) },
+        isCurrent = { generation, enabled ->
+            val read = syncStore.load()
+            val current = read.state
+            read.status == StateStatus.READY && current?.generation == generation &&
+                current?.configuration?.automatic == enabled &&
+                current?.configuration?.destinationHandle == "private-drive" &&
+                syncStore.readBinding(generation)?.let { it.kind == "DRIVE" && it.accountName != null && it.accountType != null && it.treeUri == null } == true &&
+                syncStore.load().let { it.status == StateStatus.READY && it.state?.generation == generation && it.state?.configuration?.automatic == enabled }
+        },
+        cancel = { scheduler.cancel(it) }, schedule = { scheduler.schedule(it) }, catchUp = { scheduler.enqueueCatchUp(it) },
+    )
+
+    private suspend fun refreshAutomatic(restore: Boolean = false) {
+        val ticket = automaticController.invalidate()
+        automaticWorkJob?.cancel()
+        try {
+        val read = syncStore.load()
+        val snapshot = read.state
+        val config = snapshot?.configuration
+        val generation = snapshot?.generation
+        val drive = mutableCommittedDestination.value.kind == ManualDestination.DRIVE &&
+            mutableCommittedDestination.value.generation == generation
+        if (!automaticController.current(ticket)) return
+        if (read.status != StateStatus.READY || config == null || generation == null) {
+            val confirmedOff = read.status == StateStatus.ABSENT ||
+                (read.status == StateStatus.READY && snapshot != null && config == null)
+            mutableState.value = mutableState.value.copy(
+                automaticKnown = confirmedOff,
+                automaticEnabled = if (confirmedOff) false else mutableState.value.automaticEnabled,
+                automaticAvailable = false, automaticCoverage = null, automaticWork = emptySet(),
+                automaticBlockers = emptySet(), automaticRemoteStale = false,
+                automaticMessage = if (confirmedOff) null else "자동 설정을 확인할 수 없습니다. 다시 확인하거나 저장소 복구를 진행해 주세요.")
+            return
+        }
+        // 비활성 복원은 Health Connect와 scheduler를 열지 않는다.
+        if (!config.automatic || !drive) {
+            mutableState.value = mutableState.value.copy(automaticKnown = true, automaticEnabled = config.automatic,
+                automaticAvailable = false, automaticCoverage = null, automaticWork = emptySet(),
+                automaticBlockers = emptySet(), automaticRemoteStale = false, automaticMessage = if (config.automatic) "자동 Drive 구성을 확인할 수 없습니다." else null)
+            return
+        }
+        val access = automaticReader.access(SyncTrigger.SCHEDULED)
+        val scoped = syncStore.loadForScope(generation, LocalDate.now(clock.withZone(DayWindow.zone)), access)
+        if (!automaticController.current(ticket)) return
+        val verified = syncStore.load()
+        if (!automaticController.current(ticket)) return
+        if (verified.status != StateStatus.READY || verified.state == null || scoped.status != StateStatus.READY || scoped.state == null) {
+            mutableState.value = mutableState.value.copy(automaticKnown = false, automaticAvailable = false,
+                automaticCoverage = null, automaticWork = emptySet(),
+                automaticMessage = "자동 상태를 확인하지 못했습니다. 다시 확인하거나 저장소 복구를 진행해 주세요.")
+            return
+        }
+        if (verified.state?.generation != generation || verified.state?.configuration?.automatic != true) return
+        val allowed = automaticAccessAllowed(drive, access, config.categories)
+        val coverage = scoped.state?.takeIf { scoped.status == StateStatus.READY && it.generation == generation }
+            ?.let { SyncPlanner.coverage(it, LocalDate.now(clock.withZone(DayWindow.zone))) }
+        mutableState.value = mutableState.value.copy(automaticKnown = true, automaticEnabled = true, automaticAvailable = allowed,
+            automaticCoverage = coverage, automaticWork = emptySet(),
+            automaticBlockers = scoped.state?.days?.values?.mapNotNull { it.blocker }?.toSet().orEmpty(),
+            automaticRemoteStale = scoped.state?.days?.values?.any { it.phase == DayPhase.REMOTE_STALE } == true,
+            automaticMessage = if (allowed) null else "백그라운드 기능 또는 읽기 권한을 확인해 주세요.")
+        automaticWorkJob = viewModelScope.launch {
+            collectAutomaticWork(flow { emitAll(scheduler.workInfos(generation)) }, { automaticController.current(ticket) },
+                read = {
+                    val latest = syncStore.load()
+                    when {
+                        latest.status != StateStatus.READY || latest.state == null -> AutomaticWorkRead.UNKNOWN
+                        latest.state?.generation != generation || latest.state?.configuration?.automatic != true -> AutomaticWorkRead.STALE
+                        else -> AutomaticWorkRead.CURRENT
+                    }
+                },
+                publish = { mutableState.value = mutableState.value.copy(automaticWork = it) },
+                unknown = { mutableState.value = mutableState.value.copy(automaticKnown = false,
+                    automaticAvailable = false, automaticCoverage = null, automaticWork = emptySet(),
+                    automaticMessage = "자동 상태를 확인하지 못했습니다. 다시 확인하거나 저장소 복구를 진행해 주세요.") },
+            )
+        }
+        if (restore) automaticController.restore(ticket, generation, true)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            if (automaticController.current(ticket)) mutableState.value = mutableState.value.copy(
+                automaticKnown = false, automaticAvailable = false, automaticCoverage = null, automaticWork = emptySet(),
+                automaticBlockers = emptySet(), automaticRemoteStale = false,
+                automaticMessage = "자동 상태를 확인하지 못했습니다. 다시 확인해 주세요.")
+        }
+    }
+
+    internal fun setAutomatic(enabled: Boolean) {
+        if (!foreground || !mutableState.value.automaticKnown || mutableState.value.automaticBusy || mutableState.value.automaticEnabled == enabled) return
+        val generation = mutableCommittedDestination.value.generation ?: return
+        if (enabled && (mutableCommittedDestination.value.kind != ManualDestination.DRIVE ||
+                mutableDestination.value != ManualDestination.DRIVE || !manual.state.value.privateFolderConsent)) return
+        val ticket = automaticController.invalidate()
+        automaticWorkJob?.cancel()
+        if (!enabled) { manual.setPrivateFolderConsent(false); saf.setPrivacyConsent(false) }
+        mutableState.value = mutableState.value.copy(automaticBusy = true)
+        viewModelScope.launch {
+            try {
+                if (enabled) {
+                    val read = syncStore.load()
+                    val config = read.state?.configuration
+                    val access = automaticReader.access(SyncTrigger.SCHEDULED)
+                    if (!foreground || !automaticController.current(ticket) || read.state?.generation != generation ||
+                        config == null || config.categories != mutableCategories.value ||
+                        !manual.state.value.privateFolderConsent || !automaticAccessAllowed(true, access, config.categories)) {
+                        if (automaticController.current(ticket)) mutableState.value = mutableState.value.copy(automaticMessage = "백그라운드 기능과 읽기 권한을 확인해 주세요.")
+                        return@launch
+                    }
+                }
+                val changed = automaticController.change(ticket, generation, enabled)
+                if (automaticController.current(ticket)) {
+                    if (!changed) mutableState.value = mutableState.value.copy(automaticMessage = "설정을 저장하지 못했습니다. 다시 확인해 주세요.")
+                    refreshDestinations()
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (automaticController.current(ticket)) mutableState.value = mutableState.value.copy(automaticMessage = "자동 설정을 확인하지 못했습니다.")
+            } finally { mutableState.value = mutableState.value.copy(automaticBusy = false) }
+        }
+    }
     internal fun changeDestination(destination: ManualDestination) {
         if (mutableDestination.value == destination) return
         destinationEdited = true
@@ -118,6 +345,7 @@ class SyncViewModel internal constructor(application: Application,
     }
     private suspend fun refreshCommittedDestination() {
         val request = ++destinationRead
+        val previous = lastVerifiedGeneration
         mutableCommittedDestination.value = CommittedDestination()
         val result = try {
             val read = syncStore.load()
@@ -139,13 +367,20 @@ class SyncViewModel internal constructor(application: Application,
             }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { CommittedDestination() }
-        if (request == destinationRead) mutableCommittedDestination.value = result
+        if (request == destinationRead) {
+            mutableCommittedDestination.value = result
+            if (result.generation != null) {
+                lastVerifiedGeneration = result.generation
+                automaticController.cancelReplaced(previous, result.generation)
+            }
+        }
     }
     private suspend fun refreshDestinations() {
         manual.refresh()
         saf.refresh()
         refreshCommittedDestination()
         if (!destinationEdited) mutableCommittedDestination.value.kind?.let { mutableDestination.value = it }
+        refreshAutomatic()
     }
     internal fun selectSafTree(bridge: ManualSafBridge) {
         if (bridge.isBusy()) return
@@ -159,6 +394,9 @@ class SyncViewModel internal constructor(application: Application,
     internal fun continueSaf() { viewModelScope.launch { saf.continueExport(); manual.refresh() } }
     internal fun retrySaf() { viewModelScope.launch { saf.retry(); manual.refresh() } }
     internal fun resetSaf(expected: DestinationGeneration) {
+        automaticController.invalidate()
+        manual.setPrivateFolderConsent(false)
+        saf.setPrivacyConsent(false)
         viewModelScope.launch { saf.reset(expected); refreshDestinations() }
     }
     private val mutableCategories = MutableStateFlow(DataType.entries.toSet())
@@ -188,10 +426,8 @@ class SyncViewModel internal constructor(application: Application,
                 viewModelScope.launch {
                     // 계정 선택을 시작할 때의 범위만 명시적 구성 변경으로 저장한다.
                     val ticket = manual.selectAccount(ok, picker, extras, name, type, categories)
-                    if (ticket != null) {
-                        authorizeManualTicket(bridge, ticket)
-                        refreshDestinations()
-                    }
+                    if (ticket != null) authorizeManualTicket(bridge, ticket)
+                    refreshDestinations()
                 }
             }
         }
@@ -232,6 +468,9 @@ class SyncViewModel internal constructor(application: Application,
     }
 
     internal fun resetManualConfiguration() {
+        automaticController.invalidate()
+        manual.setPrivateFolderConsent(false)
+        saf.setPrivacyConsent(false)
         categoriesEdited = true
         viewModelScope.launch {
             if (manual.resetConfiguration()) {
@@ -294,12 +533,14 @@ class SyncViewModel internal constructor(application: Application,
         resumeJob = viewModelScope.launch {
             refreshDestinations()
             manual.refreshGrants()
-            if (foreground && manual.state.value.foreground) onManualRefreshed()
+            if (foreground && manual.state.value.foreground) { refreshAutomatic(restore = true); onManualRefreshed() }
         }
         refreshPermissions()
     }
 
     internal fun pause() {
+        automaticController.invalidate()
+        automaticWorkJob?.cancel()
         foreground = false
         resumeJob?.cancel()
         manual.setForeground(false)
@@ -364,6 +605,31 @@ class SyncViewModel internal constructor(application: Application,
             message = "권한 요청이 끝났습니다. 허용한 항목만 읽습니다. 0/5이면 권한이 필요합니다.",
         )
         refreshPermissions()
+    }
+
+    internal fun beginBackgroundPermissionRequest(): Boolean {
+        val state = mutableState.value
+        if (!mayRequestBackgroundPermission(foreground, state, authorizationTicket != null, accessToken != null)) return false
+        mutableState.value = state.copy(pendingConsent = true)
+        return true
+    }
+
+    internal fun backgroundPermissionUnavailable() {
+        mutableState.value = mutableState.value.copy(
+            automaticMessage = "백그라운드 읽기 기능을 사용할 수 없습니다. Health Connect 지원 여부를 확인해 주세요.")
+    }
+
+    internal fun backgroundPermissionLaunchFailed() {
+        mutableState.value = mutableState.value.copy(pendingConsent = false,
+            automaticMessage = "백그라운드 읽기 권한 화면을 열지 못했습니다. 다시 시도해 주세요.")
+    }
+
+    /** 백그라운드 권한 결과는 별도 확인이며 자동 설정이나 업로드를 시작하지 않는다. */
+    internal fun backgroundPermissionReturned() {
+        mutableState.value = mutableState.value.copy(pendingConsent = false)
+        if (!foreground) return
+        refreshPermissions()
+        viewModelScope.launch { if (foreground) refreshAutomatic(restore = false) }
     }
 
     internal fun beginAuthorization(onReady: () -> Unit) {
