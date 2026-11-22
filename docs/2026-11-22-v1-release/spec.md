@@ -1,7 +1,7 @@
 ---
 spec_id: 2026-11-22-v1-release
 title: Function-faithful V1 completion
-status: approved
+status: implemented
 created: 2026-11-22
 ---
 

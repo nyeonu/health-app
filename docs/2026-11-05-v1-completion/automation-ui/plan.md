@@ -1,7 +1,7 @@
 ---
 plan_id: automation-ui
 title: 제한된 자동 동기화와 현재성 화면
-status: in_progress
+status: done
 author: Codex
 created: 2026-11-13
 parent: ../plan.md
@@ -16,24 +16,24 @@ tasks:
   - {id: T19, title: WorkManager helper process 격리 기반, depends_on: [], status: done, tier: standard}
   - {id: T1, title: 실제 WorkManager starter 기반, depends_on: [T19], status: done, tier: standard}
   - {id: T2, title: durable retry 모델과 검증 경계, depends_on: [T1], status: done, tier: standard}
-  - {id: T3, title: 검증된 v1 상태의 v2 migration, depends_on: [T2], status: in_progress, tier: standard}
-  - {id: T20, title: v2 도입의 future schema fixture 호환, depends_on: [T1], status: in_progress, tier: light}
+  - {id: T3, title: 검증된 v1 상태의 v2 migration, depends_on: [T2], status: done, tier: standard}
+  - {id: T20, title: v2 도입의 future schema fixture 호환, depends_on: [T1], status: done, tier: light}
   - {id: T21, title: 전체 gate를 보존하는 고정 retry 진단 실행, depends_on: [T1], status: done, tier: light}
-  - {id: T4, title: retry claim의 실제 SQLite 원자성, depends_on: [T3, T20], status: pending, tier: standard}
-  - {id: T5, title: 공용 session의 자동 attempt 연결, depends_on: [T4], status: pending, tier: standard}
-  - {id: T6, title: 누락과 출처를 보존하는 aggregate 값, depends_on: [T1], status: in_progress, tier: standard}
-  - {id: T7, title: reserved CSV 요약과 의미 revision, depends_on: [T6], status: pending, tier: standard}
-  - {id: T8, title: 실제 HC background category admission, depends_on: [T1, T7], status: pending, tier: standard}
-  - {id: T9, title: 불명확한 운동 심박의 안전 차단, depends_on: [T8], status: pending, tier: standard}
-  - {id: T10, title: worker용 fresh 계정 authorization, depends_on: [T1, T5], status: pending, tier: standard}
-  - {id: T11, title: 약일일 periodic와 bounded catch-up 등록, depends_on: [T1, T5, T9, T10], status: pending, tier: standard}
-  - {id: T12, title: worker retry와 프로세스 재시작 회귀, depends_on: [T11], status: pending, tier: standard}
-  - {id: T13, title: 동의와 자동 설정의 generation 전이, depends_on: [T12], status: pending, tier: standard}
-  - {id: T14, title: 현재성 화면의 IO 없는 투영, depends_on: [T13], status: pending, tier: standard}
-  - {id: T15, title: 실제 Activity에서 자동 설정과 gap 표시, depends_on: [T14], status: pending, tier: standard}
-  - {id: T16, title: 취소와 접근성 통합 회귀, depends_on: [T15], status: pending, tier: standard}
-  - {id: T17, title: 해결 의존성 최종 재감사와 개발 증거, depends_on: [T16], status: pending, tier: standard}
-  - {id: T18, title: roadmap과 공개 안내의 실제 상태 반영, depends_on: [T17], status: pending, tier: standard}
+  - {id: T4, title: retry claim의 실제 SQLite 원자성, depends_on: [T3, T20], status: done, tier: standard}
+  - {id: T5, title: 공용 session의 자동 attempt 연결, depends_on: [T4], status: done, tier: standard}
+  - {id: T6, title: 누락과 출처를 보존하는 aggregate 값, depends_on: [T1], status: done, tier: standard}
+  - {id: T7, title: reserved CSV 요약과 의미 revision, depends_on: [T6], status: done, tier: standard}
+  - {id: T8, title: 실제 HC background category admission, depends_on: [T1, T7], status: done, tier: standard}
+  - {id: T9, title: 불명확한 운동 심박의 안전 차단, depends_on: [T8], status: done, tier: standard}
+  - {id: T10, title: worker용 fresh 계정 authorization, depends_on: [T1, T5], status: done, tier: standard}
+  - {id: T11, title: 약일일 periodic와 bounded catch-up 등록, depends_on: [T1, T5, T9, T10], status: done, tier: standard}
+  - {id: T12, title: worker retry와 프로세스 재시작 회귀, depends_on: [T11], status: done, tier: standard}
+  - {id: T13, title: 동의와 자동 설정의 generation 전이, depends_on: [T12], status: done, tier: standard}
+  - {id: T14, title: 현재성 화면의 IO 없는 투영, depends_on: [T13], status: done, tier: standard}
+  - {id: T15, title: 실제 Activity에서 자동 설정과 gap 표시, depends_on: [T14], status: done, tier: standard}
+  - {id: T16, title: 취소와 접근성 통합 회귀, depends_on: [T15], status: done, tier: standard}
+  - {id: T17, title: 해결 의존성 최종 재감사와 개발 증거, depends_on: [T16], status: done, tier: standard}
+  - {id: T18, title: roadmap과 공개 안내의 실제 상태 반영, depends_on: [T17], status: done, tier: standard}
 ---
 
 # 제한된 자동 동기화와 현재성 화면
@@ -173,7 +173,7 @@ tasks:
 
 ### T3: 검증된 v1 상태의 v2 migration
 
-- **depends_on**: T2; **tier**: standard; **status**: in_progress.
+- **depends_on**: T2; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -210,7 +210,7 @@ tasks:
 - **현재 실제 검증**: R11포함5de10ad와동일runtime/test의진단head2b8ce11에서43553148135 양API새8개를실행했고root공식ZIPdigest/XML대조로실패·오류·skip·중복0이다. SDKfault/reopen·schema/FKparity·실제v1dirtypair는검증했지만전체143Native/기존실제host결과는별도미완료이므로T3/T20in_progress와T4pending을유지한다.
 ### T20: v2 도입의 future schema fixture 호환
 
-- **depends_on**: T1; **tier**: light; **status**: in_progress.
+- **depends_on**: T1; **tier**: light; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -248,7 +248,7 @@ tasks:
 - **실제 검증**: CI route source4bb92f3 fresh독립APPROVE 및rootstatic exactroute/누락/unknown/fulltail byte동일검증후, fixtureR11포함2b8ce11의고정진단43553148135 양API정확8개/source동일identity/실패·오류·skip·중복0을공식ZIPdigest와XML로root대조했다(auto-t3-diagnostic-r11-root-proof.json). 실제선택진단은전체143Native/host결과가아니며T3/T20완료를대신하지않는다. 최초진단43552194517의7PASS/1FAIL과R11수정이력은보존한다.
 ### T4: retry claim의 실제 SQLite 원자성
 
-- **depends_on**: T3, T20; **tier**: standard; **status**: pending.
+- **depends_on**: T3, T20; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -274,7 +274,7 @@ tasks:
 
 ### T5: 공용 session의 자동 attempt 연결
 
-- **depends_on**: T4; **tier**: standard; **status**: pending.
+- **depends_on**: T4; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -303,7 +303,7 @@ tasks:
 
 ### T6: 누락과 출처를 보존하는 aggregate 값
 
-- **depends_on**: T1; **tier**: standard; **status**: in_progress.
+- **depends_on**: T1; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -327,7 +327,7 @@ tasks:
 
 ### T7: reserved CSV 요약과 의미 revision
 
-- **depends_on**: T6; **tier**: standard; **status**: pending.
+- **depends_on**: T6; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -352,7 +352,7 @@ tasks:
 
 ### T8: 실제 HC background category admission
 
-- **depends_on**: T1, T7; **tier**: standard; **status**: pending.
+- **depends_on**: T1, T7; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -376,7 +376,7 @@ tasks:
 
 ### T9: 불명확한 운동 심박의 안전 차단
 
-- **depends_on**: T8; **tier**: standard; **status**: pending.
+- **depends_on**: T8; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -400,7 +400,7 @@ tasks:
 
 ### T10: worker용 fresh 계정 authorization
 
-- **depends_on**: T1, T5; **tier**: standard; **status**: pending.
+- **depends_on**: T1, T5; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -424,7 +424,7 @@ tasks:
 
 ### T11: 약일일 periodic와 bounded catch-up 등록
 
-- **depends_on**: T1, T5, T9, T10; **tier**: standard; **status**: pending.
+- **depends_on**: T1, T5, T9, T10; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -452,7 +452,7 @@ tasks:
 
 ### T12: worker retry와 프로세스 재시작 회귀
 
-- **depends_on**: T11; **tier**: standard; **status**: pending.
+- **depends_on**: T11; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -483,7 +483,7 @@ tasks:
 
 ### T13: 동의와 자동 설정의 generation 전이
 
-- **depends_on**: T12; **tier**: standard; **status**: pending.
+- **depends_on**: T12; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -510,7 +510,7 @@ tasks:
 
 ### T14: 현재성 화면의 IO 없는 투영
 
-- **depends_on**: T13; **tier**: standard; **status**: pending.
+- **depends_on**: T13; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -532,7 +532,7 @@ tasks:
 
 ### T15: 실제 Activity에서 자동 설정과 gap 표시
 
-- **depends_on**: T14; **tier**: standard; **status**: pending.
+- **depends_on**: T14; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -557,7 +557,7 @@ tasks:
 
 ### T16: 취소와 접근성 통합 회귀
 
-- **depends_on**: T15; **tier**: standard; **status**: pending.
+- **depends_on**: T15; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -584,7 +584,7 @@ tasks:
 
 ### T17: 해결 의존성 최종 재감사와 개발 증거
 
-- **depends_on**: T16; **tier**: standard; **status**: pending.
+- **depends_on**: T16; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -608,7 +608,7 @@ tasks:
 
 ### T18: roadmap과 공개 안내의 실제 상태 반영
 
-- **depends_on**: T17; **tier**: standard; **status**: pending.
+- **depends_on**: T17; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 신규/수정 | 변경 요지 |
@@ -848,3 +848,7 @@ root가현재91433b6 전체로컬core/app/APK/lint를2m29s 통과시킨뒤Native
 ### T20 보정2 — 실제 full에서 발견한 남은 future 입력
 
 43553867643 API36 full의125remaining중1개실패는기존ManualDriveStore fixture의version2가이제지원버전인것이원인이다. root가source104줄과로그원문을대조했고T20세번째file로한정한input2→3교정을위임한다. 원래assertion과모든손상회귀는그대로다. 전체Native의추가version2는독립SqliteHistoryStore의schema1 fixture라변경하지않는다. T20누적1/2와T3누적1~11은독립보존하며현재full은FAIL/다른API취소로분리한다.
+
+## 2026-11-22 소프트웨어 완료
+
+[현재 1.0 실행 증거](../../2026-11-22-v1-release/execution-report.md)의 source6efa2d2에서 양API 전체 Native186/기존 격리 host 및 JVM210/lint/APK가 통과했고 독립 스펙 적합성 PASS·최종 PR 검토 APPROVE 뒤 [PR20](https://github.com/nyeonu/health-app/pull/20)을1139553으로 정상 병합했다. 날짜별 과거 실행/복구 이력은 보존하며 이 최신 완료 기록이 이전 진행 상태를 대체한다. 실제 기기·계정·P0·TalkBack·개인 키 백업은 미확인이다. 문서만 완료 상태를 갱신하며 Android tree5ac60a01b547634329ef625a6e05e950ef67f806은 변경하지 않는다.

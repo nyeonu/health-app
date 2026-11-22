@@ -13,4 +13,8 @@
 
 ## 남은 검증
 
-최종 head 전체 CI·격리 host 원본·배포 artifact 검사 및 독립 PR 검토는 별도 gate다. 실제 Galaxy/Health Connect/Google 계정·Doze·재부팅·저전력·TalkBack·서명키 별도 개인 백업의 기존 미확인은 그대로 둔다. CI secret 설정은 개인 백업 확인을 대신하지 않는다.
+최종 source6efa2d2의 양API 전체 Native186·기존 격리 host와 JVM210/lint/APK 및 독립 적합성 PASS/PR 리뷰 APPROVE를 확인했다. 양API artifact는 CSV0·합성PNG70개씩이며 네 종류 고신뢰 key/token 형식 탐지0이다. 이는 포괄적 비밀/이미지 검사는 아니다. [실행 근거](execution-report.md)를 참조한다. 실제 Galaxy/Health Connect/Google 계정·Doze·재부팅·저전력·TalkBack·서명키 별도 개인 백업의 기존 미확인은 그대로 둔다. CI secret 설정은 개인 백업 확인을 대신하지 않는다.
+
+## 후속 store/ledger 경계
+
+f4eb4cb까지의 후속 정적 검토는 동일 현재 Drive binding에서만 상태를 이월함과 과거 scope metadata가 현재 읽기 권한으로 승격되지 않음을 확인했다. 현재 planner/reader·새 attempt와 직접 claim에는 현재 category subset을 유지한다. 여섯 dependency 입력은 감사 때와 동일해 OSV를 반복 조회하지 않았다. 감사 범위는 명시한 네 app/test runtime configuration의155개 Maven 좌표이며 UTP/Gradle 실행 도구의 전체 전이 의존성 감사가 아니다. 실제 계정/provider 및 완전한 경쟁 상태 부재를 입증하지 않는다.

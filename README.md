@@ -9,7 +9,7 @@ Read authorized health records from Android Health Connect (including data synch
 **Repository:** `nyeonu/health-app`  
 **Primary device:** Galaxy S23 Ultra (Android 16)  
 **Time zone for daily reporting:** Asia/Seoul  
-**현재 상태 (2026-11-22):** 1.0.0 APK 후보입니다. 수동 비공개 Drive 및 로컬 SAF 내보내기와 명시적 동의에 따른 제한된 백그라운드 Drive 동기화를 지원합니다. 최종 전체 Native 검증과 실제 Galaxy·TalkBack·Google 계정 수용은 아직 진행 중이며 출시 또는 Play 공개 배포를 의미하지 않습니다. 남은 P0 기기 검증과 복구 가능한 서명 키 백업은 [현재 readiness](docs/P0/pr-readiness.md)를 확인하세요. Actions Secrets에 키가 설정된 것만으로 별도의 복구 가능한 백업이 확인되는 것은 아닙니다.
+**현재 상태 (2026-11-22):** 기능 1.0.0/2의 소프트웨어 구현·전체 자동 검증·독립 검토를 완료한 설치 후보입니다. 수동 비공개 Drive·로컬 SAF와 명시 opt-in 자동 Drive를 지원합니다. API35·36 전체 Native186개씩·기존 격리 host 및 JVM210/lint/APK를 통과했습니다. [설치 안내](docs/V1/1.0-installation.md)와 [실행 증거](docs/2026-11-22-v1-release/execution-report.md)를 확인하세요. 실제 Galaxy·계정/provider·Doze/재부팅/저전력·TalkBack 및 기존 P0 미확인은 남아 있습니다. Actions Secrets 설정만으로 별도 개인 키 백업이 확인되지는 않습니다.
 
 ## Delivery phases
 
@@ -69,7 +69,7 @@ The future MCP server does **not** directly access Android Health Connect. Mobil
 
 같은 Google 계정의 재인증과 내보낼 항목 변경은 기존 등록일·파일 추적 정보·불확실한 업로드·소비한 재시도 예산을 보존합니다. 과거 항목의 기록을 보관하는 것은 현재 읽기 권한을 뜻하지 않으며, 새 실행은 현재 선택과 허용 범위만 사용합니다. 자동 끄기·켜기로 실패 예산이 초기화되지 않습니다.
 
-이 설정과 날짜별 확인 상태는 앱 전용 SQLite에 보관합니다. 자동 동기화를 끄거나 로컬 상태를 초기화해도 이미 전송된 파일이나 시스템 권한은 삭제되지 않습니다. 미확인 P0 항목과 실제 Galaxy·TalkBack·Google 계정 수용은 그대로 남아 있습니다. 전체 Native 검증도 아직 완료되지 않았습니다.
+이 설정과 날짜별 확인 상태는 앱 전용 SQLite에 보관합니다. 자동 동기화를 끄거나 로컬 상태를 초기화해도 이미 전송된 파일이나 시스템 권한은 삭제되지 않습니다. 미확인 P0 항목과 실제 Galaxy·TalkBack·Google 계정 수용은 그대로 남아 있습니다. 전체 Native 실행·원본 무결성과 독립 검토는 [현재 실행 증거](docs/2026-11-22-v1-release/execution-report.md)에 고정했습니다.
 
 초기 app identity 교체 이력: 현재 package는 `com.ny.my.health` (core: `com.ny.my.health.core`)입니다. 이전 package에서 옮기는 경우 다른 앱이므로, so install it as a new app rather than an in-place update; consider local state before removing the previous app. 해당 package 이전에서는 Health Connect 권한과 Drive 사용 시 Google 인가를 다시 확인합니다. Register the new package with the actual installed APK certificate SHA-1: the previous OAuth client does not apply automatically. Prior `drive.file` folder/file visibility is not guaranteed. There is no automatic migration or deletion; inspect and clean up previous exports privately and manually. Follow the [application identity migration guide](docs/P0/validation.md#application-identity-migration).
 

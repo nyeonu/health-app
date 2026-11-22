@@ -1,7 +1,7 @@
 # ADR-012: 자동 attempt와 retry lineage의 내구성 연결
 
 ## 상태
-Proposed
+Accepted
 
 ## 날짜
 2026-11-14
@@ -51,3 +51,7 @@ PR20 독립 검토에서 자동 opt-out의 새 generation이 기존 불확실한
 ## 2026-11-22 동일 binding category 변경의 과거 profile
 
 교정6의 기록 존재 시 동일 계정 재설정 거절은 기존 수동 항목 변경을 막으므로 최종 정책으로 채택하지 않는다. 동일 현재 binding에서 category 변경은 기존 등록일과 모든 과거 profile/불확실성/미종결 예산을 새 generation에 원자 이월하고 현재 선택 category만 바꾼다. 과거 day/ledger의 well-formed frozen scopes는 현재 선택의 부분집합일 필요가 없지만 현재 읽기 권한으로 쓰지 않는다. 새 attempt/planner/reader 및 원자 claim은 현재 category subset을 강제한다. 과거 metadata와 현재 authorization을 분리해 선택을 제거했다 다시 추가해도 실패 count/due가 사라지지 않게 한다. schema/API 확대 없이 private decoder의 역사 유효성만 조정하며 나머지 검증을 보존한다. same-binding configure의 전면 거절·reset 우회와 과거 계정 handle의 임의 합치기는 기각한다. 실제 SQLite 및 수동 session 회귀와 독립 적합성 전까지 Proposed다.
+
+## 확정 근거 (2026-11-22)
+
+[동일 head 독립 스펙 적합성 PASS](../2026-11-22-v1-release/spec-conformance.md)와 [PR20 최신 head 독립 리뷰 APPROVE](../2026-11-22-v1-release/pr-review.md), 양API 전체 Native186·기존 격리 host 및 JVM210/lint/APK를 근거로 Accepted로 확정한다. 검증 source는6efa2d2, 개발 병합은1139553이며 Android tree는5ac60a01b547634329ef625a6e05e950ef67f806으로 동일하다. 실제 기기·계정 수용이나 공개 출시를 뜻하지 않는다. 이전 Proposed 표기는 결정 당시의 이력이다.

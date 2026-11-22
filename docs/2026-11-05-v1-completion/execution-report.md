@@ -2,7 +2,11 @@
 
 이 문서는 진행 증거이며 V1 수용 완료나 출시 승인이 아니다. 소유자의 자동승인 범위에서 구현·독립 검토·개발 병합을 진행한다. 실제 Galaxy/Google/SAF provider/Doze·재부팅·TalkBack의 미실행 항목은 pending이다.
 
-## 현재 상태 (2026-11-14 UTC)
+## 현재 상태 (2026-11-22 UTC)
+
+기능 1.0 소프트웨어 구현과 전체 검증·독립 검토를 완료하고 [PR20](https://github.com/nyeonu/health-app/pull/20)을 `1139553`으로 정상 병합했다. 검증 source `6efa2d2`의 Android tree는 병합본과 동일하다. 양API Native186·기존 격리 host 및 JVM210/lint/APK, 독립 스펙 PASS·최종 리뷰 APPROVE를 [현재 1.0 실행 증거](../2026-11-22-v1-release/execution-report.md)에 고정했다. 실제 기기·계정·P0·TalkBack·개인 키 백업의 미확인은 유지한다. 아래 과거 진행·실패·교정 이력을 새 성공으로 덮어쓰지 않는다.
+
+## 과거 진행 상태 (2026-11-14 UTC)
 
 core-store PR16, 수동 Drive PR17, 전경 SAF local PR18의 소프트웨어 구현·검증·독립 검토·개발 병합을 완료했다. PR18은 `9ab774beac85bf7a96953bb0a0aa1b8098c76c69`로 병합됐으며 최종 reviewed head `cbc3f870f4a20d79e32316c1f0159f50410d2627`의 [Native run43519528348](https://github.com/nyeonu/health-app/actions/runs/43519528348)은 양API132개, [JVM/APK run43519528355](https://github.com/nyeonu/health-app/actions/runs/43519528355)은181개를 통과했다. 실제 Galaxy/provider 수용은 [SAF 수용 목록](../V1/storage-destinations.md)에 남아 있다.
 

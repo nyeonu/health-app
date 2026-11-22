@@ -2,7 +2,7 @@
 plan_id: 2026-11-05-v1-completion
 title: V1 날짜별 복구·목적지·자동 실행 에픽 계획
 kind: epic
-status: in_progress
+status: done
 author: Codex
 created: 2026-11-05
 target: /workspace/health-app-v1-completion
@@ -28,7 +28,7 @@ work_plans:
     title: 자동 실행과 통합 상태 화면
     path: automation-ui/plan.md
     depends_on: [saf-local]
-    status: in_progress
+    status: done
 ---
 
 # V1 날짜별 복구·목적지·자동 실행 에픽 계획
@@ -769,3 +769,7 @@ PR19 current-head8b9f38e의 Native43534668761과 JVM43534668764가 모두 SUCCES
 ### 2026-11-22 명시 manual의 미준비 claim 복구 명확화
 
 finished BLOCKED lineage가 observed revision 전부 null이고 frozen dates의 day journal이 하나도 없으면 아직 준비되지 않은 중단 claim이다. fresh proof 이후의 명시 manual reopen에서 해당 lineage만 lifecycle 종료할 수 있으며 건강 성공/EMPTY를 만들지 않는다. 비eligible 기존 journal/budget은 보존하여 manual 전체를 차단하지 않는다. 기존4종 blocker 해제·uncertain/stale 보존 및 자동 tick/app-open의 retry 재설정 금지는 유지한다.
+
+## 2026-11-22 소프트웨어 완료
+
+[현재 1.0 실행 증거](../2026-11-22-v1-release/execution-report.md)의 source6efa2d2에서 양API 전체 Native186/기존 격리 host 및 JVM210/lint/APK가 통과했고 독립 스펙 적합성 PASS·최종 PR 검토 APPROVE 뒤 [PR20](https://github.com/nyeonu/health-app/pull/20)을1139553으로 정상 병합했다. 날짜별 과거 실행/복구 이력은 보존하며 이 최신 완료 기록이 이전 진행 상태를 대체한다. 실제 기기·계정·P0·TalkBack·개인 키 백업은 미확인이다. 문서만 완료 상태를 갱신하며 Android tree5ac60a01b547634329ef625a6e05e950ef67f806은 변경하지 않는다.
