@@ -9,11 +9,11 @@ target: android
 spec: spec.md
 spec_rev: 30ffde9529d993306a6d5c04c93abf7fd0f271e2
 tasks:
-  - {id: T1, title: SQLite retry 원자성, depends_on: [], status: in_progress, tier: standard}
+  - {id: T1, title: SQLite retry 원자성, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 요약 모델, depends_on: [], status: done, tier: standard}
   - {id: T3, title: 계정 고정 silent 인증, depends_on: [], status: done, tier: standard}
   - {id: T4, title: 요약 CSV와 revision, depends_on: [T2], status: done, tier: standard}
-  - {id: T5, title: 자동 session 연결, depends_on: [T1, T11], status: pending, tier: standard}
+  - {id: T5, title: 자동 session 연결, depends_on: [T1, T11], status: in_progress, tier: standard}
   - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: done, tier: standard}
   - {id: T7, title: WorkManager 실행과 예약, depends_on: [T3, T5, T6], status: pending, tier: standard}
   - {id: T8, title: 자동 설정과 상태, depends_on: [T7], status: pending, tier: standard}
@@ -107,7 +107,7 @@ class SyncWorkScheduler(context: Context) {
 
 ### T1: SQLite retry 원자성
 
-- **depends_on**: []; **tier**: standard; **status**: pending.
+- **depends_on**: []; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -170,7 +170,7 @@ class SyncWorkScheduler(context: Context) {
 
 ### T5: 자동 session 연결
 
-- **depends_on**: [T1, T11]; **tier**: standard; **status**: pending.
+- **depends_on**: [T1, T11]; **tier**: standard; **status**: in_progress.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -180,6 +180,9 @@ class SyncWorkScheduler(context: Context) {
 - **인터페이스**: 2절 `AutomaticStoreContracts`, `AutomaticAdmissionOrder`, `AutomaticSessionRoutingContracts` 참조. 기존 manual `runPrepared` 유지; 승인된 T5 계약에 따라 claim/finish와 source exception 경계를 연결한다.
 - **작성할 테스트**:
   - "manual/worker 동시 gate, cancellation, revision 변경 시 retry 불변, preflight 차단 시 외부 호출 0과 uncertain create 보존. 관련 core 테스트 및 `retry-session` 실제 SQLite 진단 양 API 통과 후 T7에 인계한다."
+
+
+- **실제 SQLite preflight 통합 테스트**: 복수 scope ACTIVE waiting의 fractional Instant 최대 future due·owner recovery 우선·다른 scope terminal 비전역 차단을 검증하고 deferred/stale/off/unresolved recovery에서 auth·HC metadata·records·remote 호출0을 확인한다.
 
 ### T6: 배경 Health Connect 조회
 
@@ -348,3 +351,7 @@ root가 올바른 owned Gradle/coreOnly 명령을 직접 다시 실행하여 PAS
 ### T3 SDK runtime 검증 배치 조정
 
 T3는 JVM callback/proof 회귀와 실제 SDK API 서명 및 계측 소스 컴파일을 root가 확인했고 독립 정적 인증 검토에 차단 지적이 없다. 별도 SQLite 상태를 구현하지 않는 SDK adapter의 양API 계측은 통합 PR 현재head 전체 Native에서 그대로 수행하되 후속 구현 착수를 위한 별도 full 실행은 요구하지 않는다. 이는 사용자 속도 우선 위임에 따른 배치 변경이며 실제 SDK runtime/실계정 성공을 선행 주장하지 않는다. T1 실제SQLite 대상 검증과 모든 최종머지 gate는 유지한다.
+
+### T1 실제 양API 완료 및 T5 인계
+
+current source1f3c456의 retry-store44969852348 양API jobs SUCCESS다. root가 GitHub 공식 artifact digest(35:e74750930e622f0dcec6bd10757f18278c9becbe6daa4980ced539c8f2c58629, 36:ba44205bd17e44d632779367bc3bfc36d0f25ca7f2c48d55c76faac1c388f03b) 및 실제 XML을 source-derived 14개 method identity와 대조했다. 각각14/실패·오류·skip·중복·누락·추가0이다. R4 독립 중간 검토 APPROVE와 함께 T1을 완료하고 기존 owner/engine 계약의 T5 app session2파일로 인계한다. 전체143 baseline44966834193도 양API 공식digest/원본XML+격리protocol+sourceinventory 및 모든 기존host를 root가 별도 재검증했다. 이는 향후 최종head 전체gate를 대신하지 않는다.
