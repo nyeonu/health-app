@@ -67,6 +67,8 @@ The future MCP server does **not** directly access Android Health Connect. Mobil
 
 자동 동기화는 기본적으로 꺼져 있으며 비공개 Drive에서만 사용할 수 있습니다. 기기의 백그라운드 읽기 지원과 별도 권한을 확인·요청한 뒤 **자동 동기화 켜기**의 동의 화면에서 확인해야 합니다. 허용된 걸음·수면·운동 요약과 최신 체중을 처리하며 자동 심박 범위는 차단됩니다. WorkManager는 약 24시간 간격으로 예약하지만 네트워크 연결, 배터리 부족 방지 조건, Doze와 기기 제한으로 지연될 수 있어 정확한 시각이나 당일 완료는 보장하지 않습니다. 누락 날짜는 한 번에 최대 7일을 따라잡고 최근 2일을 다시 확인합니다. 일시적 실패에는 영속적인 최대 3회 재시도 예산이 적용되며, 소진·차단·원격 상태 불명 등은 화면에서 확인하고 수동 복구해야 합니다. 성공 시각만으로 현재 날짜의 완전성이나 최신성을 판단하지 마세요.
 
+같은 Google 계정의 재인증은 기존 설정을 유지합니다. 기존 동기화 기록이 있는 같은 계정에서 내보낼 항목 구성을 새로 바꾸는 작업은 파일 추적 정보를 버리지 않도록 차단합니다. 변경이 필요하면 로컬 상태 초기화의 범위와 원격 파일이 남는다는 안내를 확인한 뒤 명시적으로 초기화해야 합니다. 자동 끄기·켜기는 기존 불확실한 업로드와 소비한 재시도 예산을 보존합니다.
+
 이 설정과 날짜별 확인 상태는 앱 전용 SQLite에 보관합니다. 자동 동기화를 끄거나 로컬 상태를 초기화해도 이미 전송된 파일이나 시스템 권한은 삭제되지 않습니다. 미확인 P0 항목과 실제 Galaxy·TalkBack·Google 계정 수용은 그대로 남아 있습니다. 전체 Native 검증도 아직 완료되지 않았습니다.
 
 초기 app identity 교체 이력: 현재 package는 `com.ny.my.health` (core: `com.ny.my.health.core`)입니다. 이전 package에서 옮기는 경우 다른 앱이므로, so install it as a new app rather than an in-place update; consider local state before removing the previous app. 해당 package 이전에서는 Health Connect 권한과 Drive 사용 시 Google 인가를 다시 확인합니다. Register the new package with the actual installed APK certificate SHA-1: the previous OAuth client does not apply automatically. Prior `drive.file` folder/file visibility is not guaranteed. There is no automatic migration or deletion; inspect and clean up previous exports privately and manually. Follow the [application identity migration guide](docs/P0/validation.md#application-identity-migration).

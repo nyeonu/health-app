@@ -223,6 +223,18 @@ internal class SqliteSyncStateStore internal constructor(
         return write(expected,allowAbsent = true) { db,admitted ->
             val old = admitted?.metadata
             if (old?.generation != expected) return@write SyncCommit(CommitStatus.STALE, old?.generation)
+            if (old != null && binding.kind == "DRIVE") {
+                val sameBinding = db.rawQuery("SELECT binding_kind,binding_payload FROM config WHERE id=1", null).use { row ->
+                    require(row.moveToFirst())
+                    row.nullable(0) == binding.kind && row.nullable(1) == payload
+                }
+                if (sameBinding) {
+                    val hasHistory = db.rawQuery("SELECT 1 FROM day WHERE generation=? LIMIT 1", arrayOf(old.generation.value)).use { it.moveToFirst() } ||
+                        db.rawQuery("SELECT 1 FROM retry_budget WHERE generation=? AND status<>'COMPLETED' LIMIT 1", arrayOf(old.generation.value)).use { it.moveToFirst() } ||
+                        (admitted?.attempt?.let { it.finishedAt == null } == true)
+                    if (hasHistory) return@write SyncCommit(CommitStatus.INVALID, old.generation)
+                }
+            }
             val generation = fresh()
             insertGeneration(db, generation, configuration.copy(automatic = false))
             if (old == null) db.insertOrThrow("config", null, values("id" to 1, "format_version" to 1,
@@ -252,12 +264,20 @@ internal class SqliteSyncStateStore internal constructor(
     }
 
     suspend fun invalidate(expected: DestinationGeneration): SyncCommit = write(expected) { db,admitted ->
-        val old = checkNotNull(admitted).metadata
+        val admission = checkNotNull(admitted)
+        val old = admission.metadata
         if (old.generation != expected) return@write SyncCommit(CommitStatus.STALE, old.generation)
+        val drive = isDriveBinding(db)
+        if (drive && !finishOwnerForInvalidation(db, admission, null)) return@write SyncCommit(CommitStatus.INVALID, old.generation)
         val generation = fresh()
         insertGeneration(db, generation, old.configuration?.copy(automatic = false))
+        if (drive) copyDriveGeneration(db, admission, generation)
         check(db.update("config", values("active_generation" to generation.value, "automatic" to 0),
             "id=1 AND active_generation=?", arrayOf(expected.value)) == 1)
+        if (drive) {
+            validateActive(db, today())
+            SyncRetryBudgetLedger.validate(db, today()) {}
+        }
         SyncCommit(CommitStatus.COMMITTED, generation)
     }
 
@@ -555,11 +575,78 @@ internal class SqliteSyncStateStore internal constructor(
             } else {
                 val generation = fresh()
                 insertGeneration(db, generation, meta.configuration.copy(automatic = false))
+                val drive = isDriveBinding(db)
+                if (drive) copyDriveGeneration(db, admitted, generation)
                 check(db.update("config", values("active_generation" to generation.value, "automatic" to 0),
                     "id=1 AND active_generation=?", arrayOf(expectedGeneration.value)) == 1)
+                if (drive) {
+                    validateActive(db, today())
+                    SyncRetryBudgetLedger.validate(db, today()) {}
+                }
                 SyncCommit(CommitStatus.COMMITTED, generation)
             }
         }
+
+    private fun isDriveBinding(db: SQLiteDatabase): Boolean =
+        db.rawQuery("SELECT binding_kind FROM config WHERE id=1", null).use { rows ->
+            require(rows.moveToFirst())
+            rows.nullable(0) == "DRIVE"
+        }
+
+    private fun finishOwnerForInvalidation(db: SQLiteDatabase, admission: Admission, requestedAt: Instant?): Boolean {
+        val attempt = admission.attempt ?: return true
+        if (attempt.finishedAt != null) return true
+        val meta = admission.metadata
+        val link = attemptLink(db, meta.generation) ?: return true
+        val old = checkNotNull(SqliteSyncRetryBudget.findLineage(db, link))
+        val owner = AutomaticOwner(link, attempt.id, old.claimVersion)
+        val at = requestedAt ?: maxOf(Instant.now(), old.updatedAt)
+        val result = AutomaticRetryModel.finish(old, meta.generation, owner, AutomaticFinishOutcome.BLOCKED, at)
+        val next = (result as? RetryValidation.Valid)?.value ?: return false
+        for (date in old.dates) readDay(db, meta, date, old.scopeKey, today())?.let { saveDay(db, meta.generation, it.afterInterruption()) }
+        updateBudget(db, old, next)
+        check(db.update("attempt", values("finished_at" to at.toString()),
+            "generation=? AND id=? AND automatic_lineage_id=? AND finished_at IS NULL",
+            arrayOf(meta.generation.value, attempt.id, link)) == 1)
+        return true
+    }
+
+    /** 현재 Drive binding이 확인된 세대만 동일 트랜잭션에서 보존한다. */
+    private fun copyDriveGeneration(db: SQLiteDatabase, admission: Admission, nextGeneration: DestinationGeneration) {
+        val meta = admission.metadata
+        val args = arrayOf(meta.generation.value)
+        db.rawQuery("SELECT * FROM day WHERE generation=? ORDER BY date,scope_key", args).use { days ->
+            db.rawQuery("SELECT * FROM dataset WHERE generation=? ORDER BY date,scope_key,dataset", args).use { datasets ->
+                var hasDataset = datasets.moveToFirst()
+                while (days.moveToNext()) {
+                    val files = linkedMapOf<Dataset, DatasetState>()
+                    while (hasDataset && datasets.s("date") == days.s("date") && datasets.s("scope_key") == days.s("scope_key")) {
+                        val file = decodeDataset(datasets)
+                        require(files.put(file.dataset, file) == null)
+                        hasDataset = datasets.moveToNext()
+                    }
+                    val old = decodeDay(days, files, meta, today()).afterInterruption()
+                    val copied = old.copy(datasets = old.datasets.mapValues { (_, file) ->
+                        val prior = file.priorConfirmation
+                        file.copy(priorConfirmation = prior?.copy(key = prior.key.copy(generation = nextGeneration)))
+                    })
+                    require(copied.isValid(nextGeneration, checkNotNull(meta.configuration).enrolledDay, today()))
+                    saveDay(db, nextGeneration, copied)
+                }
+                require(!hasDataset)
+            }
+        }
+        db.rawQuery("SELECT * FROM retry_budget WHERE generation=? AND status<>'COMPLETED'", args).use { rows ->
+            while (rows.moveToNext()) {
+                val old = SqliteSyncRetryBudget.decode(rows)
+                require(old.ownerAttemptId == null)
+                val copied = RetryBudget.validated(UUID.randomUUID().toString(), nextGeneration, old.scopeKey,
+                    old.requestedScopes, old.dates, old.observedRevisions, old.retriesUsed, old.retryNotBefore,
+                    old.retryDelayMillis, old.claimVersion, null, old.status, old.createdAt, old.updatedAt)
+                db.insertOrThrow("retry_budget", null, SqliteSyncRetryBudget.values(copied))
+            }
+        }
+    }
 
     override suspend fun reset(expected: DestinationGeneration?): SyncCommit {
         if (expected == null) return recoverReset()

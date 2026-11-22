@@ -484,3 +484,15 @@ root가 main의 고정된 전체 후보에서 core:test app:testDebugUnitTest as
 ### 새 자동 경계 양API 진단 및 최종 검증 배치
 
 4839856의 automatic-v1 실행44974940147을 root가 공식 ZIP SHA256과 원본 XML/source method 집합으로 검증했다. API35 8fa77be13371c6b1b2d04248e6a00e9691e70fbea4c88cc5e1018e214dd5747a, API36 99f99f9914545ca29180829f7c14e8ce32655128dc4c9689b96a7b462312b056이며 각각32/실패·오류·skip·중복·누락·추가0이다. T7/T8/T9/T14의 대상 Native gate를 완료한다. T1교정5는 독립 좁은 재검토 APPROVE와 root compileDebugAndroidTestKotlin/testDebugUnitTest PASS44s를 확인했다. 교정5의 새 실제SQLite 부정경로는 중복 별도 진단 대기 없이 바로 최종 PR 현재head full 양API에 포함한다. 기존14개 통과를 새15개 통과로 주장하지 않으며 최종 whole/격리host gate는 그대로 유지한다. 이는 사용자 속도 우선 위임의 동일 runner 검증 배치 변경이다. 전체 계획은 최종 full 및 격리 스펙 검증까지 in_progress다.
+
+### T1 교정6 — 동일 목적지 opt-out/re-enable의 uncertainty·예산 우회 차단
+
+fresh-context PR20 검토는 fe18ac2에서 setAutomaticCAS(false)가 같은 binding/enrollment의 새 generation을 만들고 구 day/dataset/retry 상태는 이전 generation에만 남겨, 재활성화가 미확정 create와 미완료 예산을 우회할 수 있음을 확인했다. 기존 stale callback/구 SQL 보존 테스트는 재활성화를 검증하지 않는다. 이전 generation의 callback 무효화는 유지하면서 동일 목적지의 불확실한 쓰기·미완료 retry를 새 admission에서 보존 또는 보수적으로 차단한다. 실제 SQLite에서 in-flight unknown create 및 exhausted/미완료 budget의 off→on→reopen과 stale callback을 검증하고 기존 manual/SAF 의미는 보존한다. 새 source/remote 호출이나 자동 명시복구는 없다. 원래 T1 교정1~5를 보존하여 이번6으로 집계하며 승인된 V1 정확성·소유자 자동 위임 안의 실제 결함 교정이다. 범위는 store/native와 꼭 필요한 인접 계약 최대5파일이며 스키마/API 확대가 필요하면 구현 전에 root에 근거와 최소안을 보고한다. 구 head full44976096322는 취소하며 수정 head 전체 gate를 새로 실행한다.
+
+### 교정6 계약 명확화 — 동일 binding에서만 현재 상태 이월
+
+원래 세대 무효화와 구 linked attempt 보관은 유지한다. 현재 private binding의 동일성이 증명되는 opt-out transaction에서만 새 generation으로 day/dataset/prior confirmation을 재키잉하고, 미종결 retry cohort를 동일 frozen scopes/dates/관측/count/claimVersion/status/due/시각으로 이월한다. SQLite PK 유일성 때문에 이월 행의 lineage UUID/key만 새로 발급할 수 있으나 이는 fresh initial admission/예산 초기화가 아니며 구 lineage를 삭제·수정하지 않는다. owner는 기존 종료/중단 정책으로 해제하고 실제 무확정 상태는 보존한다. 두 세대의 원본/이월 행은 같은 transaction에서 검증되며 실패/취소는 전체 rollback한다. 새 schema/column/JSON metadata는 도입하지 않는다.
+
+historical generation에는 account binding이 없어 private-drive 문자열만으로 모든 과거 계정의 handle을 합치지 않는다. 현재 binding이 같은 Drive 재설정에서 미확정/미완료 상태를 버리는 경우는 보수적으로 거부하거나 동일한 안전 이월을 사용하며, 다른 계정 binding을 동일 목적지라고 추정하지 않는다. Drive의 invalidate도 같은 우회가 없어야 한다. 기존 generic/SYNTHETIC foundation의 명시 세대 교체·빈 coverage 계약과 기존 assertion은 유지하고 실제 Drive 경계를 별도 SQLite 회귀로 검증한다. 단순히 테스트 통과를 위해 SYNTHETIC 값을 production Drive의 동일성 근거로 사용하지 않는다. 이 명확화는 원래 budget 제한·반복 실패 보존의 의미를 유지하는 storage-only 교정이며 독립 적합성/PR 재검토가 필수다.
+
+교정6의 현재 binding guard는 기존 confirmed target ID도 Drive lookup에서 누락되었을 때 중복 create를 막는 근거임을 확인해, 같은 Drive 계정에 기록이 남아 있는 category 재구성을 보수적으로 거부한다. 같은 계정·같은 category의 재인증은 기존 ManualDriveSession이 configure 없이 동일 generation을 사용하므로 유지한다. 이 제한은 README에 명시하고, explicit reset은 원격 삭제가 아님을 유지한다. 범위/등록일 변경을 위한 범용 과거 이력 마이그레이션은 1.0에 추가하지 않는다.

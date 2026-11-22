@@ -41,3 +41,9 @@ Schema migration, exact DDL parity, 양방향 관계 검증 및 transaction CAS 
 - [공통 계획](../2026-11-05-v1-completion/plan.md)
 - [자동화 작업 계획](../2026-11-05-v1-completion/automation-ui/plan.md)
 - [대체한 ADR-010](ADR-010-2026-11-13-2026-11-05-v1-completion-automatic-retry-ledger.md)
+
+## 2026-11-22 동일 binding 세대 무효화 보정
+
+PR20 독립 검토에서 자동 opt-out의 새 generation이 기존 불확실한 쓰기·미완료 예산을 보지 못하는 경로를 확인했다. 이전 callback을 무효화하면서 현재 binding의 상태를 원자적으로 새 generation에 이월한다. day/dataset/prior confirmation은 새 generation으로 재키잉하되 원격 handle과 상태·확인 시각을 보존한다. 미종결 cohort의 frozen scopes/dates/관측·retriesUsed·claimVersion·status·due·시각은 보존하며 원래 owner 종료 정책을 따른다. 새 이월 ledger UUID/key는 SQLite PK 구분용이며 fresh initial이나 실패 예산 초기화가 아니다. 원본 ledger와 linked attempt는 이전 generation에 보관한다. 새 schema/API는 추가하지 않으며 실제 SQLite rollback·reopen·off/on·stale callback 회귀가 필요하다.
+
+역사 generation에는 account binding이 없으므로 private-drive 문자열로 여러 계정의 과거 handle을 합치는 대안은 기각한다. 현재 동일 binding의 Drive 재설정/invalidate에도 uncertainty·budget 우회를 허용하지 않고, generic foundation의 기존 세대 교체 의미는 유지한다. 이 보정은 사용자에게 새 동의를 받은 것으로 해석하지 않으며 본 ADR은 독립 적합성 검증 전까지 Proposed다.
