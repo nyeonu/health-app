@@ -9,20 +9,20 @@ target: android
 spec: spec.md
 spec_rev: 30ffde9529d993306a6d5c04c93abf7fd0f271e2
 tasks:
-  - {id: T1, title: SQLite retry 원자성, depends_on: [], status: in_progress, tier: standard}
+  - {id: T1, title: SQLite retry 원자성, depends_on: [], status: done, tier: standard}
   - {id: T2, title: 요약 모델, depends_on: [], status: done, tier: standard}
   - {id: T3, title: 계정 고정 silent 인증, depends_on: [], status: done, tier: standard}
   - {id: T4, title: 요약 CSV와 revision, depends_on: [T2], status: done, tier: standard}
   - {id: T5, title: 자동 session 연결, depends_on: [T1, T11], status: done, tier: standard}
   - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: done, tier: standard}
   - {id: T7, title: WorkManager 실행과 예약, depends_on: [T3, T6], status: done, tier: standard}
-  - {id: T8, title: 자동 설정과 상태, depends_on: [T1], status: done, tier: standard}
+  - {id: T8, title: 자동 설정과 상태, depends_on: [T1], status: in_progress, tier: standard}
   - {id: T13, title: 자동 활성 시 수동 Drive 공존, depends_on: [T1], status: done, tier: standard}
   - {id: T9, title: 화면 연결과 접근성, depends_on: [T1], status: done, tier: standard}
   - {id: T11, title: 자동 engine 경계, depends_on: [], status: done, tier: standard}
   - {id: T12, title: 실제 동작에 맞는 개인정보 안내, depends_on: [], status: done, tier: standard}
   - {id: T14, title: 기존 runner의 1.0 고정 진단, depends_on: [], status: done, tier: standard}
-  - {id: T15, title: 수동 category 변경 실제 SQLite 회귀, depends_on: [T1], status: in_progress, tier: standard}
+  - {id: T15, title: 수동 category 변경 실제 SQLite 회귀, depends_on: [T1], status: done, tier: standard}
   - {id: T10, title: 1.0 APK 후보와 안내, depends_on: [T12], status: done, tier: standard}
 ---
 
@@ -529,3 +529,13 @@ root 실행 전 source 대조에서 새 수동 회귀의 최초 configure가 tod
 ### 교정6 대상 SQLite 실제 결과 및 교정7 준비
 
 80c5861의 retry-store44977241883 양API19/19를 root가 공식ZIP SHA256/source method 집합/원본XML로 대조했다. API35 00d89140f38dc45773390837f2bf8984368d6ef50e415bb51b6a28b85e244e53, API36 5404ab96b4b035d22e875ebb2c53c062b8d7e2e5f4c3c90008c46fed52320ae4이며 실패·오류·skip·중복·누락·추가0이다. 이는 off/on의 실제 보존 근거이며 교정7 category 변경의 성공으로 대체하지 않는다. 80c5861 JVM/lint/APK44977221304도 성공했지만 전체 Native44977221291은 재검토에 따른 취소다. 교정7 source store/ledger/Native3파일과 T15 manual test1파일은 고정됐고 원본 현재head의 compile·실제 대상 진단·독립 재검토·최종 full은 필수 pending이다.
+
+### T8 교정3 — 기존 수동 UI 안내 기대값 정합화 및 외부 runner 실패
+
+최종 full44977958836의 API36 원본XML은 legacy17개 중16PASS/1FAIL/오류·skip0이며 ManualDriveUiInstrumentedTest가 이전 안내인 '자동 동기화와 SAF 저장은 이 화면에서 지원하지 않습니다.'를 찾다가 실패했다. 자동 기능을 추가한 production 안내가 바뀌었으므로 기존 테스트의 마지막 안내 기대값을 실제 수동/자동 분리 계약에 맞게 정합화한다. light/dark·큰 글씨·버튼·동의·권한·범위·시각·상태의 모든 기존 단언과 반복·test method는 유지한다. 제품 코드 변경이나 테스트 삭제/skip/일반화는 없다. T8 교정1·2를 보존하여 이번3으로 누적하고 기존 owned4파일+해당 legacy Native1파일로 최대5파일이다.
+
+같은 full의 API35는 Native 전에 UTP runtime artifact Maven Central 요청이 HTTP429(Too Many Requests)로 실패했다. adb 부팅 경고는 있었으나 최종 실패 원인은 dependency resolution이다. 실행0/원본Native 없음이며 앱 test 실패나 통과로 간주하지 않는다. 새 UI 기대값 head 전체 양API를 같은 기존 runner로 검증하고 이 외부 일시 실패가 반복되면 실제 로그 근거로 같은 head의 한정 재실행만 허용한다. 새 retry framework/테스트 완화/의존성 업그레이드는 하지 않는다. 짧은 진단의 과도한 병렬 다운로드를 추가하지 않고 다음 full matrix+JVM만 실행한다.
+
+### 교정7·T15 대상 gate 완료 및 legacy 안내 교정 준비
+
+f4eb4cb retry-store44978002202는 양API22/22, manual/SAF44978008345는 양API10/10을 공식 ZIP SHA256/원본XML/source method 집합으로 대조해 실패·오류·skip·중복·누락·추가0이다. JVM/lint/APK44977958803도210/실패·오류·skip·중복0이다. T1/T15 대상 gate는 완료하고 T8 교정3은 기존 안내 기대값1행만 변경하여 제품 소스와186개 Native method 집합을 보존한다. 새 후보에서 해당 계측 소스 컴파일과 독립 delta 검토 뒤 전체 gate를 실행하며 최종 merge/적합성/실제 수용은 대체하지 않는다. 전체계획은 in_progress다.
