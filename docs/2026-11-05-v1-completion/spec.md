@@ -1,7 +1,7 @@
 ---
 spec_id: 2026-11-05-v1-completion
 title: V1 날짜별 복구·저장 목적지·자동 동기화 완성
-status: approved
+status: implemented
 created: 2026-11-05
 ---
 

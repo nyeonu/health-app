@@ -1,7 +1,8 @@
 # Implementation plan — Health App
 
-Last updated: 2026-11-01 (Asia/Seoul)  
-Status: **P0 implementation, Guava/reader corrections and evidence consolidation merged through PR #5 (`7478113`). Corrected-head CI passed 47 JVM + 3 emulator tests, APK and lint; these were not rerun for documentation-only PR #5. Current remote evidence includes four CSV datasets and an earlier-start overnight sleep session. D01/D02/D05/D07 and D06 interruption/retry pass observed scenarios; D09 authorization recovery passes by user report, with dialog cancellation unobserved. The owner confirms no reporting-day HC weight record. Original-source comparison is owner-confirmed and D08 passes its observed reporting-day availability scenario. D00 retains its remaining independently unverified installation identity/completeness limits, D03 is unobserved, D04 pending, and separate recoverable key backup unconfirmed (GitHub Secrets configured). [Current acceptance](P0/device-acceptance.md) is authoritative. V1 remains unstarted.**
+Last updated: 2026-11-22 (UTC)
+
+Status: **기능 1.0 소프트웨어 구현·검증과 독립 검토를 완료해 PR #20 (`1139553`)을 병합했다. 수동 Drive·로컬 SAF, 명시 opt-in 자동 Drive, bounded catch-up·영속 retry·상태 복구를 지원한다. 양API Native186·기존 격리 host 및 JVM210/lint/APK 통과. 실제 Galaxy/계정/provider/Doze/재부팅/저전력/TalkBack·개인 키 백업과 기존 P0 미확인은 유지한다. [현재 실행 증거](2026-11-22-v1-release/execution-report.md)와 [설치 안내](V1/1.0-installation.md)를 따른다.**
 
 ## Project outcomes
 1. Collect user-authorized Health Connect health records that Samsung Health actually writes on the target Galaxy phone.
@@ -74,22 +75,22 @@ Downloaded CI APKs now require the fixed owner key; PR runs never receive signin
 
 **Baseline entry review (2026-11-01 KST):** the post-merge [security/dependency review](P0/final-security-review.md) and [resolved-coordinate audit](P0/dependency-audit.json) cover historical unpatched source `6392eb1`, where three Guava advisories were identified. Merged PR #3 addresses that coordinate finding in its checked graph; device results remain separate. [Device acceptance](P0/device-acceptance.md): D00 partial, D01 user/UI PASS, D02 PASS (UI plus actual CSV verified), D03 NOT OBSERVED (revocation removed continuation), D05 PASS (offline failure/online recovery and remote same-file checks verified), D06 partial overall (home-departure/retry and remote checks passed; screen-lock unobserved), D07 user/UI PASS for reset and manual recovery, D04/D08–D09 and key backup pending. No full P0 exit gate or V1 implementation is completed by these observations.
 
-Storage choice/coexistence is [documented as V1 design with seven pending Galaxy scenarios](V1/storage-destinations.md). It does not implement SAF or change P0 gates. Capability defaults remain unsupported/unverified until each device/provider is tested; SAF uses system consent without app Google OAuth setup, while Drive API retains its OAuth requirements.
+V1 저장 선택은 비공개 Drive 및 검증된 전경 local SAF로 구현했다. [일곱 Galaxy/provider 수용 시나리오](V1/storage-destinations.md)는 미확인이며 P0 gate는 그대로다. 미검증/cloud provider·background SAF·동시 both-mode는 지원하지 않는다. SAF는 시스템 폴더 동의와 capability 검증, Drive는 별도 계정 OAuth를 사용한다.
 
-- [ ] Implement the shared `StorageDestination.upsert(CsvFile)` boundary with Drive API and SAF destinations only in V1, after P0 gates.
+- [x] Implement the shared `StorageDestination.reconcile`/`writePending` boundary with private Drive API and verified foreground local SAF destinations, with per-file confirmations.
 - [ ] Validate SAF local-folder create/update, Drive tree support, persisted grants/reboot, same-date overwrite, and permission/provider failures on Galaxy; all actual results pending.
-- [ ] Persist per-date/per-destination coverage and per-file/revision confirmation; keep healthy results and retry only failed/pending sinks. Later both mode succeeds only when all intended sinks confirm.
-- [ ] Verify restored SAF URI access in WorkManager and missed-day recovery as V1 tests, not P0 merge gates.
-- [ ] User-triggered manual synchronization.
-- [ ] Once-daily WorkManager scheduling subject to Android restrictions and background-read permissions/feature checks.
-- [ ] Daily snapshot exports; re-sync recent 2 days to account for delayed source sync, avoid duplicates.
-- [ ] Clear status UI: last attempt, last success, rows, pending, failure reasons.
-- [ ] Retry/backoff and idempotent Drive upsert; network and permission denial handling.
-- [ ] No false promise of exact-time execution; handle missed days.
-- [ ] Persist per-local-day sync coverage; detect and queue missing dates on periodic worker run, app launch, and manual sync.
-- [ ] Backfill missed dates in bounded batches, keeping failed/incomplete dates pending until every intended destination confirms its files.
-- [ ] Repeating sync for an already-exported date updates the same private Drive file without duplicates.
-- [ ] Surface overdue/stale data explicitly (last attempted, last successful, covered-through date) rather than displaying a misleading success.
+- [x] Persist per-date/per-selected-destination coverage and per-file/revision confirmation; preserve healthy results and retry only failed/pending files. Concurrent both-mode remains outside V1.
+- [ ] 후속/현재 V1 범위 제외: background SAF의 WorkManager URI 접근·복구. 현재 자동 작업은 Drive만 사용하고 SAF는 전경 수동만 지원한다.
+- [x] User-triggered manual synchronization.
+- [x] Once-daily WorkManager scheduling subject to Android restrictions and background-read permissions/feature checks.
+- [x] Daily snapshot exports; re-sync recent 2 days to account for delayed source sync, avoid duplicates.
+- [x] Clear status UI: last attempt, last success, rows, pending, failure reasons.
+- [x] Retry/backoff and idempotent Drive upsert; network and permission denial handling.
+- [x] No false promise of exact-time execution; handle missed days.
+- [x] Persist per-local-day sync coverage; detect and queue missing dates on periodic worker run, app launch, and manual sync.
+- [x] Backfill missed dates in bounded batches, keeping failed/incomplete dates pending until every intended destination confirms its files.
+- [x] Repeating sync for an already-exported date updates the same private Drive file without duplicates.
+- [x] Surface overdue/stale data explicitly (last attempted, last successful, covered-through date) rather than displaying a misleading success.
 
 ### V1 background scheduling acceptance scenarios
 | Scenario | Expected behavior |
@@ -175,3 +176,11 @@ The user requests later investigation of slow sync/upload, including measured bo
 ## V1 개발 진행 — 2026-11-05
 
 소유자는 병목 개선부터 기존 V1 범위의 스펙·계획·구현·별도 세션 검토·수정·개발 병합을 자동 승인했다. [승인 스펙](2026-11-05-v1-completion/spec.md)과 [실행 기록](2026-11-05-v1-completion/execution-report.md)이 현재 기준이다. 날짜별 scope/revision/planner·실제 SQLite/OS 중단 복구와 전경 Drive는 개발 검증·병합을 마쳤다. 전경 SAF local은 [PR #18](https://github.com/nyeonu/health-app/pull/18)의 소스 `bbde0da`에서 양 API 각각 Native132+기존host20/sync-state recovery17·cleanup17 및 JVM181을 통과했고 독립 SAF 스펙 검증도 PASS다. [소프트웨어 실행 증거](V1/saf-local-verification.md)를 기준으로 최종 품질·보안 검토와 reviewed merge를 별도 수행한다. 자동 WorkManager·통합 자동 설정/UI·최종 의존성 재감사는 후속 작업이다. 이는 전체 V1 완료가 아니다. 미확인 P0/Galaxy/실계정/SAF/자동 실행·배터리·TalkBack 수용은 미확인으로 유지하며, 이전 단락의 미착수/성능보류 문구는 당시 이력이다. 실제 원본 비교는 관찰한 날짜에 대해 소유자가 확인했고 나머지는 미확인으로 두라는 지시를 유지한다.
+
+## 과거 상단 상태 (2026-11-01, 당시 기록)
+
+Status: **P0 implementation, Guava/reader corrections and evidence consolidation merged through PR #5 (`7478113`). Corrected-head CI passed 47 JVM + 3 emulator tests, APK and lint; these were not rerun for documentation-only PR #5. Current remote evidence includes four CSV datasets and an earlier-start overnight sleep session. D01/D02/D05/D07 and D06 interruption/retry pass observed scenarios; D09 authorization recovery passes by user report, with dialog cancellation unobserved. The owner confirms no reporting-day HC weight record. Original-source comparison is owner-confirmed and D08 passes its observed reporting-day availability scenario. D00 retains its remaining independently unverified installation identity/completeness limits, D03 is unobserved, D04 pending, and separate recoverable key backup unconfirmed (GitHub Secrets configured). [Current acceptance](P0/device-acceptance.md) is authoritative. V1 remains unstarted.**
+
+## 2026-11-22 성능 작업 상태
+
+요청한 배치 내 Drive root lookup 재사용과 최대2개 파일 작업의 제한 병렬화는 PR15로 개발 검증·병합했다. [실행·측정 근거](2026-11-05-drive-optimization/execution-report.md)는 동일 합성 조건의 요청12→10, 최대 활성1→2 및 지연 분포 감소를 보존한다. 실제 Galaxy/Google 계정에서 변경 후 latency·배터리 수용은 미측정이며 합성 개선율을 실제 성능으로 표시하지 않는다. 위 날짜별 backlog/진행 문구는 당시 이력이다.

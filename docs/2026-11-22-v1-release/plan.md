@@ -2,7 +2,7 @@
 plan_id: 2026-11-22-v1-release
 title: V1 completion delivery plan
 kind: single
-status: in_progress
+status: done
 author: Codex
 created: 2026-11-22
 target: android
@@ -16,7 +16,7 @@ tasks:
   - {id: T5, title: 자동 session 연결, depends_on: [T1, T11], status: done, tier: standard}
   - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: done, tier: standard}
   - {id: T7, title: WorkManager 실행과 예약, depends_on: [T3, T6], status: done, tier: standard}
-  - {id: T8, title: 자동 설정과 상태, depends_on: [T1], status: in_progress, tier: standard}
+  - {id: T8, title: 자동 설정과 상태, depends_on: [T1], status: done, tier: standard}
   - {id: T13, title: 자동 활성 시 수동 Drive 공존, depends_on: [T1], status: done, tier: standard}
   - {id: T9, title: 화면 연결과 접근성, depends_on: [T1], status: done, tier: standard}
   - {id: T11, title: 자동 engine 경계, depends_on: [], status: done, tier: standard}
@@ -91,19 +91,21 @@ class SyncWorkScheduler(context: Context) {
 
 테스트 근거는 성공 기준·경계·오류·순서·회귀이며 검증 층은 JVM, 실제 SQLite/WorkManager instrumentation 또는 검토다.
 
-| Spec criterion | Verification (source/layer) | Tasks |
-|---|---|---|
-| 수동 Drive와 로컬 SAF의 기존 동의·권한·목적지·복구 동작을 유지하고 background 작업은 SAF를 사용하지 않는다. | Existing manual and SAF regressions plus automatic SAF rejection (regression/error, instrumentation) | T5, T7, full gate |
-| 자동 Drive는 명시적 opt-in 전까지 꺼져 있고 background 기능 지원과 background 및 각 category 권한을 요구한다. | Default off and revoked/missing feature and grants cause no reads (boundary/error, unit and instrumentation) | T6, T7, T8 |
-| 지원 요약은 Health Connect Aggregate를 사용하고 체중은 최신 실제 기록이며 결측은 결측으로 둔다. 미입증 운동 심박은 BLOCKED로 표시하고 다른 허용 category는 독립 진행한다. | Null/zero/provenance and latest weight; unproven HR blocked, other categories progress (boundary/error, unit) | T2, T4, T6 |
-| 자동 작업은 connected 및 battery-not-low 제약의 24시간 unique WorkManager 일정과 최근 2일 refresh를 포함한 최대 7일 catch-up을 사용한다. | Unique constrained requests and seven-date/two-refresh boundary (boundary/ordering, instrumentation and unit) | T7 |
-| 영속 retry lineage는 최초 실행 외 최대 3회 재시도하며 새 작업이나 원본 revision은 미완료 budget을 초기화하지 않는다. | Claims race/reopen, due and exhaustion, changed revision retains count (boundary/error/ordering, real SQLite) | T1, T5 |
-| 수동 실행과 worker는 동일 canonical gate를 사용하며 worker는 health record 조회 전에 선택 계정의 새 silent 인증과 proof를 수행하고 UI를 띄우지 않는다. | Concurrent manual/worker gate; account mismatch, resolution, stale callback and proof failure prevent reads (ordering/error, unit and instrumentation) | T3, T5, T7 |
-| 영속 metadata는 재시작 후에도 확정 결과와 불확실한 create 및 취소 상태를 보존하며 blocked·stale·손상·미확인 상태를 완료로 표시하거나 자동 초기화하지 않는다. | Reopen, rollback, cancellation and uncertainty preserve prior outcomes and fail closed (error/ordering/regression, real SQLite) | T1, T5 |
-| 설정은 명시적 opt-in·끄기·reset과 함께 queued·blocked·coverage gap을 표시하고 끄기나 목적지 변경 시 이전 작업을 안전하게 무효화한다. | UI semantics and late callbacks preserve generation and show true state (success/error/ordering, instrumentation) | T8, T9 |
-| 각 통합 PR 병합과 최종 1.0 전에 현재 head의 API 35·36 전체 Native와 기존 격리 host, JVM, lint 및 APK 빌드가 통과하며 테스트 삭제·skip·완화는 없다. | Full runner inventories and raw results, current-head CI, build output (regression/integration) | Gate |
-| 독립 적합성 검증과 새 세션 PR 리뷰 후 병합하며 수행하지 않은 실기기·계정·P0·접근성 수용은 pending으로 남긴다. | Independent spec-only conformance, fresh full diff review and evidence audit (review; not reducible to unit test) | Gate |
-| APK 후보는 versionName 1.0.0 및 1보다 큰 versionCode를 사용하고 간결한 설치 안내와 미완료 수용 항목을 제공한다. | Inspect APK version and setup/handoff against evidence (review/build) | T10, Gate |
+| Spec criterion | 실제 테스트 또는 실행 gate |
+|---|---|
+| 수동 Drive와 로컬 SAF의 기존 동의·권한·목적지·복구 동작을 유지하고 background 작업은 SAF를 사용하지 않는다. | `ManualDriveFlowInstrumentedTest.automaticEnabledManualFlowRequiresForegroundConsentAndFreshProofWithoutCreatingRetryLineage`; `ManualDriveFlowInstrumentedTest.sameAccountCategoryAdditionAndRemovalPreserveConfirmedExportAndRequireFreshForegroundProof`; `SafManualFlowInstrumentedTest.safActualActivitySelectionConfiguresWithoutExportingAndExplicitContinueConfirmsOnlySelectedLocalTarget`; `SyncWorkSchedulerInstrumentedTest.disabledAndStaleWorkersDoNotAccessHealthOrPrepareDestination` |
+| 자동 Drive는 명시적 opt-in 전까지 꺼져 있고 background 기능 지원과 background 및 각 category 권한을 요구한다. | `AutomaticSettingsTest.Explicit opt in schedules and enqueues after verified commit`; `AutomaticHealthReaderTest.Feature and each grant missing block their scopes while HR remains blocked`; `BackgroundPermissionFlowInstrumentedTest.unavailableOrUnknownFeatureNeverLaunchesAndExplicitResultClearsBusy` |
+| 지원 요약은 Health Connect Aggregate를 사용하고 체중은 최신 실제 기록이며 결측은 결측으로 둔다. 미입증 운동 심박은 BLOCKED로 표시하고 다른 허용 category는 독립 진행한다. | `AutomaticHealthReaderTest.Null aggregates retain missing values and per metric origins while other categories proceed`; `AutomaticHealthReaderTest.Bounded weight read returns the latest actual measurement`; `SyncExecutionSessionInstrumentedTest.automaticUsesPositiveGrantedScopesAndBlocksWhenNoScopesAreAvailable`; `CsvExporterTest.Summary only daily exports blank missing values and observed zero` |
+| 자동 작업은 connected 및 battery-not-low 제약의 24시간 unique WorkManager 일정과 최근 2일 refresh를 포함한 최대 7일 catch-up을 사용한다. | `SyncWorkSchedulerInstrumentedTest.uniqueDailyWorkUsesNetworkAndBatteryConstraintsAndCatchUpIsUnique`; `SyncPlannerTest.Recent two days reserve slots before oldest eligible gaps and retain blocked pending days` |
+| 영속 retry lineage는 최초 실행 외 최대 3회 재시도하며 새 작업이나 원본 revision은 미완료 budget을 초기화하지 않는다. | `SyncRetryBudgetStoreInstrumentedTest.sqliteRetryClaimsSurviveReopenAndRacingAttemptsCannotExceedThreeRetriesOrEraseOldMetadata`; `SyncExecutionSessionInstrumentedTest.automaticRetryKeepsLineageAndConsumesBudgetWhenSourceRevisionChanges`; `SyncRetryBudgetStoreInstrumentedTest.removedCategoryCannotClaimCarriedRetryAndReselectionRetainsBudgetAndDue` |
+| 수동 실행과 worker는 동일 canonical gate를 사용하며 worker는 health record 조회 전에 선택 계정의 새 silent 인증과 proof를 수행하고 UI를 띄우지 않는다. | `SyncExecutionSessionInstrumentedTest.automaticAndManualSessionsShareOneGateAndOnlyOwnerPrepares`; `BackgroundDriveAuthorizationTest.Background authorization pins the selected account and proves the same fresh token before any health read without launching resolution`; `BackgroundDriveAuthorizationTest.Suspending durable checks block stale callbacks and stale proof before reads and propagate cancellation` |
+| 영속 metadata는 재시작 후에도 확정 결과와 불확실한 create 및 취소 상태를 보존하며 blocked·stale·손상·미확인 상태를 완료로 표시하거나 자동 초기화하지 않는다. | `SyncRetryBudgetStoreInstrumentedTest.failedSourceReadPreservesOldRevisionAndPriorWithoutRecordingANewObservation`; `SyncRetryBudgetStoreInstrumentedTest.driveOptOutCarriesUnknownAndStaleJournalsConfirmedMetadataAndRejectsStaleCallbacks`; `SyncExecutionSessionInstrumentedTest.automaticCancellationPreservesUncertainCreateAndConsumedBudgetAcrossReopen`; `SyncRetryBudgetStoreInstrumentedTest.authorizationAndExhaustionPreserveRemoteStaleAndPriorConfirmationThroughReopen` |
+| 설정은 명시적 opt-in·끄기·reset과 함께 queued·blocked·coverage gap을 표시하고 끄기나 목적지 변경 시 이전 작업을 안전하게 무효화한다. | `AutomaticSettingsTest.Opt out commits generation invalidation before cancelling old work`; `SyncRetryBudgetStoreInstrumentedTest.sameDriveCategoryChangesPreserveHistoricalTargetsUnknownsPriorAndAccountIsolation`; `AutomaticSettingsTest.Work observation failures and unavailable store produce unknown state`; `AutomaticSettingsInstrumentedTest.cancellationBeforeCommitLeavesAutomaticOffAfterSqliteReopenAndDoesNotEnqueue`; `HealthHomeScreenInstrumentedTest.automaticControlsRequireExplicitConsentAndRestoreDoesNotStartActions` |
+| 각 통합 PR 병합과 최종 1.0 전에 현재 head의 API 35·36 전체 Native와 기존 격리 host, JVM, lint 및 APK 빌드가 통과하며 테스트 삭제·skip·완화는 없다. | [양API 전체186·host 및 JVM210/lint/APK 원본](execution-report.md) |
+| 독립 적합성 검증과 새 세션 PR 리뷰 후 병합하며 수행하지 않은 실기기·계정·P0·접근성 수용은 pending으로 남긴다. | [격리 적합성 PASS](spec-conformance.md), [독립 PR 검토 APPROVE](pr-review.md), [최종 한국어 댓글](https://github.com/nyeonu/health-app/pull/20#issuecomment-7073833100) |
+| APK 후보는 versionName 1.0.0 및 1보다 큰 versionCode를 사용하고 간결한 설치 안내와 미완료 수용 항목을 제공한다. | versionName1.0.0/code2 APK 메타데이터와 [설치 안내](../V1/1.0-installation.md) |
+
+파일별 링크와 단언 연결은 [추적성 상세](traceability.md)에 보존한다.
 
 ## 4. 작업
 
@@ -205,7 +207,7 @@ class SyncWorkScheduler(context: Context) {
 
 ### T7: WorkManager 실행과 예약
 
-- **depends_on**: [T3, T6]; T5 실제 Native 통과는 검증·통합 선행 조건; **tier**: standard; **status**: in_progress.
+- **depends_on**: [T3, T6]; T5 실제 Native 통과는 검증·통합 선행 조건; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -220,7 +222,7 @@ class SyncWorkScheduler(context: Context) {
 
 ### T8: 자동 설정과 상태
 
-- **depends_on**: [T1]; T7 검증·통합은 완료 선행 조건; **tier**: standard; **status**: in_progress.
+- **depends_on**: [T1]; T7 검증·통합은 완료 선행 조건; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -235,7 +237,7 @@ class SyncWorkScheduler(context: Context) {
 
 ### T9: 화면 연결과 접근성
 
-- **depends_on**: [T1]; T8 검증 및 T13 같은 native 파일 인계는 완료 선행 조건; **tier**: standard; **status**: in_progress.
+- **depends_on**: [T1]; T8 검증 및 T13 같은 native 파일 인계는 완료 선행 조건; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -305,7 +307,7 @@ T1/T2/T3는 파일이 겹치지 않아 병렬 가능하다. 각 작업의 실제
 
 ### T14: 기존 runner의 1.0 고정 진단
 
-- **depends_on**: []; **tier**: standard; **status**: in_progress.
+- **depends_on**: []; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -510,7 +512,7 @@ historical generation에는 account binding이 없어 private-drive 문자열만
 
 ### T15: 수동 category 변경 실제 SQLite 회귀
 
-- **depends_on**: [T1]; **tier**: standard; **status**: in_progress.
+- **depends_on**: [T1]; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -539,3 +541,7 @@ root 실행 전 source 대조에서 새 수동 회귀의 최초 configure가 tod
 ### 교정7·T15 대상 gate 완료 및 legacy 안내 교정 준비
 
 f4eb4cb retry-store44978002202는 양API22/22, manual/SAF44978008345는 양API10/10을 공식 ZIP SHA256/원본XML/source method 집합으로 대조해 실패·오류·skip·중복·누락·추가0이다. JVM/lint/APK44977958803도210/실패·오류·skip·중복0이다. T1/T15 대상 gate는 완료하고 T8 교정3은 기존 안내 기대값1행만 변경하여 제품 소스와186개 Native method 집합을 보존한다. 새 후보에서 해당 계측 소스 컴파일과 독립 delta 검토 뒤 전체 gate를 실행하며 최종 merge/적합성/실제 수용은 대체하지 않는다. 전체계획은 in_progress다.
+
+## 2026-11-22 소프트웨어 완료
+
+[현재 1.0 실행 증거](execution-report.md)의 source6efa2d2에서 양API 전체 Native186/기존 격리 host 및 JVM210/lint/APK가 통과했고 독립 스펙 적합성 PASS·최종 PR 검토 APPROVE 뒤 [PR20](https://github.com/nyeonu/health-app/pull/20)을1139553으로 정상 병합했다. 날짜별 과거 실행/복구 이력은 보존하며 이 최신 완료 기록이 이전 진행 상태를 대체한다. 실제 기기·계정·P0·TalkBack·개인 키 백업은 미확인이다. 문서만 완료 상태를 갱신하며 Android tree5ac60a01b547634329ef625a6e05e950ef67f806은 변경하지 않는다.
