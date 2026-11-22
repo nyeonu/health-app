@@ -527,11 +527,17 @@ class SyncRetryBudgetStoreInstrumentedTest {
             assertTrue(Dataset.DAILY in f.store().loadUnresolvedCreates(next, f.day)!!)
             assertEquals(setOf("stale-target", "prior-target"), f.store().loadKnownTargets(next, f.day).getValue(Dataset.WORKOUTS))
             assertEquals(RetryBudgetStatus.BLOCKED, f.budget(next).status)
-            assertEquals(CommitStatus.INVALID, f.store().configure(next,
-                SyncConfiguration("private-drive", f.day, false, f.scopes.keys), f.driveBinding).status)
-            assertEquals(CommitStatus.COMMITTED, f.store().setAutomaticCAS(next, true, f.now).status)
-            assertEquals(RetryClaim.Blocked, f.initial(next))
-            assertEquals(carried, f.store().loadDay(next, f.day, f.key()))
+            val configured = f.store().configure(next, SyncConfiguration("private-drive", f.day, false, f.scopes.keys), f.driveBinding)
+            assertEquals(CommitStatus.COMMITTED, configured.status)
+            val configuredGeneration = requireNotNull(configured.generation)
+            val configuredDay = f.store().loadDay(configuredGeneration, f.day, f.key())!!
+            assertEquals(carried.phase, configuredDay.phase)
+            assertEquals(prior.copy(key = prior.key.copy(generation = configuredGeneration)),
+                configuredDay.datasets.getValue(Dataset.WORKOUTS).priorConfirmation)
+            assertTrue(Dataset.DAILY in f.store().loadUnresolvedCreates(configuredGeneration, f.day)!!)
+            assertEquals(CommitStatus.COMMITTED, f.store().setAutomaticCAS(configuredGeneration, true, f.now).status)
+            assertEquals(RetryClaim.Blocked, f.initial(configuredGeneration))
+            assertEquals(configuredDay, f.store().loadDay(configuredGeneration, f.day, f.key()))
         } finally { f.close() }
     }
 
@@ -562,9 +568,12 @@ class SyncRetryBudgetStoreInstrumentedTest {
             assertEquals(CommitStatus.COMMITTED, f.store().finishAutomaticAttempt(next, retry.budget.lineageId,
                 retry.attempt.id, retry.budget.claimVersion, AutomaticFinishOutcome.RETRYABLE, due).status)
             val waitingAgain = f.budget(next)
-            assertEquals(CommitStatus.INVALID, f.store().configure(next,
-                SyncConfiguration("private-drive", f.day, false, f.scopes.keys), f.driveBinding).status)
-            val invalidated = f.store().invalidate(next)
+            val configured = f.store().configure(next, SyncConfiguration("private-drive", f.day, false, f.scopes.keys), f.driveBinding)
+            assertEquals(CommitStatus.COMMITTED, configured.status)
+            val configuredGeneration = requireNotNull(configured.generation)
+            assertEquals(waitingAgain.retriesUsed, f.budget(configuredGeneration).retriesUsed)
+            assertEquals(waitingAgain.retryNotBefore, f.budget(configuredGeneration).retryNotBefore)
+            val invalidated = f.store().invalidate(configuredGeneration)
             assertEquals(CommitStatus.COMMITTED, invalidated.status)
             val newer = requireNotNull(invalidated.generation)
             val retained = f.budget(newer)
@@ -634,8 +643,157 @@ class SyncRetryBudgetStoreInstrumentedTest {
             assertEquals(FilePhase.INDETERMINATE, f.store().loadDay(next, f.day, f.key())!!.datasets.getValue(Dataset.DAILY).phase)
             assertEquals(RetryBudgetStatus.BLOCKED, f.budget(next).status)
             assertEquals(CommitStatus.STALE, f.store().recoverAutomaticAttempt(generation, owner, f.now).status)
-            assertEquals(CommitStatus.INVALID, f.store().configure(next,
-                SyncConfiguration("private-drive", f.day, false, f.scopes.keys), f.driveBinding).status)
+            val configured = f.store().configure(next, SyncConfiguration("private-drive", f.day, false, f.scopes.keys), f.driveBinding)
+            assertEquals(CommitStatus.COMMITTED, configured.status)
+            val configuredGeneration = requireNotNull(configured.generation)
+            assertTrue(Dataset.DAILY in f.store().loadUnresolvedCreates(configuredGeneration, f.day)!!)
+            assertEquals(RetryBudgetStatus.BLOCKED, f.budget(configuredGeneration).status)
+        } finally { f.close() }
+    }
+
+    @Test
+    fun sameDriveCategoryChangesPreserveHistoricalTargetsUnknownsPriorAndAccountIsolation() = runBlocking {
+        val f = Fixture()
+        try {
+            val generation = f.configure(drive = true)
+            val enrolled = f.day
+            val claim = f.initial(generation) as RetryClaim.Claimed
+            val owner = AutomaticOwner(claim.budget.lineageId, claim.attempt.id, 0)
+            val revision = RevisionKey("a".repeat(64), f.now)
+            val prior = FileConfirmation(FileKey(generation, enrolled, f.key(), Dataset.WORKOUTS, "b".repeat(64)), "prior-target", f.now)
+            val unknown = DatasetState(Dataset.DAILY, revision, FilePhase.RUNNING, true, null, f.now, null, null)
+            val running = DatasetState(Dataset.WORKOUTS, revision, FilePhase.RUNNING, true, "confirmed-target", f.now, null, prior)
+            val day = DayState(enrolled, f.key(), f.scopes, revision, DayPhase.RUNNING, f.scopes, f.now,
+                mapOf(Dataset.DAILY to unknown, Dataset.WORKOUTS to running), null)
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation, SyncMutation(owner.attemptId, null, day, null, null, null, owner)).status)
+            val confirmation = FileConfirmation(FileKey(generation, enrolled, f.key(), Dataset.WORKOUTS, revision.digest), "confirmed-target", f.now)
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation, SyncMutation(owner.attemptId, null, null, confirmation, null, null, owner)).status)
+            f.today = f.today.plusDays(1)
+            val expanded = setOf(DataType.STEPS, DataType.SLEEP)
+            val request = SyncConfiguration("private-drive", f.day, false, expanded)
+            assertEquals(CommitStatus.UNAVAILABLE, f.store { error("합성 커밋 중단") }.configure(generation, request, f.driveBinding).status)
+            assertEquals(generation, f.store().load().state!!.generation)
+            assertNull(f.store().loadCurrentAttempt(generation)!!.finishedAt)
+            val added = f.store().configure(generation, request, f.driveBinding)
+            assertEquals(CommitStatus.COMMITTED, added.status)
+            val addedGeneration = requireNotNull(added.generation)
+            val addedConfig = f.store().load().state!!.configuration!!
+            assertEquals(expanded, addedConfig.categories)
+            assertEquals(enrolled, addedConfig.enrolledDay)
+            assertEquals(CommitStatus.STALE, f.store().recoverAutomaticAttempt(generation, owner, f.now).status)
+            assertTrue(Dataset.DAILY in f.store().loadUnresolvedCreates(addedGeneration, enrolled)!!)
+            assertEquals(setOf("confirmed-target", "prior-target"), f.store().loadKnownTargets(addedGeneration, enrolled).getValue(Dataset.WORKOUTS))
+            val onlySleep = setOf(DataType.SLEEP)
+            val removed = f.store().configure(addedGeneration, SyncConfiguration("private-drive", f.day, false, onlySleep), f.driveBinding)
+            assertEquals(CommitStatus.COMMITTED, removed.status)
+            val removedGeneration = requireNotNull(removed.generation)
+            assertEquals(onlySleep, f.store().load().state!!.configuration!!.categories)
+            assertEquals(enrolled, f.store().load().state!!.configuration!!.enrolledDay)
+            val carried = f.store().loadDay(removedGeneration, enrolled, f.key())!!
+            assertEquals(FilePhase.INDETERMINATE, carried.datasets.getValue(Dataset.DAILY).phase)
+            assertEquals(FilePhase.CONFIRMED, carried.datasets.getValue(Dataset.WORKOUTS).phase)
+            assertEquals(prior.copy(key = prior.key.copy(generation = removedGeneration)), carried.datasets.getValue(Dataset.WORKOUTS).priorConfirmation)
+            assertEquals(RetryBudgetStatus.BLOCKED, f.budget(removedGeneration).status)
+            val different = f.store().configure(removedGeneration, SyncConfiguration("private-drive", f.day, false, onlySleep),
+                PrivateDestinationBinding("DRIVE", accountName = "another-synthetic-account", accountType = "synthetic-type"))
+            assertEquals(CommitStatus.COMMITTED, different.status)
+            val otherGeneration = requireNotNull(different.generation)
+            assertNull(f.store().loadDay(otherGeneration, enrolled, f.key()))
+            assertTrue(f.store().loadKnownTargets(otherGeneration, enrolled).isEmpty())
+            assertNull((f.store().loadAutomaticBudget(otherGeneration, f.key()) as AutomaticBudgetRead.Ready).budget)
+        } finally { f.close() }
+    }
+
+    @Test
+    fun removedCategoryCannotClaimCarriedRetryAndReselectionRetainsBudgetAndDue() = runBlocking {
+        val f = Fixture()
+        try {
+            val generation = f.configure(drive = true)
+            val date = f.day
+            val first = f.initial(generation) as RetryClaim.Claimed
+            assertEquals(CommitStatus.COMMITTED, f.store().finishAutomaticAttempt(generation, first.budget.lineageId,
+                first.attempt.id, 0, AutomaticFinishOutcome.RETRYABLE, f.now).status)
+            val original = f.budget(generation)
+            f.today = f.today.plusDays(1)
+            val added = f.store().configure(generation, SyncConfiguration("private-drive", f.day, false,
+                setOf(DataType.STEPS, DataType.SLEEP)), f.driveBinding)
+            assertEquals(CommitStatus.COMMITTED, added.status)
+            val addedGeneration = requireNotNull(added.generation)
+            val removed = f.store().configure(addedGeneration, SyncConfiguration("private-drive", f.day, false,
+                setOf(DataType.SLEEP)), f.driveBinding)
+            assertEquals(CommitStatus.COMMITTED, removed.status)
+            val removedGeneration = requireNotNull(removed.generation)
+            assertEquals(CommitStatus.COMMITTED, f.store().setAutomaticCAS(removedGeneration, true, f.now).status)
+            val carried = f.budget(removedGeneration)
+            assertEquals(original.retryNotBefore, carried.retryNotBefore)
+            assertEquals(original.retryDelayMillis, carried.retryDelayMillis)
+            assertEquals(original.retriesUsed, carried.retriesUsed)
+            assertEquals(original.claimVersion, carried.claimVersion)
+            assertEquals(original.observedRevisions, carried.observedRevisions)
+            try {
+                f.store().claimAutomaticAttempt(removedGeneration, carried.lineageId, carried.claimVersion, null,
+                    f.key(), f.scopes, listOf(date), UUID.randomUUID().toString(), SyncTrigger.CATCH_UP,
+                    requireNotNull(carried.retryNotBefore))
+                fail("제거된 범위는 실행할 수 없습니다")
+            } catch (_: IllegalArgumentException) { }
+            assertEquals(carried.retriesUsed, f.budget(removedGeneration).retriesUsed)
+            assertEquals(carried.claimVersion, f.budget(removedGeneration).claimVersion)
+            val selected = f.store().configure(removedGeneration, SyncConfiguration("private-drive", f.day, false,
+                setOf(DataType.STEPS)), f.driveBinding)
+            assertEquals(CommitStatus.COMMITTED, selected.status)
+            val selectedGeneration = requireNotNull(selected.generation)
+            assertEquals(setOf(DataType.STEPS), f.store().load().state!!.configuration!!.categories)
+            assertEquals(date, f.store().load().state!!.configuration!!.enrolledDay)
+            assertEquals(CommitStatus.COMMITTED, f.store().setAutomaticCAS(selectedGeneration, true, f.now).status)
+            val restored = f.budget(selectedGeneration)
+            assertEquals(original.retryNotBefore, restored.retryNotBefore)
+            assertEquals(original.retriesUsed, restored.retriesUsed)
+            val due = requireNotNull(restored.retryNotBefore)
+            assertEquals(RetryClaim.Deferred(due), f.store().claimAutomaticAttempt(selectedGeneration, restored.lineageId,
+                restored.claimVersion, null, f.key(), f.scopes, listOf(date), UUID.randomUUID().toString(), SyncTrigger.CATCH_UP, due.minusMillis(1)))
+            val retry = f.store().claimAutomaticAttempt(selectedGeneration, restored.lineageId, restored.claimVersion,
+                null, f.key(), f.scopes, listOf(date), UUID.randomUUID().toString(), SyncTrigger.CATCH_UP, due) as RetryClaim.Claimed
+            assertEquals(1, retry.budget.retriesUsed)
+        } finally { f.close() }
+    }
+
+    @Test
+    fun removedAndReselectedCategoryRetainsExhaustedBudgetAndBlocker() = runBlocking {
+        val f = Fixture()
+        try {
+            val generation = f.configure(drive = true)
+            var claim = f.initial(generation) as RetryClaim.Claimed
+            var at = f.now
+            repeat(3) {
+                assertEquals(CommitStatus.COMMITTED, f.store().finishAutomaticAttempt(generation, claim.budget.lineageId,
+                    claim.attempt.id, claim.budget.claimVersion, AutomaticFinishOutcome.RETRYABLE, at).status)
+                val waiting = f.budget(generation)
+                at = requireNotNull(waiting.retryNotBefore)
+                claim = f.reclaim(generation, waiting, UUID.randomUUID().toString(), at) as RetryClaim.Claimed
+            }
+            assertEquals(CommitStatus.COMMITTED, f.store().finishAutomaticAttempt(generation, claim.budget.lineageId,
+                claim.attempt.id, claim.budget.claimVersion, AutomaticFinishOutcome.RETRYABLE, at).status)
+            val exhausted = f.budget(generation)
+            val removed = f.store().configure(generation, SyncConfiguration("private-drive", f.day, false,
+                setOf(DataType.SLEEP)), f.driveBinding)
+            assertEquals(CommitStatus.COMMITTED, removed.status)
+            val removedGeneration = requireNotNull(removed.generation)
+            val historical = f.budget(removedGeneration)
+            assertEquals(RetryBudgetStatus.EXHAUSTED, historical.status)
+            assertEquals(3, historical.retriesUsed)
+            assertEquals(exhausted.claimVersion, historical.claimVersion)
+            assertEquals(BlockReason.RETRY_EXHAUSTED, f.store().loadDay(removedGeneration, f.day, f.key())!!.blocker)
+            val selected = f.store().configure(removedGeneration, SyncConfiguration("private-drive", f.day, false,
+                setOf(DataType.STEPS)), f.driveBinding)
+            assertEquals(CommitStatus.COMMITTED, selected.status)
+            val selectedGeneration = requireNotNull(selected.generation)
+            assertEquals(CommitStatus.COMMITTED, f.store().setAutomaticCAS(selectedGeneration, true, at).status)
+            val restored = f.budget(selectedGeneration)
+            assertEquals(RetryBudgetStatus.EXHAUSTED, restored.status)
+            assertEquals(3, restored.retriesUsed)
+            assertEquals(exhausted.claimVersion, restored.claimVersion)
+            assertEquals(RetryClaim.Exhausted, f.store().claimAutomaticAttempt(selectedGeneration, restored.lineageId,
+                restored.claimVersion, null, f.key(), f.scopes, listOf(f.day), UUID.randomUUID().toString(), SyncTrigger.CATCH_UP, at))
         } finally { f.close() }
     }
 

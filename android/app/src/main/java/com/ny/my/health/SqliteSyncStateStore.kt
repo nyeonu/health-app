@@ -223,26 +223,29 @@ internal class SqliteSyncStateStore internal constructor(
         return write(expected,allowAbsent = true) { db,admitted ->
             val old = admitted?.metadata
             if (old?.generation != expected) return@write SyncCommit(CommitStatus.STALE, old?.generation)
-            if (old != null && binding.kind == "DRIVE") {
-                val sameBinding = db.rawQuery("SELECT binding_kind,binding_payload FROM config WHERE id=1", null).use { row ->
+            val sameDrive = old != null && binding.kind == "DRIVE" &&
+                db.rawQuery("SELECT binding_kind,binding_payload FROM config WHERE id=1", null).use { row ->
                     require(row.moveToFirst())
                     row.nullable(0) == binding.kind && row.nullable(1) == payload
                 }
-                if (sameBinding) {
-                    val hasHistory = db.rawQuery("SELECT 1 FROM day WHERE generation=? LIMIT 1", arrayOf(old.generation.value)).use { it.moveToFirst() } ||
-                        db.rawQuery("SELECT 1 FROM retry_budget WHERE generation=? AND status<>'COMPLETED' LIMIT 1", arrayOf(old.generation.value)).use { it.moveToFirst() } ||
-                        (admitted?.attempt?.let { it.finishedAt == null } == true)
-                    if (hasHistory) return@write SyncCommit(CommitStatus.INVALID, old.generation)
-                }
-            }
+            val admission = if (sameDrive) checkNotNull(admitted) else null
+            if (admission != null && !finishOwnerForInvalidation(db, admission, null))
+                return@write SyncCommit(CommitStatus.INVALID, old?.generation)
+            val nextConfiguration = if (admission == null) configuration.copy(automatic = false)
+                else configuration.copy(enrolledDay = checkNotNull(admission.metadata.configuration).enrolledDay, automatic = false)
             val generation = fresh()
-            insertGeneration(db, generation, configuration.copy(automatic = false))
+            insertGeneration(db, generation, nextConfiguration)
+            if (admission != null) copyDriveGeneration(db, admission, generation)
             if (old == null) db.insertOrThrow("config", null, values("id" to 1, "format_version" to 1,
                 "active_generation" to generation.value, "automatic" to 0, "binding_kind" to binding.kind,
                 "binding_payload" to payload, "reset_epoch" to 0))
             else check(db.update("config", values("active_generation" to generation.value, "automatic" to 0,
                 "binding_kind" to binding.kind, "binding_payload" to payload), "id=1 AND active_generation=?",
                 arrayOf(expected!!.value)) == 1)
+            if (admission != null) {
+                validateActive(db, today())
+                SyncRetryBudgetLedger.validate(db, today()) {}
+            }
             SyncCommit(CommitStatus.COMMITTED, generation)
         }
     }
@@ -430,6 +433,10 @@ internal class SqliteSyncStateStore internal constructor(
             val admission = checkNotNull(admitted)
             val config = admission.metadata.configuration ?: return@write SyncCommit(CommitStatus.INVALID, expectedGeneration)
             if (!config.automatic) return@write SyncCommit(CommitStatus.INVALID, expectedGeneration)
+            if (!config.categories.containsAll(expectedRequestedScopes.keys)) {
+                invalid = true
+                return@write SyncCommit(CommitStatus.INVALID, expectedGeneration)
+            }
             val current = SqliteSyncRetryBudget.find(db, expectedGeneration, expectedScopeKey)
             if (admission.attempt?.finishedAt == null && admission.attempt != null) {
                 answer = RetryClaim.Busy
@@ -1111,7 +1118,7 @@ internal class SqliteSyncStateStore internal constructor(
         val value = DayState(SyncStateCodec.decodeDate(row.s("date")), ReadScopeKey(SyncStateCodec.decodeDigest(row.s("scope_key"))),
             SyncStateCodec.decodeScopes(row.s("requested_scopes_json"),1), revision, enumValueOf(row.s("phase")),
             SyncStateCodec.decodeScopes(row.s("scopes_json"),1), row.time("checked_at"), files, row.nullable("blocker")?.let { enumValueOf<BlockReason>(it) })
-        require(meta.configuration != null && meta.configuration.categories.containsAll(value.requestedScopes.keys) && value.isValid(meta.generation,meta.configuration.enrolledDay,today))
+        require(meta.configuration != null && value.isValid(meta.generation,meta.configuration.enrolledDay,today))
         return value
     }
 

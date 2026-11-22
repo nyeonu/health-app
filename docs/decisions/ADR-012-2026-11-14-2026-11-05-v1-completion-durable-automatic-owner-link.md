@@ -47,3 +47,7 @@ Schema migration, exact DDL parity, 양방향 관계 검증 및 transaction CAS 
 PR20 독립 검토에서 자동 opt-out의 새 generation이 기존 불확실한 쓰기·미완료 예산을 보지 못하는 경로를 확인했다. 이전 callback을 무효화하면서 현재 binding의 상태를 원자적으로 새 generation에 이월한다. day/dataset/prior confirmation은 새 generation으로 재키잉하되 원격 handle과 상태·확인 시각을 보존한다. 미종결 cohort의 frozen scopes/dates/관측·retriesUsed·claimVersion·status·due·시각은 보존하며 원래 owner 종료 정책을 따른다. 새 이월 ledger UUID/key는 SQLite PK 구분용이며 fresh initial이나 실패 예산 초기화가 아니다. 원본 ledger와 linked attempt는 이전 generation에 보관한다. 새 schema/API는 추가하지 않으며 실제 SQLite rollback·reopen·off/on·stale callback 회귀가 필요하다.
 
 역사 generation에는 account binding이 없으므로 private-drive 문자열로 여러 계정의 과거 handle을 합치는 대안은 기각한다. 현재 동일 binding의 Drive 재설정/invalidate에도 uncertainty·budget 우회를 허용하지 않고, generic foundation의 기존 세대 교체 의미는 유지한다. 이 보정은 사용자에게 새 동의를 받은 것으로 해석하지 않으며 본 ADR은 독립 적합성 검증 전까지 Proposed다.
+
+## 2026-11-22 동일 binding category 변경의 과거 profile
+
+교정6의 기록 존재 시 동일 계정 재설정 거절은 기존 수동 항목 변경을 막으므로 최종 정책으로 채택하지 않는다. 동일 현재 binding에서 category 변경은 기존 등록일과 모든 과거 profile/불확실성/미종결 예산을 새 generation에 원자 이월하고 현재 선택 category만 바꾼다. 과거 day/ledger의 well-formed frozen scopes는 현재 선택의 부분집합일 필요가 없지만 현재 읽기 권한으로 쓰지 않는다. 새 attempt/planner/reader 및 원자 claim은 현재 category subset을 강제한다. 과거 metadata와 현재 authorization을 분리해 선택을 제거했다 다시 추가해도 실패 count/due가 사라지지 않게 한다. schema/API 확대 없이 private decoder의 역사 유효성만 조정하며 나머지 검증을 보존한다. same-binding configure의 전면 거절·reset 우회와 과거 계정 handle의 임의 합치기는 기각한다. 실제 SQLite 및 수동 session 회귀와 독립 적합성 전까지 Proposed다.

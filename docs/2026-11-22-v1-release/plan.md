@@ -9,7 +9,7 @@ target: android
 spec: spec.md
 spec_rev: 30ffde9529d993306a6d5c04c93abf7fd0f271e2
 tasks:
-  - {id: T1, title: SQLite retry 원자성, depends_on: [], status: done, tier: standard}
+  - {id: T1, title: SQLite retry 원자성, depends_on: [], status: in_progress, tier: standard}
   - {id: T2, title: 요약 모델, depends_on: [], status: done, tier: standard}
   - {id: T3, title: 계정 고정 silent 인증, depends_on: [], status: done, tier: standard}
   - {id: T4, title: 요약 CSV와 revision, depends_on: [T2], status: done, tier: standard}
@@ -22,6 +22,7 @@ tasks:
   - {id: T11, title: 자동 engine 경계, depends_on: [], status: done, tier: standard}
   - {id: T12, title: 실제 동작에 맞는 개인정보 안내, depends_on: [], status: done, tier: standard}
   - {id: T14, title: 기존 runner의 1.0 고정 진단, depends_on: [], status: done, tier: standard}
+  - {id: T15, title: 수동 category 변경 실제 SQLite 회귀, depends_on: [T1], status: in_progress, tier: standard}
   - {id: T10, title: 1.0 APK 후보와 안내, depends_on: [T12], status: done, tier: standard}
 ---
 
@@ -496,3 +497,35 @@ fresh-context PR20 검토는 fe18ac2에서 setAutomaticCAS(false)가 같은 bind
 historical generation에는 account binding이 없어 private-drive 문자열만으로 모든 과거 계정의 handle을 합치지 않는다. 현재 binding이 같은 Drive 재설정에서 미확정/미완료 상태를 버리는 경우는 보수적으로 거부하거나 동일한 안전 이월을 사용하며, 다른 계정 binding을 동일 목적지라고 추정하지 않는다. Drive의 invalidate도 같은 우회가 없어야 한다. 기존 generic/SYNTHETIC foundation의 명시 세대 교체·빈 coverage 계약과 기존 assertion은 유지하고 실제 Drive 경계를 별도 SQLite 회귀로 검증한다. 단순히 테스트 통과를 위해 SYNTHETIC 값을 production Drive의 동일성 근거로 사용하지 않는다. 이 명확화는 원래 budget 제한·반복 실패 보존의 의미를 유지하는 storage-only 교정이며 독립 적합성/PR 재검토가 필수다.
 
 교정6의 현재 binding guard는 기존 confirmed target ID도 Drive lookup에서 누락되었을 때 중복 create를 막는 근거임을 확인해, 같은 Drive 계정에 기록이 남아 있는 category 재구성을 보수적으로 거부한다. 같은 계정·같은 category의 재인증은 기존 ManualDriveSession이 configure 없이 동일 generation을 사용하므로 유지한다. 이 제한은 README에 명시하고, explicit reset은 원격 삭제가 아님을 유지한다. 범위/등록일 변경을 위한 범용 과거 이력 마이그레이션은 1.0에 추가하지 않는다.
+
+### T1 교정7 — 기존 수동 category 변경 보존
+
+80c5861 재검토는 same-binding Drive에 day 하나라도 있으면 configure를 거절하는 교정6 guard가 정상 수동 업로드 후 category 추가·제거 기능을 막는 회귀임을 확인했다. README의 reset 우회는 승인된 수동 동작 보존을 충족하지 못한다. 해당 제한을 최종 1.0으로 채택하지 않으며 앞의 제한 문구는 중간 교정 이력으로 보존한다. 동일 계정의 category 재설정이 기존 파일/미확정 추적과 미완료 budget을 버리지 않고 동작하도록 bounded 설계를 보완한다. generic foundation/다른 계정/SAF 의미와 기존 assertion은 유지하고 실제 Drive SQLite 및 수동 세션 회귀를 검증한다. 원래 T1 교정1~6을 보존하여 이번7로 누적하고 소유자의 기존 정확성·수동기능 보존 및 자동 승인 범위로 수행한다. 원시19개 대상 실행44977241883은 교정6의 좁은 경로 증거로만 계속하고, 교정6 full44977221291은 취소한다. 새 최종full은 수정 source의 독립 정적 재검토 후 시작하여 반복 낭비를 줄인다. schema/API 변경이 필요한 경우 구현 전 최소 기술안을 기록하고 독립 검토하며, 새 제품 범위는 추가하지 않는다.
+
+### 교정7 승인 기술안 — 과거 profile과 현재 선택 권한 분리
+
+동일한 현재 Drive binding의 category 변경은 기존 enrolledDay를 유지하고 새 generation/사용자가 선택한 정확한 category로 전환한다. 교정6 원자 snapshot 이월을 재사용하여 과거 day/dataset/미종결 budget의 동결 scope/date·관측·count/due와 target/uncertainty를 보존한다. 과거 profile의 requestedScopes가 **현재** 선택 category의 부분집합이어야 한다는 저장 유효성 조건만 day/ledger decoder에서 분리한다. UUID/hash/date/FK/owner/JSON/cap 및 실제 profile fingerprint 검증은 유지한다. 이는 현재 읽기 권한이 아니라 과거 metadata의 유효성이다.
+
+새 attempt와 planner/reader는 현재 선택 category를 계속 요구하고, claimAutomaticAttempt에 current config.categories.containsAll(expectedRequestedScopes.keys)를 명시하여 제거한 category의 과거 budget을 직접 재claim하는 우회를 막는다. 기존 전역 preflight due/미해결 owner 경계는 유지하며 제거된 scope의 예산을 새 scope로 바꾸거나 자동 종료하지 않는다. old binding을 추정하지 않고 기존 다른 계정 목적지 전환 계약은 그대로다. store·ledger validator·실제 SQLite3파일을 기본 범위로 실행하고 수동 session 회귀를 별도 disjoint 작업으로 검증한다. 새 schema/API/권한/자동 복구는 없으며 독립 source 검토와 실제 실행 전에는 완료가 아니다.
+
+### T15: 수동 category 변경 실제 SQLite 회귀
+
+- **depends_on**: [T1]; **tier**: standard; **status**: in_progress.
+- **변경 파일**
+
+  | 파일 | 구분 |
+  |---|---|
+  | `AI/ManualDriveFlowInstrumentedTest.kt` | 수정 |
+- **필수 읽기**: AGENTS.md, 승인 release spec과 ManualDriveSession의 selectAccount/계정 proof/동의·foreground 경계, 현재 Native FlowFixture. 원래 T1 교정7의 분리 검증이며 교정1~6 이력을 초기화하지 않는다. store/ledger 파일은 다른 실행자가 소유한다.
+- **기준**: 같은 Drive 계정에서 정상 수동 export 후 category 추가·제거를 다시 선택하면 설정이 성공하고 새 generation과 정확한 새 categories·원래 enrollment를 사용한다. 기존 confirmed target/prior/unknown 추적과 frozen retry 예산은 실제 SQLite에서 보존하며 foreground consent/fresh proof 이전에 records/remote를 실행하지 않는다. 과거 category metadata 보존은 새 health 읽기 권한이 아니다.
+- **작성할 테스트**:
+  - "실제 SQLite와 production-used ManualDriveSession에서 같은 계정의 category 변경 성공, 정확한 설정/기존 enrollment/새 generation, 이전 확인 handle 보존을 검증한다. fresh proof+전경 동의 없이 source/remote0, 명시 계속 후 새 선택 범위만 실행하고 구 generation callback은 거부한다. 필요하면 unknown 보존은 별도 store 회귀에 맡기되 실제 수동 경로 성공을 빼지 않는다. 기존7건·SAF2건 및 모든 단언은 유지하며 테스트 삭제/skip/완화는 금지한다."
+- **완료 기준**: 소스·Native 컴파일 후 saf-flow 고정 진단 또는 최종 full 양API에서 source method identity와 실제 XML이 일치하고 실패/skip0이다. 실제 계정·OS permission 수용으로 주장하지 않는다. 원래 T1 수정 API가 준비될 때까지 source를 disjoint로 작성하고 자체 Gradle은 실행하지 않는다.
+
+### T15 교정1 — 초기 등록일 fixture
+
+root 실행 전 source 대조에서 새 수동 회귀의 최초 configure가 today-2를 입력하지만 production은 최초 yesterday 등록만 허용함을 확인했다. production guard와 성공 기대는 유지하고 새 테스트 초기 등록일만 유효한 yesterday로 맞춘다. 날짜가 지난 뒤 기존 enrollment 보존은 T1 교정7의 별도 실제 SQLite 테스트에서 today를 증가시켜 검증한다. 기존 수동/SAF 단언은 변경하지 않는다. 원래 T1 교정7의 분리 검증이며 이력을 초기화하지 않는다.
+
+### 교정6 대상 SQLite 실제 결과 및 교정7 준비
+
+80c5861의 retry-store44977241883 양API19/19를 root가 공식ZIP SHA256/source method 집합/원본XML로 대조했다. API35 00d89140f38dc45773390837f2bf8984368d6ef50e415bb51b6a28b85e244e53, API36 5404ab96b4b035d22e875ebb2c53c062b8d7e2e5f4c3c90008c46fed52320ae4이며 실패·오류·skip·중복·누락·추가0이다. 이는 off/on의 실제 보존 근거이며 교정7 category 변경의 성공으로 대체하지 않는다. 80c5861 JVM/lint/APK44977221304도 성공했지만 전체 Native44977221291은 재검토에 따른 취소다. 교정7 source store/ledger/Native3파일과 T15 manual test1파일은 고정됐고 원본 현재head의 compile·실제 대상 진단·독립 재검토·최종 full은 필수 pending이다.

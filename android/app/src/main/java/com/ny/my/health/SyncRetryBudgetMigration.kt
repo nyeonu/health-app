@@ -76,7 +76,7 @@ internal object SyncRetryBudgetLedger {
                 val configuration = SyncConfiguration(SyncStateCodec.decodeHandle(row.text("g_destination")),
                     SyncStateCodec.decodeDate(row.text("g_enrolled")), false,
                     SyncStateCodec.decodeCategories(row.text("g_categories"), 1))
-                require(configuration.isValid() && configuration.categories.containsAll(budget.requestedScopes.keys))
+                require(configuration.isValid())
                 require(budget.dates.all { it >= configuration.enrolledDay && it < today })
                 val id = row.optional("a_id")
                 if (id == null) {
