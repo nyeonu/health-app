@@ -174,19 +174,21 @@ internal class SqliteSyncStateStore internal constructor(
         if (meta.configuration == null || admission.attempt?.finishedAt == null && admission.attempt != null)
             return@write SyncCommit(CommitStatus.INVALID,meta.generation)
         val retire = mutableListOf<RetryBudget>()
+        val protected = mutableSetOf<Pair<String, String>>()
+        val eligibleReasons = setOf(BlockReason.DESTINATION_BLOCKED, BlockReason.DESTINATION_RECONCILIATION_REQUIRED,
+            BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED, BlockReason.RETRY_EXHAUSTED)
         db.rawQuery("SELECT * FROM retry_budget WHERE generation=? AND status IN ('BLOCKED','EXHAUSTED')", arrayOf(expected.value)).use { rows ->
             while (rows.moveToNext()) {
                 val budget = SqliteSyncRetryBudget.decode(rows)
-                var eligible = false
-                for (date in budget.dates) {
-                    val day = readDay(db, meta, date, budget.scopeKey, today()) ?: continue
-                    if (day.blocker in setOf(BlockReason.DESTINATION_BLOCKED, BlockReason.DESTINATION_RECONCILIATION_REQUIRED,
-                            BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED, BlockReason.RETRY_EXHAUSTED)) eligible = true
-                    else if (day.blocker != null || day.phase == DayPhase.REMOTE_STALE)
-                        return@write SyncCommit(CommitStatus.INVALID, meta.generation)
+                val days = budget.dates.map { readDay(db, meta, it, budget.scopeKey, today()) }
+                val pristineInterruption = budget.status == RetryBudgetStatus.BLOCKED &&
+                    budget.observedRevisions.values.all { it == null } && days.all { it == null }
+                val eligible = days.any { it?.blocker in eligibleReasons } && days.all { day ->
+                    day != null && day.phase != DayPhase.REMOTE_STALE &&
+                        (day.blocker == null || day.blocker in eligibleReasons)
                 }
-                if (!eligible) return@write SyncCommit(CommitStatus.INVALID, meta.generation)
-                retire += budget
+                if (eligible || pristineInterruption) retire += budget
+                else budget.dates.forEach { protected += budget.scopeKey.value to it.toString() }
             }
         }
         for (budget in retire) {
@@ -195,11 +197,20 @@ internal class SqliteSyncStateStore internal constructor(
                 RetryBudgetStatus.COMPLETED, budget.createdAt, budget.updatedAt)
             updateBudget(db, budget, completed)
         }
-        // 파일 journal과 attempt는 그대로 두고 복구 가능한 날짜 차단만 원자적으로 해제한다.
-        db.execSQL("UPDATE day SET phase=CASE WHEN phase=? THEN ? ELSE phase END,blocker=NULL " +
-            "WHERE generation=? AND blocker IN (?,?,?,?)",arrayOf(DayPhase.BLOCKED.name,DayPhase.PENDING.name,
-                expected.value,BlockReason.DESTINATION_BLOCKED.name,BlockReason.DESTINATION_RECONCILIATION_REQUIRED.name,
-                BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED.name,BlockReason.RETRY_EXHAUSTED.name))
+        // 다른 원인의 미종결 batch는 보존하고 명시 복구 가능한 차단만 해제한다.
+        val reopen = mutableListOf<Pair<String, String>>()
+        db.rawQuery("SELECT date,scope_key FROM day WHERE generation=? AND blocker IN (?,?,?,?)",
+            arrayOf(expected.value, BlockReason.DESTINATION_BLOCKED.name, BlockReason.DESTINATION_RECONCILIATION_REQUIRED.name,
+                BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED.name, BlockReason.RETRY_EXHAUSTED.name)).use { rows ->
+            while (rows.moveToNext()) {
+                val date = rows.text(0)
+                val scope = rows.text(1)
+                if ((scope to date) !in protected) reopen += scope to date
+            }
+        }
+        for ((scope, date) in reopen) db.execSQL(
+            "UPDATE day SET phase=CASE WHEN phase=? THEN ? ELSE phase END,blocker=NULL WHERE generation=? AND date=? AND scope_key=?",
+            arrayOf(DayPhase.BLOCKED.name, DayPhase.PENDING.name, expected.value, date, scope))
         // 변경된 모든 profile을 기존 decoder로 재검증하고 전체 상태 유효성도 확인한다.
         snapshot(db,today(),null)
         SyncCommit(CommitStatus.COMMITTED,meta.generation)
@@ -282,7 +293,7 @@ internal class SqliteSyncStateStore internal constructor(
             start != null -> saveAttempt(db, meta.generation, start)
             dayMutation != null -> {
                 val revision = dayMutation.revision
-                if (budget != null && revision != null && revision != current?.revision) {
+                if (budget != null && revision != null && budget.observedRevisions[dayMutation.date] != revision.digest) {
                     val observed = AutomaticRetryModel.observeRevision(budget, meta.generation, checkNotNull(owner),
                         dayMutation.date, revision.digest, maxOf(budget.updatedAt, revision.generatedAt))
                     val next = (observed as? RetryValidation.Valid)?.value ?: return@write SyncCommit(CommitStatus.INVALID, meta.generation)
@@ -458,7 +469,7 @@ internal class SqliteSyncStateStore internal constructor(
             } else if (outcome == AutomaticFinishOutcome.ACCOUNT_AUTHORIZATION_BLOCKED) {
                 if (day == null) saveDay(db, meta.generation, DayState(date, budget.scopeKey, budget.requestedScopes,
                     null, DayPhase.BLOCKED, emptyMap(), null, emptyMap(), BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED))
-                else if (!(day.phase == DayPhase.EMPTY && day.isChecked()) && !day.isUploaded() &&
+                else if (day.phase != DayPhase.REMOTE_STALE && !(day.phase == DayPhase.EMPTY && day.isChecked()) && !day.isUploaded() &&
                     (day.blocker == null || day.blocker == BlockReason.DESTINATION_TRANSIENT_FAILURE)) {
                     val next = day.copy(phase = DayPhase.BLOCKED, blocker = BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED)
                     require(next.isValid(meta.generation, config.enrolledDay, today()))
@@ -467,7 +478,7 @@ internal class SqliteSyncStateStore internal constructor(
             } else if (outcome == AutomaticFinishOutcome.RETRYABLE && budget.retriesUsed == 3) {
                 if (day == null) saveDay(db, meta.generation, DayState(date, budget.scopeKey, budget.requestedScopes,
                     null, DayPhase.BLOCKED, emptyMap(), null, emptyMap(), BlockReason.RETRY_EXHAUSTED))
-                else if (!(day.phase == DayPhase.EMPTY && day.isChecked()) && !day.isUploaded() &&
+                else if (day.phase != DayPhase.REMOTE_STALE && !(day.phase == DayPhase.EMPTY && day.isChecked()) && !day.isUploaded() &&
                     (day.blocker == null || day.blocker == BlockReason.DESTINATION_TRANSIENT_FAILURE)) {
                     val next = day.copy(phase = DayPhase.BLOCKED, blocker = BlockReason.RETRY_EXHAUSTED)
                     require(next.isValid(meta.generation, config.enrolledDay, today()))
@@ -487,7 +498,11 @@ internal class SqliteSyncStateStore internal constructor(
             return@write SyncCommit(CommitStatus.STALE, meta.generation)
         val next = try { (AutomaticRetryModel.finish(old, expectedGeneration, owner, outcome, now) as? RetryValidation.Valid)?.value }
             catch (_: Exception) { null } ?: return@write SyncCommit(CommitStatus.INVALID, meta.generation)
-        try { finishRows(db, meta, old, outcome) } catch (_: IllegalArgumentException) { return@write SyncCommit(CommitStatus.INVALID, meta.generation) }
+        try { finishRows(db, meta, old, outcome) }
+        catch (error: IllegalArgumentException) {
+            if (outcome == AutomaticFinishOutcome.COMPLETED) return@write SyncCommit(CommitStatus.INVALID, meta.generation)
+            throw error
+        }
         updateBudget(db, old, next)
         check(db.update("attempt", values("finished_at" to now.toString()), "generation=? AND id=? AND automatic_lineage_id=? AND finished_at IS NULL",
             arrayOf(expectedGeneration.value, attemptId, lineageId)) == 1)

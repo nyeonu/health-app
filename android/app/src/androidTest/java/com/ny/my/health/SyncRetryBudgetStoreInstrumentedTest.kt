@@ -253,4 +253,197 @@ class SyncRetryBudgetStoreInstrumentedTest {
         }
     }
 
+    @Test
+    fun sameRevisionRereadIsRecordedAtomicallyEvenWhenManualDayAlreadyMatches() = runBlocking {
+        val f = Fixture()
+        try {
+            val generation = f.configure()
+            val manual = AttemptState(UUID.randomUUID().toString(), f.key(), f.scopes, SyncTrigger.MANUAL,
+                f.now, f.now, null, f.dates, "e".repeat(64), 0, emptySet())
+            val row = f.row("a".repeat(64))
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation, SyncMutation(manual.id, manual, null, null, null, null)).status)
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation, SyncMutation(manual.id, null, row, null, null, null)).status)
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation, SyncMutation(manual.id, null, null, null, null, f.now)).status)
+            val claim = f.initial(generation) as RetryClaim.Claimed
+            val owner = AutomaticOwner(claim.budget.lineageId, claim.attempt.id, 0)
+            val reread = SyncMutation(claim.attempt.id, null, row, null, null, null, owner)
+            assertEquals(CommitStatus.UNAVAILABLE, f.store { error("합성 커밋 중단") }.transact(generation, reread).status)
+            assertNull(f.budget(generation).observedRevisions[f.day])
+            assertEquals(row, f.store().loadDay(generation, f.day, f.key()))
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation, reread).status)
+            assertEquals(row.revision!!.digest, f.budget(generation).observedRevisions[f.day])
+            assertEquals(row, f.store().loadDay(generation, f.day, f.key()))
+        } finally { f.close() }
+    }
+
+    @Test
+    fun authorizationAndExhaustionPreserveRemoteStaleAndPriorConfirmationThroughReopen() = runBlocking {
+        for (auth in listOf(true, false)) {
+            val f = Fixture()
+            try {
+                val generation = f.configure()
+                var claim = f.initial(generation) as RetryClaim.Claimed
+                var at = f.now
+                if (!auth) repeat(3) {
+                    assertEquals(CommitStatus.COMMITTED, f.store().finishAutomaticAttempt(generation, claim.budget.lineageId,
+                        claim.attempt.id, claim.budget.claimVersion, AutomaticFinishOutcome.RETRYABLE, at).status)
+                    val budget = f.budget(generation)
+                    at = requireNotNull(budget.retryNotBefore)
+                    claim = f.reclaim(generation, budget, UUID.randomUUID().toString(), at) as RetryClaim.Claimed
+                }
+                val owner = AutomaticOwner(claim.budget.lineageId, claim.attempt.id, claim.budget.claimVersion)
+                val revision = RevisionKey("a".repeat(64), at)
+                val prior = FileConfirmation(FileKey(generation, f.day, f.key(), Dataset.DAILY, "b".repeat(64)), "prior-target", at)
+                val runningFile = DatasetState(Dataset.DAILY, revision, FilePhase.RUNNING, true, "old-target", at, null, prior)
+                val running = DayState(f.day, f.key(), f.scopes, revision, DayPhase.RUNNING, f.scopes, at,
+                    mapOf(Dataset.DAILY to runningFile), null)
+                assertEquals(CommitStatus.COMMITTED, f.store().transact(generation,
+                    SyncMutation(owner.attemptId, null, running, null, null, null, owner)).status)
+                val stale = running.copy(phase = DayPhase.REMOTE_STALE,
+                    datasets = mapOf(Dataset.DAILY to runningFile.copy(phase = FilePhase.REMOTE_STALE, populated = false)))
+                assertEquals(CommitStatus.COMMITTED, f.store().transact(generation,
+                    SyncMutation(owner.attemptId, null, stale, null, null, null, owner)).status)
+                val outcome = if (auth) AutomaticFinishOutcome.ACCOUNT_AUTHORIZATION_BLOCKED else AutomaticFinishOutcome.RETRYABLE
+                assertEquals(CommitStatus.COMMITTED, f.store().finishAutomaticAttempt(generation, owner.lineageId,
+                    owner.attemptId, owner.claimVersion, outcome, at).status)
+                assertEquals(stale, f.store().loadDay(generation, f.day, f.key()))
+                assertEquals(prior, f.store().loadDay(generation, f.day, f.key())!!.datasets.getValue(Dataset.DAILY).priorConfirmation)
+                assertEquals(if (auth) RetryBudgetStatus.BLOCKED else RetryBudgetStatus.EXHAUSTED, f.budget(generation).status)
+                assertEquals(CommitStatus.COMMITTED, f.store().reopenManualBlockers(generation).status)
+                assertEquals(stale, f.store().loadDay(generation, f.day, f.key()))
+                assertEquals(if (auth) RetryBudgetStatus.BLOCKED else RetryBudgetStatus.EXHAUSTED, f.budget(generation).status)
+            } finally { f.close() }
+        }
+    }
+
+    @Test
+    fun manualRecoveryRetiresPristineInterruptionAndOtherEligibleCohortOnlyAfterCommit() = runBlocking {
+        val f = Fixture()
+        try {
+            val generation = f.configure()
+            val first = f.initial(generation) as RetryClaim.Claimed
+            assertEquals(CommitStatus.COMMITTED, f.store().finishAutomaticAttempt(generation, first.budget.lineageId,
+                first.attempt.id, 0, AutomaticFinishOutcome.ACCOUNT_AUTHORIZATION_BLOCKED, f.now).status)
+            val otherScopes = mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY)
+            val access = ReadAccess(true, otherScopes.keys, otherScopes)
+            val otherKey = requireNotNull(SyncPlanner.scopeKey(SyncConfiguration("synthetic", f.day, true, otherScopes.keys), access))
+            val proposal = InitialAutomaticProposal.validated(generation, otherKey, otherScopes, f.dates,
+                UUID.randomUUID().toString(), SyncTrigger.SCHEDULED, f.now, AutomaticRetryModel.accessFingerprint(access), f.day, f.today)
+            val other = f.store().claimAutomaticAttempt(generation, null, null, proposal, otherKey, otherScopes, f.dates,
+                proposal.attemptId, proposal.trigger, f.now) as RetryClaim.Claimed
+            val owner = AutomaticOwner(other.budget.lineageId, other.attempt.id, 0)
+            assertEquals(CommitStatus.COMMITTED, f.store().recoverAutomaticAttempt(generation, owner, f.now).status)
+            assertNull(f.store().loadDay(generation, f.day, otherKey))
+            assertEquals(CommitStatus.UNAVAILABLE, f.store { error("합성 커밋 중단") }.reopenManualBlockers(generation).status)
+            assertEquals(RetryBudgetStatus.BLOCKED, f.budget(generation).status)
+            assertEquals(RetryBudgetStatus.BLOCKED, (f.store().loadAutomaticBudget(generation, otherKey) as AutomaticBudgetRead.Ready).budget!!.status)
+            assertEquals(BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED, f.store().loadDay(generation, f.day, f.key())!!.blocker)
+            assertEquals(CommitStatus.COMMITTED, f.store().reopenManualBlockers(generation).status)
+            assertNull((f.store().loadAutomaticBudget(generation, f.key()) as AutomaticBudgetRead.Ready).budget)
+            assertNull((f.store().loadAutomaticBudget(generation, otherKey) as AutomaticBudgetRead.Ready).budget)
+            assertNull(f.store().loadDay(generation, f.day, otherKey))
+            assertNull(f.store().loadDay(generation, f.day, f.key())!!.blocker)
+        } finally { f.close() }
+    }
+
+    @Test
+    fun multiDateFinishFailureRollsBackAllRowsAndRetainsOwnerAfterReopen() = runBlocking {
+        val f = Fixture()
+        try {
+            val generation = f.configure()
+            val enrolled = f.day
+            f.today = f.today.plusDays(1)
+            val dates = listOf(enrolled, enrolled.plusDays(1))
+            val proposal = InitialAutomaticProposal.validated(generation, f.key(), f.scopes, dates, UUID.randomUUID().toString(),
+                SyncTrigger.SCHEDULED, f.now, AutomaticRetryModel.accessFingerprint(f.access), enrolled, f.today)
+            val claim = f.store().claimAutomaticAttempt(generation, null, null, proposal, f.key(), f.scopes, dates,
+                proposal.attemptId, proposal.trigger, f.now) as RetryClaim.Claimed
+            assertEquals(CommitStatus.UNAVAILABLE, f.store { error("합성 커밋 중단") }.finishAutomaticAttempt(generation,
+                claim.budget.lineageId, claim.attempt.id, 0, AutomaticFinishOutcome.ACCOUNT_AUTHORIZATION_BLOCKED, f.now).status)
+            for (date in dates) assertNull(f.store().loadDay(generation, date, f.key()))
+            assertNull(f.store().loadCurrentAttempt(generation)!!.finishedAt)
+            assertEquals(claim.attempt.id, f.budget(generation).ownerAttemptId)
+            assertEquals(CommitStatus.COMMITTED, f.store().finishAutomaticAttempt(generation, claim.budget.lineageId,
+                claim.attempt.id, 0, AutomaticFinishOutcome.ACCOUNT_AUTHORIZATION_BLOCKED, f.now).status)
+            for (date in dates) assertEquals(BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED, f.store().loadDay(generation, date, f.key())!!.blocker)
+        } finally { f.close() }
+    }
+
+    @Test
+    fun ineligibleCohortRemainsBlockedWhileOtherEligibleCohortReopens() = runBlocking {
+        val f = Fixture()
+        try {
+            val generation = f.configure()
+            val first = f.initial(generation) as RetryClaim.Claimed
+            val owner = AutomaticOwner(first.budget.lineageId, first.attempt.id, 0)
+            val sourceBlocked = DayState(f.day, f.key(), f.scopes, null, DayPhase.BLOCKED,
+                emptyMap(), null, emptyMap(), BlockReason.SOURCE_READ_FAILED)
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation,
+                SyncMutation(owner.attemptId, null, sourceBlocked, null, null, null, owner)).status)
+            assertEquals(CommitStatus.COMMITTED, f.store().finishAutomaticAttempt(generation, owner.lineageId,
+                owner.attemptId, 0, AutomaticFinishOutcome.BLOCKED, f.now).status)
+            val otherScopes = mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY)
+            val access = ReadAccess(true, otherScopes.keys, otherScopes)
+            val otherKey = requireNotNull(SyncPlanner.scopeKey(SyncConfiguration("synthetic", f.day, true, otherScopes.keys), access))
+            val proposal = InitialAutomaticProposal.validated(generation, otherKey, otherScopes, f.dates,
+                UUID.randomUUID().toString(), SyncTrigger.SCHEDULED, f.now, AutomaticRetryModel.accessFingerprint(access), f.day, f.today)
+            val other = f.store().claimAutomaticAttempt(generation, null, null, proposal, otherKey, otherScopes, f.dates,
+                proposal.attemptId, proposal.trigger, f.now) as RetryClaim.Claimed
+            assertEquals(CommitStatus.COMMITTED, f.store().finishAutomaticAttempt(generation, other.budget.lineageId,
+                other.attempt.id, 0, AutomaticFinishOutcome.ACCOUNT_AUTHORIZATION_BLOCKED, f.now).status)
+            assertEquals(CommitStatus.COMMITTED, f.store().reopenManualBlockers(generation).status)
+            assertEquals(sourceBlocked, f.store().loadDay(generation, f.day, f.key()))
+            assertEquals(RetryBudgetStatus.BLOCKED, f.budget(generation).status)
+            assertNull((f.store().loadAutomaticBudget(generation, otherKey) as AutomaticBudgetRead.Ready).budget)
+            assertNull(f.store().loadDay(generation, f.day, otherKey)!!.blocker)
+        } finally { f.close() }
+    }
+
+    @Test
+    fun pristineInterruptedCohortCanReopenAfterAnotherScopeReplacesItsAttempt() = runBlocking {
+        val f = Fixture()
+        try {
+            val generation = f.configure()
+            val first = f.initial(generation) as RetryClaim.Claimed
+            assertEquals(CommitStatus.COMMITTED, f.store().recoverAutomaticAttempt(generation,
+                AutomaticOwner(first.budget.lineageId, first.attempt.id, 0), f.now).status)
+            val otherScopes = mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY)
+            val access = ReadAccess(true, otherScopes.keys, otherScopes)
+            val otherKey = requireNotNull(SyncPlanner.scopeKey(SyncConfiguration("synthetic", f.day, true, otherScopes.keys), access))
+            val proposal = InitialAutomaticProposal.validated(generation, otherKey, otherScopes, f.dates,
+                UUID.randomUUID().toString(), SyncTrigger.SCHEDULED, f.now, AutomaticRetryModel.accessFingerprint(access), f.day, f.today)
+            val second = f.store().claimAutomaticAttempt(generation, null, null, proposal, otherKey, otherScopes, f.dates,
+                proposal.attemptId, proposal.trigger, f.now) as RetryClaim.Claimed
+            assertEquals(CommitStatus.COMMITTED, f.store().finishAutomaticAttempt(generation, second.budget.lineageId,
+                second.attempt.id, 0, AutomaticFinishOutcome.BLOCKED, f.now).status)
+            assertEquals(RetryBudgetStatus.BLOCKED, f.budget(generation).status)
+            assertEquals(CommitStatus.COMMITTED, f.store().reopenManualBlockers(generation).status)
+            assertNull((f.store().loadAutomaticBudget(generation, f.key()) as AutomaticBudgetRead.Ready).budget)
+            assertNull(f.store().loadDay(generation, f.day, f.key()))
+            assertTrue(f.initial(generation) is RetryClaim.Claimed)
+        } finally { f.close() }
+    }
+
+    @Test
+    fun pristineInterruptedCohortCanReopenAfterManualAttemptReplacesItsLink() = runBlocking {
+        val f = Fixture()
+        try {
+            val generation = f.configure()
+            val first = f.initial(generation) as RetryClaim.Claimed
+            assertEquals(CommitStatus.COMMITTED, f.store().recoverAutomaticAttempt(generation,
+                AutomaticOwner(first.budget.lineageId, first.attempt.id, 0), f.now).status)
+            val manual = AttemptState(UUID.randomUUID().toString(), f.key(), f.scopes, SyncTrigger.MANUAL,
+                f.now, f.now, null, f.dates, "e".repeat(64), 0, emptySet())
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation,
+                SyncMutation(manual.id, manual, null, null, null, null)).status)
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation,
+                SyncMutation(manual.id, null, null, null, null, f.now)).status)
+            assertEquals(RetryBudgetStatus.BLOCKED, f.budget(generation).status)
+            assertEquals(CommitStatus.COMMITTED, f.store().reopenManualBlockers(generation).status)
+            assertNull((f.store().loadAutomaticBudget(generation, f.key()) as AutomaticBudgetRead.Ready).budget)
+            assertNull(f.store().loadDay(generation, f.day, f.key()))
+            assertTrue(f.initial(generation) is RetryClaim.Claimed)
+        } finally { f.close() }
+    }
+
 }

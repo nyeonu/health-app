@@ -11,7 +11,7 @@ spec_rev: 30ffde9529d993306a6d5c04c93abf7fd0f271e2
 tasks:
   - {id: T1, title: SQLite retry 원자성, depends_on: [], status: in_progress, tier: standard}
   - {id: T2, title: 요약 모델, depends_on: [], status: done, tier: standard}
-  - {id: T3, title: 계정 고정 silent 인증, depends_on: [], status: in_progress, tier: standard}
+  - {id: T3, title: 계정 고정 silent 인증, depends_on: [], status: done, tier: standard}
   - {id: T4, title: 요약 CSV와 revision, depends_on: [T2], status: done, tier: standard}
   - {id: T5, title: 자동 session 연결, depends_on: [T1, T11], status: pending, tier: standard}
   - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: done, tier: standard}
@@ -69,6 +69,18 @@ class BoundDriveAuthorization {
 - `BackgroundAuthorizationContracts` — 기존 ticket과 동일 token의 principal proof를 사용한다. resolution, missing token/scope, stale callback은 차단하고 interactive UI는 실행하지 않는다.
 - `AutomaticHealthContracts` — feature/background/category grant별로 판단하며 steps/sleep/exercise는 aggregate, weight는 당일 실제 최신 값이다. production workout HR overlap proof 미입증이므로 HR만 BLOCKED이고 다른 category는 독립 진행한다.
 - `AutomaticWorkContracts` — 24시간 unique periodic, connected/battery-not-low, 최대 7일 catch-up과 최근 2일 refresh. 시각과 완료를 보장하지 않는다.
+```kotlin
+// AutomaticSchedulerApi — SDK 2.11.0 public API로 확인한 T7→T8 연결
+class SyncWorkScheduler(context: Context) {
+    fun schedule(generation: DestinationGeneration)
+    fun enqueueCatchUp(generation: DestinationGeneration)
+    fun cancel(generation: DestinationGeneration)
+    fun workInfos(generation: DestinationGeneration): Flow<List<WorkInfo>>
+}
+```
+
+- enqueue/cancel은 비동기 Operation 호출이며 Unit 반환을 영속 enqueue/완료/실제 실행 증거로 쓰지 않는다. workInfos는 같은 generation tag로 periodic/catch-up을 함께 관측한다. Data에는 generation UUID만 둔다. 자동 off 복원은 scheduler를 호출하지 않는다. 끄기/변경/reset은 durable CAS 성공으로 이전 generation을 무효화한 뒤 cancel한다.
+
 - `AutomaticStatusContracts` — 실제 `SyncUiState`는 `SyncViewModel.kt`에, 동작 묶음은 `ManualDriveUi.kt`에 있다. generation 무효화, 취소, gap 및 blocker를 사실대로 투영한다.
 
 ## 3. 추적성
@@ -128,7 +140,7 @@ class BoundDriveAuthorization {
 
 ### T3: 계정 고정 silent 인증
 
-- **depends_on**: []; **tier**: standard; **status**: pending.
+- **depends_on**: []; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -139,7 +151,7 @@ class BoundDriveAuthorization {
 - **필수 읽기**: `docs/2026-11-05-v1-completion/automation-ui/plan.md` T10 전체 및 기존 `BoundDriveAuthorization.kt`를 읽고 기존 acceptResult/동일 token proof를 재사용한다.
 - **인터페이스**: 2절 `BoundDriveAuthorizationContracts`, `BackgroundAuthorizationContracts` 참조. 실제 SDK request와 기존 `acceptResult`를 먼저 대조한다.
 - **작성할 테스트**:
-  - "선택 계정, fresh token/scope 및 같은 token principal proof; resolution, null, mismatch, 취소와 늦은 callback은 read/UI 없이 차단. 관련 JVM 및 SDK adapter instrumentation 양 API 통과가 완료 기준이다. 실제 계정 성공 증거로 해석하지 않는다."
+  - "선택 계정, fresh token/scope 및 같은 token principal proof; resolution, null, mismatch, 취소와 늦은 callback은 read/UI 없이 차단. 관련 JVM 테스트와 실제 SDK 서명·계측 소스 컴파일이 작업별 완료 기준이며 SDK adapter의 양 API runtime은 통합 PR 현재 head 전체 Native에서 필수 수행한다. 실제 계정 성공 증거로 해석하지 않는다."
 
 ### T4: 요약 CSV와 revision
 
@@ -195,7 +207,7 @@ class BoundDriveAuthorization {
   | `A/SyncWorker.kt` | 신규 |
   | `AI/SyncWorkSchedulerInstrumentedTest.kt` | 신규 |
   | `A/HealthApplication.kt` | 수정 |
-- **인터페이스**: 2절 `AutomaticWorkContracts`, `AutomaticAdmissionOrder`, `AutomaticSessionRoutingContracts` 참조. 기존 starter와 WorkManager API를 먼저 확인한다. 전역 test manager 초기화 없이 `TestListenableWorkerBuilder` 및 실제 production WorkManager 경계를 사용한다. 실제 helper 초기화가 필요하다는 근거가 생긴 경우에만 별도 registry 작업을 계획한다.
+- **인터페이스**: 2절 `AutomaticWorkContracts`, `AutomaticAdmissionOrder`, `AutomaticSessionRoutingContracts`, `AutomaticSchedulerApi` 참조. 기존 starter와 WorkManager API를 먼저 확인한다. 전역 test manager 초기화 없이 `TestListenableWorkerBuilder` 및 실제 production WorkManager 경계를 사용한다. 실제 helper 초기화가 필요하다는 근거가 생긴 경우에만 별도 registry 작업을 계획한다.
 - **작성할 테스트**:
   - "unique 24h 요청과 제약, 일곱 날짜 및 최근 두 날짜, off/due/stale의 외부 호출 0, 재시작·retry budget·manual gate. 양 API의 해당 instrumentation 및 관련 JVM 통과가 완료 기준이다."
 
@@ -209,7 +221,7 @@ class BoundDriveAuthorization {
   | `A/SyncViewModel.kt` | 수정 |
   | `A/ManualDriveUi.kt` | 수정 |
   | `AT/AutomaticSettingsTest.kt` | 신규 |
-- **인터페이스**: 2절 `AutomaticStatusContracts` 참조. 기존 `SyncUiState`와 actions를 확장하고 별도 DTO를 추측하지 않는다.
+- **인터페이스**: 2절 `AutomaticStatusContracts`, `AutomaticSchedulerApi` 참조. 기존 `SyncUiState`와 actions를 확장하고 별도 DTO를 추측하지 않는다.
 - **작성할 테스트**:
   - "명시 opt-in/off, generation 무효화, 취소/늦은 callback, reset과 queued/blocked/gap 투영. 관련 JVM 테스트 통과가 완료 기준이다."
 
@@ -332,3 +344,7 @@ R3 독립 재검토는 pristine retirement가 현재 마지막 attempt link와�
 ### T11 완료 및 기존 SQLite 진단 근거
 
 root가 올바른 owned Gradle/coreOnly 명령을 직접 다시 실행하여 PASS를 확인했고 XML은94 tests/failure/error/skip0이다. 실제source에는 owner 전파·automatic session finish 분리·source catch·첫실패중단과 기존 manual null-row 우선순위가 반영됐다. 로그 /workspace/tooling/v1-t11-root-verify.log. T1 초기6dc3308의 고정 retry-store44968857595도 양API 공식ZIP SHA256과 원본XML을 대조해 각각7/7/실패·오류·skip·중복0으로 확인했으나 R3/R4 신규 수정/회귀의 통과 증거로 대체하지 않는다. T1 최신검증은 여전히 pending이다.
+
+### T3 SDK runtime 검증 배치 조정
+
+T3는 JVM callback/proof 회귀와 실제 SDK API 서명 및 계측 소스 컴파일을 root가 확인했고 독립 정적 인증 검토에 차단 지적이 없다. 별도 SQLite 상태를 구현하지 않는 SDK adapter의 양API 계측은 통합 PR 현재head 전체 Native에서 그대로 수행하되 후속 구현 착수를 위한 별도 full 실행은 요구하지 않는다. 이는 사용자 속도 우선 위임에 따른 배치 변경이며 실제 SDK runtime/실계정 성공을 선행 주장하지 않는다. T1 실제SQLite 대상 검증과 모든 최종머지 gate는 유지한다.
