@@ -756,3 +756,8 @@ PR19 current-head8b9f38e의 Native43534668761과 JVM43534668764가 모두 SUCCES
 ### T20 보정2 — 남은 manual 저장소 future fixture의 v2 충돌
 
 1680221 전체43553867643의API36공식로그는ManualDriveStoreInstrumentedTest의unsupported분기104줄이여전히version2를설정해거부assertion에실패함을보였다. 해당DB는SyncStateDatabase로현재정상v2이므로future3으로입력만교정한다. T20에이기존fixture파일을추가해총3파일이며기존모든assertion/다른손상/handle값은유지한다. Native전체의version2대입을다시검색한나머지SqliteHistoryStoreInstrumentedTest138은별도history DB schema1의정상futurefixture라수정하지않는다. 실행중API35는같은원인의낭비를피해취소요청하고실패full을PASS로사용하지않는다. 기존고정saf-store로현재class2개를먼저양API검증한뒤새head의전체143/host를실행한다. 원래T20보정1을보존하고이번2를누적하며제품/스키마/허용권한변경없다.
+
+
+### 2026-11-22 실행 cadence 우선 적용
+
+소유자의 최신 V1 완료 우선 지시에 따라 `docs/2026-11-22-v1-release/plan.md`의 검토된 작업별 인터페이스 및 영향 테스트와 해당 실제 SQLite class 검증 후 종속 통합을 진행한다. 이 지시는 위 과거 T3/T20 뒤 T4 시작 전 같은 head 전체 Native 실행 순서만 대체하며, 과거 결과와 복구 횟수는 변경하지 않는다. 통합 PR 병합 전과 최종 1.0 head의 양 API 전체 Native 및 모든 기존 host, JVM, lint, APK, 독립 검토·건강정보·보안·실제 수용 gate는 그대로 필수다. 새 baseline a70 전체 CI 44966834193은 별도 실행 중이며 결과 확인 전 PASS가 아니다.
