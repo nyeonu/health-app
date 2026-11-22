@@ -293,7 +293,8 @@ internal class SqliteSyncStateStore internal constructor(
             start != null -> saveAttempt(db, meta.generation, start)
             dayMutation != null -> {
                 val revision = dayMutation.revision
-                if (budget != null && revision != null && budget.observedRevisions[dayMutation.date] != revision.digest) {
+                if (budget != null && revision != null && dayMutation.checkedAt != null &&
+                    budget.observedRevisions[dayMutation.date] != revision.digest) {
                     val observed = AutomaticRetryModel.observeRevision(budget, meta.generation, checkNotNull(owner),
                         dayMutation.date, revision.digest, maxOf(budget.updatedAt, revision.generatedAt))
                     val next = (observed as? RetryValidation.Valid)?.value ?: return@write SyncCommit(CommitStatus.INVALID, meta.generation)

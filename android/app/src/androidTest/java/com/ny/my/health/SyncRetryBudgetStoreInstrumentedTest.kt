@@ -446,4 +446,45 @@ class SyncRetryBudgetStoreInstrumentedTest {
         } finally { f.close() }
     }
 
+    @Test
+    fun failedSourceReadPreservesOldRevisionAndPriorWithoutRecordingANewObservation() = runBlocking {
+        val f = Fixture()
+        try {
+            val generation = f.configure()
+            val manual = AttemptState(UUID.randomUUID().toString(), f.key(), f.scopes, SyncTrigger.MANUAL,
+                f.now, f.now, null, f.dates, "e".repeat(64), 0, emptySet())
+            val revision = RevisionKey("a".repeat(64), f.now)
+            val prior = FileConfirmation(FileKey(generation, f.day, f.key(), Dataset.DAILY, "b".repeat(64)),
+                "prior-target", f.now)
+            val runningFile = DatasetState(Dataset.DAILY, revision, FilePhase.RUNNING, true,
+                "current-target", f.now, null, prior)
+            val running = DayState(f.day, f.key(), f.scopes, revision, DayPhase.RUNNING, f.scopes,
+                f.now, mapOf(Dataset.DAILY to runningFile), null)
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation,
+                SyncMutation(manual.id, manual, null, null, null, null)).status)
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation,
+                SyncMutation(manual.id, null, running, null, null, null)).status)
+            val confirmation = FileConfirmation(FileKey(generation, f.day, f.key(), Dataset.DAILY, revision.digest),
+                "current-target", f.now)
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation,
+                SyncMutation(manual.id, null, null, confirmation, null, null)).status)
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation,
+                SyncMutation(manual.id, null, null, null, null, f.now)).status)
+            val previous = f.store().loadDay(generation, f.day, f.key())!!
+            assertEquals(DayPhase.CONFIRMED, previous.phase)
+            val claim = f.initial(generation) as RetryClaim.Claimed
+            assertNull(f.budget(generation).observedRevisions[f.day])
+            val failed = previous.copy(phase = DayPhase.BLOCKED, checkedAt = null, blocker = BlockReason.SOURCE_READ_FAILED)
+            val owner = AutomaticOwner(claim.budget.lineageId, claim.attempt.id, 0)
+            assertEquals(CommitStatus.COMMITTED, f.store().transact(generation,
+                SyncMutation(owner.attemptId, null, failed, null, null, null, owner)).status)
+            val reopened = f.store().loadDay(generation, f.day, f.key())!!
+            assertEquals(failed, reopened)
+            assertEquals(revision, reopened.revision)
+            assertEquals(prior, reopened.datasets.getValue(Dataset.DAILY).priorConfirmation)
+            assertEquals(confirmation.targetHandle, reopened.datasets.getValue(Dataset.DAILY).targetHandle)
+            assertNull(f.budget(generation).observedRevisions[f.day])
+        } finally { f.close() }
+    }
+
 }

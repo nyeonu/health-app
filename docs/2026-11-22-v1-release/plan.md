@@ -15,13 +15,13 @@ tasks:
   - {id: T4, title: 요약 CSV와 revision, depends_on: [T2], status: done, tier: standard}
   - {id: T5, title: 자동 session 연결, depends_on: [T1, T11], status: done, tier: standard}
   - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: done, tier: standard}
-  - {id: T7, title: WorkManager 실행과 예약, depends_on: [T3, T6], status: in_progress, tier: standard}
-  - {id: T8, title: 자동 설정과 상태, depends_on: [T1], status: in_progress, tier: standard}
+  - {id: T7, title: WorkManager 실행과 예약, depends_on: [T3, T6], status: done, tier: standard}
+  - {id: T8, title: 자동 설정과 상태, depends_on: [T1], status: done, tier: standard}
   - {id: T13, title: 자동 활성 시 수동 Drive 공존, depends_on: [T1], status: done, tier: standard}
-  - {id: T9, title: 화면 연결과 접근성, depends_on: [T1], status: in_progress, tier: standard}
+  - {id: T9, title: 화면 연결과 접근성, depends_on: [T1], status: done, tier: standard}
   - {id: T11, title: 자동 engine 경계, depends_on: [], status: done, tier: standard}
   - {id: T12, title: 실제 동작에 맞는 개인정보 안내, depends_on: [], status: done, tier: standard}
-  - {id: T14, title: 기존 runner의 1.0 고정 진단, depends_on: [], status: in_progress, tier: standard}
+  - {id: T14, title: 기존 runner의 1.0 고정 진단, depends_on: [], status: done, tier: standard}
   - {id: T10, title: 1.0 APK 후보와 안내, depends_on: [T12], status: done, tier: standard}
 ---
 
@@ -476,3 +476,11 @@ T8은 기존 owned UI/VM에서 background 권한 목적 확인/취소 dialog와 
 ### 1.0 후보 로컬 최종 빌드
 
 root가 main의 고정된 전체 후보에서 core:test app:testDebugUnitTest assembleDebug lintDebug assembleDebugAndroidTest를 직접 실행해 BUILD SUCCESSFUL2m30s를 확인했다. XML core94/app116=210, failure/error/skip/중복0. lint0 errors/19 warnings(14개 새 버전 알림과 기존5개)이며 dependency upgrade를 수행하지 않았다. aapt2로 package com.ny.my.health/versionName1.0.0/versionCode2/min28/target36을 확인했다. 새 worker/설정/권한/화면 Native5개class 고정 진단 및 최종 full은 여전히 별도 필수다. T8R2/T9R1 독립 중간 재검토도 APPROVE이며 실제 OS권한/기기/계정 수용을 의미하지 않는다.
+
+### T1 교정5 — 실패 journal은 새 source 관측이 아님
+
+최종 source 대조에서 engine이 readScoped/identify 실패 시 이전 day.revision을 보존하고 checkedAt=null/차단으로 journal하지만, store의 owner day mutation은 그 이전 revision도 새 lineage의 실제 관측으로 기록함을 확인했다. 실제 성공한 read 준비는 checkedAt을 함께 기록한다. T1 store는 checkedAt이 존재하는 actual prepared day mutation에서만 observed revision을 갱신하고 source 실패의 보존 revision은 관측 null을 유지한다. 기존 same-revision 실제 reread 관측·owner CAS·count·source 실패와 prior 상태 보존은 그대로다. 기존 store/Native 테스트2파일만 한정하며 새 schema/API/권한은 없다. 이전교정1~4를 보존해 이번5로 누적하고 새 실제 경로 근거에 따른 같은 범위 자동 위임으로 실행한다. Native는 기존14+해당 부정 관측 회귀를 실제 양API로 재검증한다.
+
+### 새 자동 경계 양API 진단 및 최종 검증 배치
+
+4839856의 automatic-v1 실행44974940147을 root가 공식 ZIP SHA256과 원본 XML/source method 집합으로 검증했다. API35 8fa77be13371c6b1b2d04248e6a00e9691e70fbea4c88cc5e1018e214dd5747a, API36 99f99f9914545ca29180829f7c14e8ce32655128dc4c9689b96a7b462312b056이며 각각32/실패·오류·skip·중복·누락·추가0이다. T7/T8/T9/T14의 대상 Native gate를 완료한다. T1교정5는 독립 좁은 재검토 APPROVE와 root compileDebugAndroidTestKotlin/testDebugUnitTest PASS44s를 확인했다. 교정5의 새 실제SQLite 부정경로는 중복 별도 진단 대기 없이 바로 최종 PR 현재head full 양API에 포함한다. 기존14개 통과를 새15개 통과로 주장하지 않으며 최종 whole/격리host gate는 그대로 유지한다. 이는 사용자 속도 우선 위임의 동일 runner 검증 배치 변경이다. 전체 계획은 최종 full 및 격리 스펙 검증까지 in_progress다.
