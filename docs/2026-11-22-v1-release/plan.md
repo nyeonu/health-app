@@ -19,7 +19,8 @@ tasks:
   - {id: T8, title: 자동 설정과 상태, depends_on: [T7], status: pending, tier: standard}
   - {id: T9, title: 화면 연결과 접근성, depends_on: [T8], status: pending, tier: standard}
   - {id: T11, title: 자동 engine 경계, depends_on: [], status: done, tier: standard}
-  - {id: T10, title: 1.0 APK 후보와 안내, depends_on: [T9], status: pending, tier: standard}
+  - {id: T12, title: 실제 동작에 맞는 개인정보 안내, depends_on: [], status: done, tier: standard}
+  - {id: T10, title: 1.0 APK 후보와 안내, depends_on: [T9, T12], status: pending, tier: standard}
 ---
 
 # V1 completion delivery plan
@@ -245,20 +246,19 @@ class SyncWorkScheduler(context: Context) {
 
 ### T10: 1.0 APK 후보와 안내
 
-- **depends_on**: [T9]; **tier**: standard; **status**: pending.
+- **depends_on**: [T9, T12]; **tier**: standard; **status**: pending.
 - **변경 파일**
 
   | 파일 | 구분 |
   |---|---|
   | `android/app/build.gradle.kts` | 수정 |
   | `README.md` | 수정 |
-  | `A/PrivacyActivity.kt` | 수정 |
 - **테스트 및 완료 기준**: versionName `1.0.0`, versionCode `2`로 변경하고 APK metadata를 확인한다. 최소 사용 안내 및 미완료 실기기/계정 수용을 기재한다. Play 공개 배포는 범위 밖이다.
 
 T1/T2/T3는 파일이 겹치지 않아 병렬 가능하다. 각 작업의 실제 인터페이스와 관련 테스트를 확인한 뒤 종속 작업을 시작한다. 공유 emulator/build는 직렬화한다. 공통 모델 gap이 실제로 발견되면 근거와 제한된 수정 범위를 기록해 별도 계획 보정하며 선제적인 빈 작업은 만들지 않는다.
 
 
-- **보안 검토 반영**: 기존 privacy notice의 foreground-only/예약 조회 없음 문구를 실제 자동 opt-in, 끄기, 목적지 및 삭제 범위에 맞게 고친다. 개발 머지/테스트를 실제 기기 수용으로 표현하지 않는다.
+- **보안 검토 반영**: T12의 개인정보 안내를 실제 최종 동작과 대조하고 개발 머지/테스트를 실제 기기 수용으로 표현하지 않는다.
 
 ### T11: 자동 engine 경계
 
@@ -273,6 +273,17 @@ T1/T2/T3는 파일이 겹치지 않아 병렬 가능하다. 각 작업의 실제
 - **인터페이스**: `run(trigger, generation, attemptId, automaticOwner: AutomaticOwner? = null, finishAttempt: Boolean = true)`; 기존 manual 호출은 기본값으로 byte/finish 의미를 유지한다. 모든 automatic mutation에 실제 owner를 전달하고 day 준비 mutation이 실제 revision을 포함한다. automatic finish는 session 소유로 false를 사용한다.
 - **작성할 테스트**:
   - "readScoped 및 pure identify/normalize/CSV만 source catch, Cancellation 재throw, 두 SourceReadException reason 보존, 나머지 SOURCE_READ_FAILED; store/destination IO는 source catch 밖이며 기존 unknown/prior/성공 파일을 보존한다. 자동은 첫 실패에서 중단하고 수동 기존 동작 유지, owner 전달과 중복 finish 없음. 관련 core 전체 통과가 완료 기준이다."
+
+### T12: 실제 동작에 맞는 개인정보 안내
+
+- **depends_on**: []; **tier**: standard; **status**: done.
+- **변경 파일**
+
+  | 파일 | 구분 |
+  |---|---|
+  | `A/PrivacyActivity.kt` | 수정 |
+- **기준**: 독립 보안 검토의 foreground-only/예약 없음 오표기를 수정한다. 수동 Drive·SAF, 명시 opt-in한 자동 Drive의 background 권한 및 범위, 끄기와 시스템 권한 철회, 로컬 reset과 원격파일 삭제의 차이를 실제 승인 동작에 맞게 설명한다. backend/상시서비스/정각·완료 보장/실제 수용을 주장하지 않는다. 최소 계정 binding은 앱 비공개 noBackup DB, token은 메모리라는 기존 경계를 유지한다.
+- **완료 기준**: static copy만 변경하고 실제 source/승인 계약과 대조한다. 앱 컴파일과 기존 개인정보 화면/최종 Native gate를 유지하며 저위험 정적 문구에 구현을 복제하는 별도 테스트는 추가하지 않는다.
 
 ## 5. 전체 검증
 
@@ -355,3 +366,15 @@ T3는 JVM callback/proof 회귀와 실제 SDK API 서명 및 계측 소스 컴�
 ### T1 실제 양API 완료 및 T5 인계
 
 current source1f3c456의 retry-store44969852348 양API jobs SUCCESS다. root가 GitHub 공식 artifact digest(35:e74750930e622f0dcec6bd10757f18278c9becbe6daa4980ced539c8f2c58629, 36:ba44205bd17e44d632779367bc3bfc36d0f25ca7f2c48d55c76faac1c388f03b) 및 실제 XML을 source-derived 14개 method identity와 대조했다. 각각14/실패·오류·skip·중복·누락·추가0이다. R4 독립 중간 검토 APPROVE와 함께 T1을 완료하고 기존 owner/engine 계약의 T5 app session2파일로 인계한다. 전체143 baseline44966834193도 양API 공식digest/원본XML+격리protocol+sourceinventory 및 모든 기존host를 root가 별도 재검증했다. 이는 향후 최종head 전체gate를 대신하지 않는다.
+
+### T10 병렬 분리 — T12 정적 개인정보 안내
+
+T10의 기존 PrivacyActivity 정적 설명1파일은 실행 API 구현과 독립적으로 승인된 동작을 설명할 수 있어 T12로 분리한다. 별도 Terra가 즉시 수정하고 T10 최종 실제 동작과 재대조한다. 기능/권한/범위 확대는 없으며 기존 T10 복구 이력은 분리로 초기화하지 않는다.
+
+### 원래 T5 교정3 — explicit detectPending 기본 trigger fixture
+
+구현자가 기존 detectingAutomaticPolicyUsesAccessMetadataOnlyAndAbsentOrUnavailableStoresNeverFabricateCoverage가 config automatic=true에서 CATCH_UP을 암묵 선택할 것을 기대함을 확인했다. 승인 부모는 detectPending 기본 MANUAL 유지와 config 기반 암묵 trigger 제거를 명시한다. 해당 기존 test를 기본 MANUAL을 설명하는 이름·[MANUAL,MANUAL] 기대값으로 정합화하고 명시 CATCH_UP 호출의 전달도 추가 확인한다. absent/unavailable·읽기/원격0 및 나머지 assertion은 보존한다. T11 분리 작업의 원래T5 교정1·2를 보존해 이번3으로 집계하며 새 정책이나 테스트 약화가 아니다.
+
+### T12 정적 안내 완료
+
+root가 PrivacyActivity diff와 실제 noBackup 저장/token 메모리 경계 및 승인된 자동 Drive/수동 SAF/철회·reset 계약을 대조했고 정적 문자열만 변경됨과 git diff --check PASS를 확인했다. 별도 테스트를 추가하지 않으며 전체 앱 컴파일·Native 및 최종 동작 대조는 통합 gate에 유지한다. 자동 기능의 실제 기기 수용이나 정각 실행 보장은 문구에 포함하지 않았다.
