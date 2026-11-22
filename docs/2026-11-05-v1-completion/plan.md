@@ -761,3 +761,7 @@ PR19 current-head8b9f38e의 Native43534668761과 JVM43534668764가 모두 SUCCES
 ### 2026-11-22 실행 cadence 우선 적용
 
 소유자의 최신 V1 완료 우선 지시에 따라 `docs/2026-11-22-v1-release/plan.md`의 검토된 작업별 인터페이스 및 영향 테스트와 해당 실제 SQLite class 검증 후 종속 통합을 진행한다. 이 지시는 위 과거 T3/T20 뒤 T4 시작 전 같은 head 전체 Native 실행 순서만 대체하며, 과거 결과와 복구 횟수는 변경하지 않는다. 통합 PR 병합 전과 최종 1.0 head의 양 API 전체 Native 및 모든 기존 host, JVM, lint, APK, 독립 검토·건강정보·보안·실제 수용 gate는 그대로 필수다. 새 baseline a70 전체 CI 44966834193은 별도 실행 중이며 결과 확인 전 PASS가 아니다.
+
+### 2026-11-22 T1 인증 finalization 전달 보정
+
+기존 auth 실패 frozen-date blocker 원자성 정책을 변경하지 않고 AutomaticFinishOutcome에 ACCOUNT_AUTHORIZATION_BLOCKED 값을 추가해 store에 해당 분류를 전달한다. 모델 ledger 상태는 BLOCKED이며 generic BLOCKED에서 인증 실패를 추정하지 않는다. 기존 store 여섯 서명 및 schema는 유지한다. 상세 작업·복구 집계는 1.0 계획 T1 보정1이다.

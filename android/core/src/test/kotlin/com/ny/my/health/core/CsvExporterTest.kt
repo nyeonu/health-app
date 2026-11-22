@@ -1,5 +1,6 @@
 package com.ny.my.health.core
 
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
@@ -50,4 +51,17 @@ class CsvExporterTest {
             assertTrue(rows[2].startsWith("0.1,b,"))
         }
     }
+    @Test
+    fun `Summary only daily exports blank missing values and observed zero`() {
+        val missing = AggregateDuration(null, emptySet())
+        assertTrue(exporter.export(emptyDay().copy(sleepSummary = missing)).isEmpty())
+        val day = emptyDay().copy(sleepSummary = missing,
+            exerciseSummary = AggregateDuration(Duration.ZERO, emptySet()))
+        val file = exporter.export(day).single()
+        assertEquals("daily/$date.csv", file.relativePath)
+        assertEquals("0.1,2026-10-30,Asia/Seoul,,,,,0.0,2026-10-30T00:00:00Z", file.content.split("\r\n")[1])
+        val fractional = day.copy(sleepSummary = AggregateDuration(Duration.ofSeconds(90), emptySet()))
+        assertEquals("0.1,2026-10-30,Asia/Seoul,,,,1.5,0.0,2026-10-30T00:00:00Z", exporter.export(fractional).single().content.split("\r\n")[1])
+    }
+
 }

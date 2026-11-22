@@ -12,9 +12,9 @@ tasks:
   - {id: T1, title: SQLite retry 원자성, depends_on: [], status: in_progress, tier: standard}
   - {id: T2, title: 요약 모델, depends_on: [], status: done, tier: standard}
   - {id: T3, title: 계정 고정 silent 인증, depends_on: [], status: in_progress, tier: standard}
-  - {id: T4, title: 요약 CSV와 revision, depends_on: [T2], status: in_progress, tier: standard}
+  - {id: T4, title: 요약 CSV와 revision, depends_on: [T2], status: done, tier: standard}
   - {id: T5, title: 자동 session 연결, depends_on: [T1], status: pending, tier: standard}
-  - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: pending, tier: standard}
+  - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: in_progress, tier: standard}
   - {id: T7, title: WorkManager 실행과 예약, depends_on: [T3, T5, T6], status: pending, tier: standard}
   - {id: T8, title: 자동 설정과 상태, depends_on: [T7], status: pending, tier: standard}
   - {id: T9, title: 화면 연결과 접근성, depends_on: [T8], status: pending, tier: standard}
@@ -102,6 +102,8 @@ class BoundDriveAuthorization {
   | `A/SqliteSyncStateStore.kt` | 수정 |
   | `A/SqliteSyncRetryBudget.kt` | 신규 |
   | `AI/SyncRetryBudgetStoreInstrumentedTest.kt` | 신규 |
+  | `C/SyncRetryBudget.kt` | 수정 |
+  | `CT/SyncRetryBudgetTest.kt` | 수정 |
 - **필수 읽기**: `docs/2026-11-05-v1-completion/automation-ui/plan.md`의 T4 전체와 `docs/2026-11-05-v1-completion/plan.md` 2절 `AutomaticRetryContracts` 전체를 읽고 적용한다.
 - **인터페이스**: 2절 `AutomaticStoreContracts` 참조. 승인된 이전 automation T4의 전체 CAS, private owner/link 도출, recovery, capacity, rollback 계약을 유지한다.
 - **결정 로직**: 동일 generation/lineage/version/scope에서 claim과 attempt를 한 transaction에 기록하고 불일치·손상은 fail closed한다. initial 외 최대 3회와 durable due를 보존한다.
@@ -265,3 +267,11 @@ No execution or emulator runs were performed while drafting this plan.
 ### T2 환경 및 완료 근거
 
 기본 sandbox의 Gradle daemon IP 판별 실패 뒤 제품 변경 없이 필요한 network 권한으로 root가 같은 coreOnly 명령을 실행했다. 88 tests, failures/errors/skips 0, 기존 86 유지와 신규 2개를 XML/diff 대조했다. 기능 교정은 없고 환경 권한 확인만 수행했다. 실제 provider 수용을 뜻하지 않는다. T2 완료 후 disjoint T4를 시작한다.
+
+### T1 계획 보정1 — 인증 실패의 원자 finalization 분류
+
+기존 부모는 source 조회 전 인증 실패 시 frozen cohort의 ACCOUNT_AUTHORIZATION_BLOCKED 행을 attempt 종료와 한 commit에 요구하지만 기존 AutomaticFinishOutcome 세 값으로는 비어 있는 journal에서 그 이유를 도출할 수 없다. 기존 정책을 그대로 전달하기 위해 enum에 ACCOUNT_AUTHORIZATION_BLOCKED만 추가하고 pure 모델에서는 BLOCKED로 분류한다. 여섯 store 서명은 유지하며 store가 명시 인증 실패에만 그 blocker를 원자 기록한다. T1 소유에 기존 모델 및 해당 테스트를 추가해 총5파일로 제한한다. 새로운 retry 권한·실패 추정·schema는 추가하지 않는다. T1 보정1로 집계하고 모델/SQLite 테스트로 확인한다.
+
+### T4 완료 근거
+
+root가 안정된 core 소스에서 coreOnly 전체를 직접 실행해 90 tests, failures/errors/skips/중복 0 및 기존 manual CSV/hash golden 보존을 XML/diff로 확인했다. 요약 전용 daily/null/실제0/fractional과 summary scope·정렬된 origins 변경 revision 테스트 2개를 추가했다. 로그 /workspace/tooling/v1-t4-core-test.log. T6 종속 작업을 시작한다.
