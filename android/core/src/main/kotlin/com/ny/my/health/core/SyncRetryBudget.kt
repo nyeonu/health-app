@@ -83,7 +83,7 @@ sealed interface RetryClaim {
     data object Busy: RetryClaim; data object Stale: RetryClaim; data object Blocked: RetryClaim; data object Exhausted: RetryClaim
 }
 sealed interface RetryValidation<out T> { data class Valid<T>(val value: T): RetryValidation<T>; data object Invalid: RetryValidation<Nothing> }
-enum class AutomaticFinishOutcome { COMPLETED, RETRYABLE, BLOCKED }
+enum class AutomaticFinishOutcome { COMPLETED, RETRYABLE, BLOCKED, ACCOUNT_AUTHORIZATION_BLOCKED }
 sealed interface AutomaticPreflight { data object Ready: AutomaticPreflight; data class Deferred(val retryNotBefore: Instant): AutomaticPreflight; data object RecoveryRequired: AutomaticPreflight; data object Stale: AutomaticPreflight }
 
 object AutomaticRetryModel {
@@ -145,7 +145,7 @@ object AutomaticRetryModel {
     fun finish(budget: RetryBudget, expectedGeneration: DestinationGeneration, owner: AutomaticOwner,
         outcome: AutomaticFinishOutcome, now: Instant): RetryValidation<RetryBudget> {
         if (!matches(budget, expectedGeneration, owner) || !validInstant(now) || now < budget.updatedAt) return RetryValidation.Invalid
-        val status = when (outcome) { AutomaticFinishOutcome.COMPLETED -> RetryBudgetStatus.COMPLETED; AutomaticFinishOutcome.BLOCKED -> RetryBudgetStatus.BLOCKED; AutomaticFinishOutcome.RETRYABLE -> if (budget.retriesUsed == 3) RetryBudgetStatus.EXHAUSTED else RetryBudgetStatus.ACTIVE }
+        val status = when (outcome) { AutomaticFinishOutcome.COMPLETED -> RetryBudgetStatus.COMPLETED; AutomaticFinishOutcome.BLOCKED, AutomaticFinishOutcome.ACCOUNT_AUTHORIZATION_BLOCKED -> RetryBudgetStatus.BLOCKED; AutomaticFinishOutcome.RETRYABLE -> if (budget.retriesUsed == 3) RetryBudgetStatus.EXHAUSTED else RetryBudgetStatus.ACTIVE }
         val delay = if (status == RetryBudgetStatus.ACTIVE) listOf(30000L, 60000L, 120000L)[budget.retriesUsed] else null
         val due = if (delay != null) try { now.plusMillis(delay) } catch (_: RuntimeException) { return RetryValidation.Invalid } else null
         if (due != null && !validInstant(due)) return RetryValidation.Invalid

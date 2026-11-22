@@ -14,7 +14,7 @@ tasks:
   - {id: T3, title: 계정 고정 silent 인증, depends_on: [], status: in_progress, tier: standard}
   - {id: T4, title: 요약 CSV와 revision, depends_on: [T2], status: done, tier: standard}
   - {id: T5, title: 자동 session 연결, depends_on: [T1], status: pending, tier: standard}
-  - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: in_progress, tier: standard}
+  - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: done, tier: standard}
   - {id: T7, title: WorkManager 실행과 예약, depends_on: [T3, T5, T6], status: pending, tier: standard}
   - {id: T8, title: 자동 설정과 상태, depends_on: [T7], status: pending, tier: standard}
   - {id: T9, title: 화면 연결과 접근성, depends_on: [T8], status: pending, tier: standard}
@@ -113,7 +113,7 @@ class BoundDriveAuthorization {
 
 ### T2: 요약 모델
 
-- **depends_on**: []; **tier**: standard; **status**: pending.
+- **depends_on**: []; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -142,7 +142,7 @@ class BoundDriveAuthorization {
 
 ### T4: 요약 CSV와 revision
 
-- **depends_on**: [T2]; **tier**: standard; **status**: pending.
+- **depends_on**: [T2]; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -172,7 +172,7 @@ class BoundDriveAuthorization {
 
 ### T6: 배경 Health Connect 조회
 
-- **depends_on**: [T4]; **tier**: standard; **status**: pending.
+- **depends_on**: [T4]; **tier**: standard; **status**: done.
 - **변경 파일**
 
   | 파일 | 구분 |
@@ -275,3 +275,15 @@ No execution or emulator runs were performed while drafting this plan.
 ### T4 완료 근거
 
 root가 안정된 core 소스에서 coreOnly 전체를 직접 실행해 90 tests, failures/errors/skips/중복 0 및 기존 manual CSV/hash golden 보존을 XML/diff로 확인했다. 요약 전용 daily/null/실제0/fractional과 summary scope·정렬된 origins 변경 revision 테스트 2개를 추가했다. 로그 /workspace/tooling/v1-t4-core-test.log. T6 종속 작업을 시작한다.
+
+### T6 교정1 — 권한 확인 위치와 체중 동률 선택
+
+root 정적 검토에서 latestWeight가 time만 비교해 승인된 time/source/id/kg 정렬 동률 규칙을 누락하고, 중간 metric/page 호출 전 fresh 권한을 확인하지 않아 철회 후 다른 조회가 이어질 수 있음을 확인했다. T6 기존4파일 안에서 매 metric/page 조회 직전 feature/background/해당 category grant를 확인하고 grant 상실은 SOURCE_ACCESS_REQUIRED로 안전 중단한다. 체중은 당일 범위와 기존 tuple 정렬로 최신 실제 값을 고른다. known missing page100/1000/repeated-token·SecurityException·feature/sdk 부재 테스트도 같은 승인 기준으로 보완한다. 새로운 metric/권한/HR proof를 추가하지 않는다.
+
+### T1 교정2 — cross-module Kotlin nullable 속성
+
+첫 isolated compile는 store 270/273/285행에서 core 공개 nullable start/revision/pendingTriggers의 smart cast와 Set<Any?> 추론으로 실패했다(로그 /workspace/tooling/v1-t1-isolated-verification.log). 해당 속성을 stable local val로 snapshot하여 같은 분기/검증/값을 유지한다. T1 기존 store 파일만 수정하고 동일 core:test + assembleDebugAndroidTest 1회로 확인한다. 기능 정책·단언은 변경하지 않는다. 이전 보정1을 보존하고 2로 누적한다.
+
+### 초기 기능 통합 검증
+
+T1 교정2와 T3/T6를 포함한 12개 변경 소스를 격리 검증 worktree에 그대로 복사하고 root가 :core:test :app:testDebugUnitTest :app:assembleDebugAndroidTest를 실행했다. BUILD SUCCESSFUL 2m8s, XML core90/app106, 실패·오류·skip·중복0이고 main의 12파일과 검증 snapshot bytes가 모두 같음을 확인했다. 기존 app97 + 인증1 + 조회8이다. T6 완료이며 T1의 실제SQLite 및 T3 SDK adapter 양API 검증은 아직 pending이므로 두 작업은 in_progress다. 실제기기/계정 증거는 추가되지 않았다.

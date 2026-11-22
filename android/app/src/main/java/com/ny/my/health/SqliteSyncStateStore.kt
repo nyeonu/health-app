@@ -173,6 +173,28 @@ internal class SqliteSyncStateStore internal constructor(
         if (meta.generation != expected) return@write SyncCommit(CommitStatus.STALE,meta.generation)
         if (meta.configuration == null || admission.attempt?.finishedAt == null && admission.attempt != null)
             return@write SyncCommit(CommitStatus.INVALID,meta.generation)
+        val retire = mutableListOf<RetryBudget>()
+        db.rawQuery("SELECT * FROM retry_budget WHERE generation=? AND status IN ('BLOCKED','EXHAUSTED')", arrayOf(expected.value)).use { rows ->
+            while (rows.moveToNext()) {
+                val budget = SqliteSyncRetryBudget.decode(rows)
+                var eligible = false
+                for (date in budget.dates) {
+                    val day = readDay(db, meta, date, budget.scopeKey, today()) ?: continue
+                    if (day.blocker in setOf(BlockReason.DESTINATION_BLOCKED, BlockReason.DESTINATION_RECONCILIATION_REQUIRED,
+                            BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED, BlockReason.RETRY_EXHAUSTED)) eligible = true
+                    else if (day.blocker != null || day.phase == DayPhase.REMOTE_STALE)
+                        return@write SyncCommit(CommitStatus.INVALID, meta.generation)
+                }
+                if (!eligible) return@write SyncCommit(CommitStatus.INVALID, meta.generation)
+                retire += budget
+            }
+        }
+        for (budget in retire) {
+            val completed = RetryBudget.validated(budget.lineageId, budget.generation, budget.scopeKey, budget.requestedScopes,
+                budget.dates, budget.observedRevisions, budget.retriesUsed, null, null, budget.claimVersion, null,
+                RetryBudgetStatus.COMPLETED, budget.createdAt, budget.updatedAt)
+            updateBudget(db, budget, completed)
+        }
         // 파일 journal과 attempt는 그대로 두고 복구 가능한 날짜 차단만 원자적으로 해제한다.
         db.execSQL("UPDATE day SET phase=CASE WHEN phase=? THEN ? ELSE phase END,blocker=NULL " +
             "WHERE generation=? AND blocker IN (?,?,?,?)",arrayOf(DayPhase.BLOCKED.name,DayPhase.PENDING.name,
@@ -239,15 +261,33 @@ internal class SqliteSyncStateStore internal constructor(
         val date = mutation.day?.date ?: mutation.confirmation?.key?.date
         val key = mutation.day?.scopeKey ?: mutation.confirmation?.key?.scopeKey
         val current = if (date != null && key != null) readDay(db, meta, date, key, now) else null
-        val status = state.validateMutation(expected, mutation, current, now)
-        if (status != CommitStatus.COMMITTED) return@write SyncCommit(status, meta.generation)
+        val link = attemptLink(db, meta.generation)
+        val owner = mutation.automaticOwner
         val start = mutation.start
+        val requestedPending = mutation.pendingTriggers
+        val budget = link?.let { checkNotNull(SqliteSyncRetryBudget.findLineage(db, it)) }
+        if (owner != null && (budget == null || owner.lineageId != link || owner.attemptId != admission.attempt?.id ||
+                owner.claimVersion != budget.claimVersion || budget.ownerAttemptId != owner.attemptId))
+            return@write SyncCommit(CommitStatus.STALE, meta.generation)
+        if (start != null && start.trigger != SyncTrigger.MANUAL && meta.configuration?.automatic == true)
+            return@write SyncCommit(CommitStatus.INVALID, meta.generation)
+        val mergedMutation = if (link != null && owner == null && requestedPending != null)
+            mutation.copy(pendingTriggers = admission.attempt?.pendingTriggers.orEmpty() + requestedPending) else mutation
+        val status = state.validateMutation(expected, mergedMutation, current, now, automaticOwnerRequired = link != null)
+        if (status != CommitStatus.COMMITTED) return@write SyncCommit(status, meta.generation)
         val dayMutation = mutation.day
         val confirmationMutation = mutation.confirmation
-        val pendingTriggers = mutation.pendingTriggers
+        val pendingTriggers = mergedMutation.pendingTriggers
         when {
             start != null -> saveAttempt(db, meta.generation, start)
             dayMutation != null -> {
+                val revision = dayMutation.revision
+                if (budget != null && revision != null && revision != current?.revision) {
+                    val observed = AutomaticRetryModel.observeRevision(budget, meta.generation, checkNotNull(owner),
+                        dayMutation.date, revision.digest, maxOf(budget.updatedAt, revision.generatedAt))
+                    val next = (observed as? RetryValidation.Valid)?.value ?: return@write SyncCommit(CommitStatus.INVALID, meta.generation)
+                    updateBudget(db, budget, next)
+                }
                 saveDay(db, meta.generation, dayMutation)
                 invalidateOtherScopes(db, meta, dayMutation, now)
             }
@@ -268,8 +308,242 @@ internal class SqliteSyncStateStore internal constructor(
             mutation.finishAt != null -> db.update("attempt", values("finished_at" to mutation.finishAt.toString()),
                 "generation=? AND id=?", arrayOf(meta.generation.value, mutation.attemptId))
         }
+        SyncRetryBudgetLedger.validate(db, now) {}
         SyncCommit(CommitStatus.COMMITTED, meta.generation)
     }
+
+    private fun attemptLink(db: SQLiteDatabase, generation: DestinationGeneration): String? =
+        db.rawQuery("SELECT automatic_lineage_id FROM attempt WHERE generation=?", arrayOf(generation.value)).use { row ->
+            if (!row.moveToFirst()) null else row.nullable(0).also { require(!row.moveToNext()) }
+        }
+
+    private fun updateBudget(db: SQLiteDatabase, old: RetryBudget, next: RetryBudget) {
+        check(db.update("retry_budget", SqliteSyncRetryBudget.values(next),
+            "lineage_id=? AND generation=? AND claim_version=? AND status=?",
+            arrayOf(old.lineageId, old.generation.value, old.claimVersion.toString(), old.status.name)) == 1)
+    }
+
+    private fun checkedInstant(now: Instant) { require(SyncStateCodec.decodeInstant(now.toString()) == now) }
+    private fun storeFailure(): Nothing = throw IllegalStateException("동기화 저장소를 사용할 수 없습니다")
+
+    suspend fun loadAutomaticBudget(expectedGeneration: DestinationGeneration, scopeKey: ReadScopeKey): AutomaticBudgetRead =
+        withContext(Dispatchers.IO) {
+            val coroutine = currentCoroutineContext()
+            synchronized(database.pathLock) {
+                val db = try { admittedRead(today(), coroutine) } catch (e: CancellationException) { throw e } catch (_: Exception) { storeFailure() }
+                    ?: storeFailure()
+                try { db.use {
+                    if (metadata(it).generation != expectedGeneration) AutomaticBudgetRead.Stale
+                    else {
+                        SyncStateCodec.decodeDigest(scopeKey.value)
+                        AutomaticBudgetRead.Ready(SqliteSyncRetryBudget.find(it, expectedGeneration, scopeKey))
+                    }
+                } } catch (e: CancellationException) { throw e } catch (_: Exception) { storeFailure() }
+            }
+        }
+
+    suspend fun preflightAutomaticAdmission(expectedGeneration: DestinationGeneration, now: Instant): AutomaticPreflight =
+        withContext(Dispatchers.IO) {
+            val coroutine = currentCoroutineContext()
+            synchronized(database.pathLock) {
+                try {
+                    checkedInstant(now)
+                    val db = admittedRead(today(), coroutine) ?: storeFailure()
+                    db.use {
+                        if (metadata(it).generation != expectedGeneration) return@synchronized AutomaticPreflight.Stale
+                        var due: Instant? = null
+                        var owner = false
+                        it.rawQuery("SELECT owner_attempt_id,retry_not_before FROM retry_budget WHERE generation=? AND status='ACTIVE'",
+                            arrayOf(expectedGeneration.value)).use { rows ->
+                            var count = 0
+                            while (rows.moveToNext()) {
+                                coroutine.ensureActive()
+                                require(++count <= 100000)
+                                if (!rows.isNull(0)) owner = true
+                                else {
+                                    val candidate = SyncStateCodec.decodeInstant(rows.text(1))
+                                    if (candidate > now && (due == null || candidate > due)) due = candidate
+                                }
+                            }
+                        }
+                        when { owner -> AutomaticPreflight.RecoveryRequired; due != null -> AutomaticPreflight.Deferred(checkNotNull(due)); else -> AutomaticPreflight.Ready }
+                    }
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { storeFailure() }
+            }
+        }
+
+    suspend fun claimAutomaticAttempt(expectedGeneration: DestinationGeneration, expectedLineageIdOrNull: String?,
+        expectedClaimVersionOrNull: Long?, initialProposalOrNull: InitialAutomaticProposal?, expectedScopeKey: ReadScopeKey,
+        expectedRequestedScopes: Map<DataType, ReadScope>, expectedFrozenDates: List<LocalDate>, attemptId: String,
+        trigger: SyncTrigger, now: Instant): RetryClaim {
+        val initial = initialProposalOrNull != null
+        require((initial && expectedLineageIdOrNull == null && expectedClaimVersionOrNull == null) ||
+            (!initial && expectedLineageIdOrNull != null && expectedClaimVersionOrNull != null)) { "유효하지 않은 자동 재시도 상태" }
+        try {
+            checkedInstant(now); SyncStateCodec.decodeUuid(expectedGeneration.value); SyncStateCodec.decodeUuid(attemptId)
+            SyncStateCodec.decodeDigest(expectedScopeKey.value)
+            require(trigger == SyncTrigger.SCHEDULED || trigger == SyncTrigger.CATCH_UP)
+            require(expectedFrozenDates.size in 1..7 && expectedFrozenDates == expectedFrozenDates.distinct().sorted())
+            expectedFrozenDates.forEach { require(SyncStateCodec.decodeDate(it.toString()) == it) }
+            require(expectedRequestedScopes.isNotEmpty() && expectedRequestedScopes.size <= 5 &&
+                expectedRequestedScopes.values.none { it == ReadScope.BLOCKED })
+            if (!initial) { SyncStateCodec.decodeUuid(checkNotNull(expectedLineageIdOrNull)); require(checkNotNull(expectedClaimVersionOrNull) >= 0) }
+            if (initial) require(initialProposalOrNull!!.attemptId == attemptId && initialProposalOrNull.trigger == trigger &&
+                initialProposalOrNull.scopeKey == expectedScopeKey && initialProposalOrNull.requestedScopes == expectedRequestedScopes &&
+                initialProposalOrNull.frozenDates == expectedFrozenDates)
+        } catch (_: Exception) { throw IllegalArgumentException("유효하지 않은 자동 재시도 상태") }
+        var answer: RetryClaim? = null
+        var invalid = false
+        val commit = write(expectedGeneration) { db, admitted ->
+            val admission = checkNotNull(admitted)
+            val config = admission.metadata.configuration ?: return@write SyncCommit(CommitStatus.INVALID, expectedGeneration)
+            if (!config.automatic) return@write SyncCommit(CommitStatus.INVALID, expectedGeneration)
+            val current = SqliteSyncRetryBudget.find(db, expectedGeneration, expectedScopeKey)
+            if (admission.attempt?.finishedAt == null && admission.attempt != null) {
+                answer = RetryClaim.Busy
+                return@write SyncCommit(CommitStatus.COMMITTED, expectedGeneration)
+            }
+            for (date in expectedFrozenDates) {
+                val args = arrayOf(expectedGeneration.value, date.toString())
+                db.rawQuery("SELECT 1 FROM day WHERE generation=? AND date=? AND (phase='REMOTE_STALE' OR blocker='DESTINATION_RECONCILIATION_REQUIRED') LIMIT 1", args).use {
+                    if (it.moveToFirst()) { answer = RetryClaim.Blocked; return@write SyncCommit(CommitStatus.COMMITTED, expectedGeneration) }
+                }
+                db.rawQuery("SELECT 1 FROM dataset WHERE generation=? AND date=? AND target_handle IS NULL AND phase IN ('RUNNING','INDETERMINATE','REMOTE_STALE','BLOCKED') LIMIT 1", args).use {
+                    if (it.moveToFirst()) { answer = RetryClaim.Blocked; return@write SyncCommit(CommitStatus.COMMITTED, expectedGeneration) }
+                }
+            }
+            val validated = try {
+                if (initial) {
+                    if (current != null) { answer = when (current.status) {
+                        RetryBudgetStatus.BLOCKED -> RetryClaim.Blocked
+                        RetryBudgetStatus.EXHAUSTED -> RetryClaim.Exhausted
+                        else -> RetryClaim.Stale
+                    }; return@write SyncCommit(CommitStatus.COMMITTED, expectedGeneration) }
+                    AutomaticRetryModel.initialClaim(checkNotNull(initialProposalOrNull), UUID.randomUUID().toString(), expectedGeneration,
+                        config, expectedScopeKey, expectedRequestedScopes, config.enrolledDay, today(), now)
+                } else {
+                    if (current == null) { answer = RetryClaim.Stale; return@write SyncCommit(CommitStatus.COMMITTED, expectedGeneration) }
+                    if (admission.attempt?.id == attemptId) { answer = RetryClaim.Stale; return@write SyncCommit(CommitStatus.COMMITTED, expectedGeneration) }
+                    AutomaticRetryModel.reClaim(current, expectedGeneration, checkNotNull(expectedLineageIdOrNull),
+                        checkNotNull(expectedClaimVersionOrNull), expectedScopeKey, expectedRequestedScopes, expectedFrozenDates, attemptId, trigger, now)
+                }
+            } catch (_: IllegalArgumentException) { invalid = true; return@write SyncCommit(CommitStatus.INVALID, expectedGeneration) }
+            if (validated !is RetryValidation.Valid) { invalid = true; return@write SyncCommit(CommitStatus.INVALID, expectedGeneration) }
+            val result = validated.value
+            if (result is RetryClaim.Claimed) {
+                if (current == null) db.insertOrThrow("retry_budget", null, SqliteSyncRetryBudget.values(result.budget))
+                else updateBudget(db, current, result.budget)
+                saveAttempt(db, expectedGeneration, result.attempt, result.budget.lineageId)
+                SyncRetryBudgetLedger.validate(db, today()) {}
+            }
+            answer = result
+            SyncCommit(CommitStatus.COMMITTED, expectedGeneration)
+        }
+        if (invalid) throw IllegalArgumentException("유효하지 않은 자동 재시도 상태")
+        return when (commit.status) {
+            CommitStatus.STALE -> RetryClaim.Stale
+            CommitStatus.COMMITTED -> checkNotNull(answer)
+            CommitStatus.INVALID -> RetryClaim.Blocked
+            CommitStatus.UNAVAILABLE -> storeFailure()
+        }
+    }
+
+    private fun finishRows(db: SQLiteDatabase, meta: Metadata, budget: RetryBudget, outcome: AutomaticFinishOutcome) {
+        val config = checkNotNull(meta.configuration)
+        for (date in budget.dates) {
+            val day = readDay(db, meta, date, budget.scopeKey, today())
+            if (outcome == AutomaticFinishOutcome.COMPLETED) {
+                require(day != null && day.blocker == null &&
+                    (day.phase == DayPhase.EMPTY && day.isChecked() || day.isUploaded()))
+            } else if (outcome == AutomaticFinishOutcome.ACCOUNT_AUTHORIZATION_BLOCKED) {
+                if (day == null) saveDay(db, meta.generation, DayState(date, budget.scopeKey, budget.requestedScopes,
+                    null, DayPhase.BLOCKED, emptyMap(), null, emptyMap(), BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED))
+                else if (!(day.phase == DayPhase.EMPTY && day.isChecked()) && !day.isUploaded() &&
+                    (day.blocker == null || day.blocker == BlockReason.DESTINATION_TRANSIENT_FAILURE)) {
+                    val next = day.copy(phase = DayPhase.BLOCKED, blocker = BlockReason.ACCOUNT_AUTHORIZATION_BLOCKED)
+                    require(next.isValid(meta.generation, config.enrolledDay, today()))
+                    saveDay(db, meta.generation, next)
+                }
+            } else if (outcome == AutomaticFinishOutcome.RETRYABLE && budget.retriesUsed == 3) {
+                if (day == null) saveDay(db, meta.generation, DayState(date, budget.scopeKey, budget.requestedScopes,
+                    null, DayPhase.BLOCKED, emptyMap(), null, emptyMap(), BlockReason.RETRY_EXHAUSTED))
+                else if (!(day.phase == DayPhase.EMPTY && day.isChecked()) && !day.isUploaded() &&
+                    (day.blocker == null || day.blocker == BlockReason.DESTINATION_TRANSIENT_FAILURE)) {
+                    val next = day.copy(phase = DayPhase.BLOCKED, blocker = BlockReason.RETRY_EXHAUSTED)
+                    require(next.isValid(meta.generation, config.enrolledDay, today()))
+                    saveDay(db, meta.generation, next)
+                }
+            }
+        }
+    }
+
+    suspend fun finishAutomaticAttempt(expectedGeneration: DestinationGeneration, lineageId: String, attemptId: String,
+        expectedClaimVersion: Long, outcome: AutomaticFinishOutcome, now: Instant): SyncCommit = write(expectedGeneration) { db, admitted ->
+        val meta = checkNotNull(admitted).metadata
+        val old = SqliteSyncRetryBudget.findLineage(db, lineageId) ?: return@write SyncCommit(CommitStatus.STALE, meta.generation)
+        val owner = AutomaticOwner(lineageId, attemptId, expectedClaimVersion)
+        if (old.generation != expectedGeneration || old.ownerAttemptId != attemptId || old.claimVersion != expectedClaimVersion ||
+            attemptLink(db, expectedGeneration) != lineageId || admitted.attempt?.id != attemptId || admitted.attempt.finishedAt != null)
+            return@write SyncCommit(CommitStatus.STALE, meta.generation)
+        val next = try { (AutomaticRetryModel.finish(old, expectedGeneration, owner, outcome, now) as? RetryValidation.Valid)?.value }
+            catch (_: Exception) { null } ?: return@write SyncCommit(CommitStatus.INVALID, meta.generation)
+        try { finishRows(db, meta, old, outcome) } catch (_: IllegalArgumentException) { return@write SyncCommit(CommitStatus.INVALID, meta.generation) }
+        updateBudget(db, old, next)
+        check(db.update("attempt", values("finished_at" to now.toString()), "generation=? AND id=? AND automatic_lineage_id=? AND finished_at IS NULL",
+            arrayOf(expectedGeneration.value, attemptId, lineageId)) == 1)
+        SyncRetryBudgetLedger.validate(db, today()) {}
+        SyncCommit(CommitStatus.COMMITTED, meta.generation)
+    }
+
+    suspend fun recoverAutomaticAttempt(expectedGeneration: DestinationGeneration, owner: AutomaticOwner, now: Instant): SyncCommit =
+        write(expectedGeneration) { db, admitted ->
+            val meta = checkNotNull(admitted).metadata
+            val old = SqliteSyncRetryBudget.findLineage(db, owner.lineageId) ?: return@write SyncCommit(CommitStatus.STALE, meta.generation)
+            if (old.generation != expectedGeneration || old.ownerAttemptId != owner.attemptId || old.claimVersion != owner.claimVersion ||
+                attemptLink(db, expectedGeneration) != owner.lineageId || admitted.attempt?.id != owner.attemptId || admitted.attempt.finishedAt != null)
+                return@write SyncCommit(CommitStatus.STALE, meta.generation)
+            val next = try { (AutomaticRetryModel.finish(old, expectedGeneration, owner, AutomaticFinishOutcome.BLOCKED, now) as? RetryValidation.Valid)?.value }
+                catch (_: Exception) { null } ?: return@write SyncCommit(CommitStatus.INVALID, meta.generation)
+            for (date in old.dates) readDay(db, meta, date, old.scopeKey, today())?.let { saveDay(db, expectedGeneration, it.afterInterruption()) }
+            updateBudget(db, old, next)
+            check(db.update("attempt", values("finished_at" to now.toString()), "generation=? AND id=? AND automatic_lineage_id=? AND finished_at IS NULL",
+                arrayOf(expectedGeneration.value, owner.attemptId, owner.lineageId)) == 1)
+            SyncRetryBudgetLedger.validate(db, today()) {}
+            SyncCommit(CommitStatus.COMMITTED, meta.generation)
+        }
+
+    suspend fun setAutomaticCAS(expectedGeneration: DestinationGeneration, enabled: Boolean, now: Instant): SyncCommit =
+        write(expectedGeneration) { db, admitted ->
+            val meta = checkNotNull(admitted).metadata
+            try { checkedInstant(now) } catch (_: Exception) { return@write SyncCommit(CommitStatus.INVALID, meta.generation) }
+            if (meta.configuration == null) return@write SyncCommit(CommitStatus.INVALID, meta.generation)
+            if (enabled && admitted.attempt?.finishedAt == null && admitted.attempt != null)
+                return@write SyncCommit(CommitStatus.INVALID, meta.generation)
+            if (!enabled && admitted.attempt?.finishedAt == null && admitted.attempt != null) {
+                val link = attemptLink(db, expectedGeneration)
+                if (link != null) {
+                    val old = checkNotNull(SqliteSyncRetryBudget.findLineage(db, link))
+                    val owner = AutomaticOwner(link, admitted.attempt.id, old.claimVersion)
+                    val next = (AutomaticRetryModel.finish(old, expectedGeneration, owner, AutomaticFinishOutcome.BLOCKED, now)
+                        as? RetryValidation.Valid)?.value ?: return@write SyncCommit(CommitStatus.INVALID, meta.generation)
+                    for (date in old.dates) readDay(db, meta, date, old.scopeKey, today())?.let { saveDay(db, expectedGeneration, it.afterInterruption()) }
+                    updateBudget(db, old, next)
+                    check(db.update("attempt", values("finished_at" to now.toString()), "generation=? AND id=? AND automatic_lineage_id=? AND finished_at IS NULL",
+                        arrayOf(expectedGeneration.value, owner.attemptId, link)) == 1)
+                    SyncRetryBudgetLedger.validate(db, today()) {}
+                }
+            }
+            if (enabled) {
+                check(db.update("config", values("automatic" to 1), "id=1 AND active_generation=?", arrayOf(expectedGeneration.value)) == 1)
+                SyncCommit(CommitStatus.COMMITTED, expectedGeneration)
+            } else {
+                val generation = fresh()
+                insertGeneration(db, generation, meta.configuration.copy(automatic = false))
+                check(db.update("config", values("active_generation" to generation.value, "automatic" to 0),
+                    "id=1 AND active_generation=?", arrayOf(expectedGeneration.value)) == 1)
+                SyncCommit(CommitStatus.COMMITTED, generation)
+            }
+        }
 
     override suspend fun reset(expected: DestinationGeneration?): SyncCommit {
         if (expected == null) return recoverReset()
@@ -579,6 +853,14 @@ internal class SqliteSyncStateStore internal constructor(
         access: ReadAccess? = null, requestedScopes: Map<DataType,ReadScope>? = null,
         validateBinding: Boolean = true): Admission {
         val attempt = readAttempt(db,meta,date)
+        val link = if (db.version == 2) attemptLink(db, meta.generation) else null
+        if (link != null && attempt?.finishedAt == null) {
+            val budget = checkNotNull(SqliteSyncRetryBudget.findLineage(db, link))
+            for ((day, revision) in budget.observedRevisions) if (revision != null) {
+                val persisted = readDay(db, meta, day, budget.scopeKey, date)
+                require(persisted?.revision?.digest == revision)
+            }
+        }
         if (validateBinding) db.rawQuery("SELECT binding_kind,binding_payload FROM config WHERE id=1",null).use { binding ->
             require(binding.moveToFirst())
             if (!binding.isNull(0)) decodeBinding(binding.text(0),binding.text(1))
@@ -730,13 +1012,13 @@ internal class SqliteSyncStateStore internal constructor(
         return value
     }
 
-    private fun saveAttempt(db: SQLiteDatabase, generation: DestinationGeneration, value: AttemptState) {
+    private fun saveAttempt(db: SQLiteDatabase, generation: DestinationGeneration, value: AttemptState, lineageId: String? = null) {
         db.delete("attempt", "generation=?", arrayOf(generation.value))
         db.insertOrThrow("attempt", null, values("id" to value.id,"generation" to generation.value,"scope_key" to value.scopeKey.value,
             "requested_scopes_json" to SyncStateCodec.encodeScopes(value.requestedScopes),"trigger" to value.trigger.name,
             "scheduled_at" to value.scheduledAt.toString(),"started_at" to value.startedAt?.toString(),"finished_at" to value.finishedAt?.toString(),
             "dates_json" to SyncStateCodec.encodeDates(value.dates),"retry_budget_key" to value.retryBudgetKey,"retries_used" to value.retriesUsed,
-            "pending_triggers_json" to SyncStateCodec.encodeTriggers(value.pendingTriggers)))
+            "pending_triggers_json" to SyncStateCodec.encodeTriggers(value.pendingTriggers), "automatic_lineage_id" to lineageId))
     }
     private fun saveDay(db: SQLiteDatabase, generation: DestinationGeneration, day: DayState) {
         val where = "generation=? AND date=? AND scope_key=?"

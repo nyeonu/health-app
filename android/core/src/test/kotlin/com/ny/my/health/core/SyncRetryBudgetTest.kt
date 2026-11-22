@@ -76,6 +76,11 @@ class SyncRetryBudgetTest {
             AutomaticFinishOutcome.BLOCKED, now) as RetryValidation.Valid).value
         assertEquals(RetryClaim.Blocked, (AutomaticRetryModel.reClaim(blocked, generation, lineage, 0, key,
             proposal.requestedScopes, proposal.frozenDates, initialId, SyncTrigger.SCHEDULED, now) as RetryValidation.Valid).value)
+        val authBlocked = (AutomaticRetryModel.finish(first.budget, generation, AutomaticOwner(lineage, initialId, 0),
+            AutomaticFinishOutcome.ACCOUNT_AUTHORIZATION_BLOCKED, now) as RetryValidation.Valid).value
+        assertEquals(RetryBudgetStatus.BLOCKED, authBlocked.status)
+        assertNull(authBlocked.ownerAttemptId)
+        assertNull(authBlocked.retryNotBefore)
         val otherScopes = mapOf(DataType.STEPS to ReadScope.EXPLICIT_DAY)
         val otherKey = requireNotNull(SyncPlanner.scopeKey(config, ReadAccess(true, setOf(DataType.STEPS), otherScopes)))
         assertEquals(RetryClaim.Stale, (AutomaticRetryModel.reClaim(blocked, generation, lineage, 0, otherKey, otherScopes,
