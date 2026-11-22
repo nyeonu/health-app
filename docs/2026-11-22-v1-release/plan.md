@@ -13,11 +13,12 @@ tasks:
   - {id: T2, title: 요약 모델, depends_on: [], status: done, tier: standard}
   - {id: T3, title: 계정 고정 silent 인증, depends_on: [], status: in_progress, tier: standard}
   - {id: T4, title: 요약 CSV와 revision, depends_on: [T2], status: done, tier: standard}
-  - {id: T5, title: 자동 session 연결, depends_on: [T1], status: pending, tier: standard}
+  - {id: T5, title: 자동 session 연결, depends_on: [T1, T11], status: pending, tier: standard}
   - {id: T6, title: 배경 Health Connect 조회, depends_on: [T4], status: done, tier: standard}
   - {id: T7, title: WorkManager 실행과 예약, depends_on: [T3, T5, T6], status: pending, tier: standard}
   - {id: T8, title: 자동 설정과 상태, depends_on: [T7], status: pending, tier: standard}
   - {id: T9, title: 화면 연결과 접근성, depends_on: [T8], status: pending, tier: standard}
+  - {id: T11, title: 자동 engine 경계, depends_on: [], status: done, tier: standard}
   - {id: T10, title: 1.0 APK 후보와 안내, depends_on: [T9], status: pending, tier: standard}
 ---
 
@@ -157,15 +158,13 @@ class BoundDriveAuthorization {
 
 ### T5: 자동 session 연결
 
-- **depends_on**: [T1]; **tier**: standard; **status**: pending.
+- **depends_on**: [T1, T11]; **tier**: standard; **status**: pending.
 - **변경 파일**
 
   | 파일 | 구분 |
   |---|---|
   | `A/SyncExecutionSession.kt` | 수정 |
-  | `C/DestinationSync.kt` | 수정 |
   | `AI/SyncExecutionSessionInstrumentedTest.kt` | 수정 |
-  | `CT/DestinationSyncTest.kt` | 수정 |
 - **인터페이스**: 2절 `AutomaticStoreContracts`, `AutomaticAdmissionOrder`, `AutomaticSessionRoutingContracts` 참조. 기존 manual `runPrepared` 유지; 승인된 T5 계약에 따라 claim/finish와 source exception 경계를 연결한다.
 - **작성할 테스트**:
   - "manual/worker 동시 gate, cancellation, revision 변경 시 retry 불변, preflight 차단 시 외부 호출 0과 uncertain create 보존. 관련 core 테스트 및 `retry-session` 실제 SQLite 진단 양 API 통과 후 T7에 인계한다."
@@ -238,9 +237,27 @@ class BoundDriveAuthorization {
   |---|---|
   | `android/app/build.gradle.kts` | 수정 |
   | `README.md` | 수정 |
+  | `A/PrivacyActivity.kt` | 수정 |
 - **테스트 및 완료 기준**: versionName `1.0.0`, versionCode `2`로 변경하고 APK metadata를 확인한다. 최소 사용 안내 및 미완료 실기기/계정 수용을 기재한다. Play 공개 배포는 범위 밖이다.
 
 T1/T2/T3는 파일이 겹치지 않아 병렬 가능하다. 각 작업의 실제 인터페이스와 관련 테스트를 확인한 뒤 종속 작업을 시작한다. 공유 emulator/build는 직렬화한다. 공통 모델 gap이 실제로 발견되면 근거와 제한된 수정 범위를 기록해 별도 계획 보정하며 선제적인 빈 작업은 만들지 않는다.
+
+
+- **보안 검토 반영**: 기존 privacy notice의 foreground-only/예약 조회 없음 문구를 실제 자동 opt-in, 끄기, 목적지 및 삭제 범위에 맞게 고친다. 개발 머지/테스트를 실제 기기 수용으로 표현하지 않는다.
+
+### T11: 자동 engine 경계
+
+- **depends_on**: []; **tier**: standard; **status**: done.
+- **변경 파일**
+
+  | 파일 | 구분 |
+  |---|---|
+  | `C/DestinationSync.kt` | 수정 |
+  | `CT/DestinationSyncTest.kt` | 수정 |
+- **필수 읽기**: 부모 계획 `docs/2026-11-05-v1-completion/plan.md` 2절 AutomaticRetryContracts와 automation-ui T5의 engine 계약 전체를 유지한다.
+- **인터페이스**: `run(trigger, generation, attemptId, automaticOwner: AutomaticOwner? = null, finishAttempt: Boolean = true)`; 기존 manual 호출은 기본값으로 byte/finish 의미를 유지한다. 모든 automatic mutation에 실제 owner를 전달하고 day 준비 mutation이 실제 revision을 포함한다. automatic finish는 session 소유로 false를 사용한다.
+- **작성할 테스트**:
+  - "readScoped 및 pure identify/normalize/CSV만 source catch, Cancellation 재throw, 두 SourceReadException reason 보존, 나머지 SOURCE_READ_FAILED; store/destination IO는 source catch 밖이며 기존 unknown/prior/성공 파일을 보존한다. 자동은 첫 실패에서 중단하고 수동 기존 동작 유지, owner 전달과 중복 finish 없음. 관련 core 전체 통과가 완료 기준이다."
 
 ## 5. 전체 검증
 
@@ -287,3 +304,31 @@ root 정적 검토에서 latestWeight가 time만 비교해 승인된 time/source
 ### 초기 기능 통합 검증
 
 T1 교정2와 T3/T6를 포함한 12개 변경 소스를 격리 검증 worktree에 그대로 복사하고 root가 :core:test :app:testDebugUnitTest :app:assembleDebugAndroidTest를 실행했다. BUILD SUCCESSFUL 2m8s, XML core90/app106, 실패·오류·skip·중복0이고 main의 12파일과 검증 snapshot bytes가 모두 같음을 확인했다. 기존 app97 + 인증1 + 조회8이다. T6 완료이며 T1의 실제SQLite 및 T3 SDK adapter 양API 검증은 아직 pending이므로 두 작업은 in_progress다. 실제기기/계정 증거는 추가되지 않았다.
+
+### T5 병렬 분리 — T11 pure engine
+
+DB 실제 검증 대기 중 기존 T5의 SDK-free engine/source 경계는 이미 존재하는 core owner/type 계약만 사용하고 store API 구현을 읽지 않는다. 해당2파일을 T11로 분리해 병렬 구현·core 검증하며, T5 app session2파일은 T1 실제 SQLite 및 T11 완료 뒤 인계한다. 원래 T5 정책/복구 횟수를 나누어 초기화하지 않는다. 신규 기능·의존성·스펙 변경 없이 사용자 병렬 진행 위임을 적용한다.
+
+### 독립 의존성·보안 중간 검토
+
+4 actual Gradle 구성 129/130/135/110, 합계 고유 Maven 좌표155에 OSV HTTP200/조회오류0/매치0을 확인했다. 최종head의 Gradle파일 hash 및 mergedmanifest/artifact검사는 별도필수다. PrivacyActivity가 예약조회 없음을 주장하는 Important를 T10 기존안내 범위의3번째파일로 배정한다. 원본보고서는 /workspace/v1-security-audit-report.md, 좌표·scope·시각·buildhash는 /workspace/v1-dependency-audit.json이며 실제계정/기기/전체source감사통과를 의미하지 않는다.
+
+### T1 교정3 — 독립 리뷰의 실제 관측·stale·수동 복구 경계
+
+6dc3308 독립 정적 리뷰가 세 Important를 확인했다. 같은 day revision도 lineage 관측값과 다르면 실제 source reread day mutation과 같은 commit에서 기록한다. auth/exhaustion 시 기존 REMOTE_STALE phase/datasets/prior/blocker를 그대로 유지하고 ledger outcome으로 실패를 보존한다. 명시 fresh proof 이후의 manual reopen은 비eligible budget을 실패 반환하여 다른 manual 실행 전체를 막지 않고 원상 보존한다. 이미 관측/날짜 journal이 전혀 없는 finished blocked claim은 명시 manual 경계에서만 lifecycle 종료할 수 있으며 health 성공이나 EMPTY 행을 만들지 않는다. 기존 journal blocker의 해제는 기존4종만 허용하고 unsafe/unknown/stale 상태는 그대로다. 자동 tick이나 앱 열기는 이 종료를 하지 않는다.
+
+T1 기존 store와 native 테스트만 보정하고 same-revision/reopen/rollback, auth 및 exhaustion stale 보존, claim 직후 crash→recovery→explicit manual 및 다른 eligible/unsafe cohort 공존을 실제 SQLite로 검증한다. 부모의 4종 blocker 해제 정책 및 자동 initial+3 한도는 바뀌지 않는다. 보정1·2를 보존하고 이번3으로 누적한다. 독립 리뷰의 새로운 실제 경로 근거와 AGENTS.md 소유자 V1 가역 수정 자동 위임에 따라 동일 범위 교정을 계속하며, 차단 수정 재검토와 실제 양API 검증은 필수다. 다중 날짜 변경 중 예외는 transaction을 빠져나가 rollback되도록 하고 INVALID status를 통한 부분 commit은 허용하지 않는다.
+
+### T11 보정1·2 — 검증 경로 및 manual 결과 우선순위
+
+최초 실행자가 지시된 owned tooling 대신 ./gradlew를 사용해 read-only /home/agent/.gradle lock 단계에서 실패했다. 보정1은 제품 변경 없이 root가 /workspace/tooling/run-health-command.py 및 owned Gradle로 같은 coreOnly 테스트를 실행한 것이며 92 tests 실패/오류/skip0이다. 원래 T5의 분리 작업이므로 이 이력은 재분리로 초기화하지 않는다.
+
+root diff 검토는 rows에 null이 있을 때 PENDING을 우선하던 기존 manual의 결과 순서가 automatic용으로 전역 변경된 것을 발견했다. 보정2는 automatic owner가 없는 manual/legacy에서 기존 순서를 보존하고 automatic만 첫 차단/재시도를 먼저 표시한다. 기존 T11 두 파일 안에서 automatic destination 실패의 다음 날짜 미조회, 취소 시 owner journal/취소 전파와 manual 혼합 null/blocked 결과를 의미 있는 테스트로 검증한다. 이미 완성한 소스/테스트는 보존하며 같은 coreOnly 명령1회 후 추가 루프 없이 보고한다.
+
+### T1 교정4 — 미준비 lineage의 독립 수명
+
+R3 독립 재검토는 pristine retirement가 현재 마지막 attempt link와의 일치를 추가로 요구해, A 중단 뒤 B/수동 attempt가 저장되면 A가 영구 BLOCKED가 되는 실제 교차 scope 경로를 확인했다. terminal BLOCKED budget은 validated owner=null이고 전체 observed=null/해당 frozen day 부재라 준비된 source/remote journal이 없음을 기존 ledger로 확인할 수 있다. 명시 fresh-proof manual 경계에서 이 원문 조건을 사용하고 현재 마지막 attempt/link 일치는 요구하지 않는다. 기존 journal/unsafe/unknown 보존·4종 blocker 해제·자동 tick 제한은 유지한다. 기존 store/native 두파일만 수정하고 A recover→B claim/finish→reopen 및 수동 attempt 교체 경계를 실제 SQLite로 검증한다. 보정1~3을 보존하며 독립 새 근거에 의한 같은 범위 가역 교정4다.
+
+### T11 완료 및 기존 SQLite 진단 근거
+
+root가 올바른 owned Gradle/coreOnly 명령을 직접 다시 실행하여 PASS를 확인했고 XML은94 tests/failure/error/skip0이다. 실제source에는 owner 전파·automatic session finish 분리·source catch·첫실패중단과 기존 manual null-row 우선순위가 반영됐다. 로그 /workspace/tooling/v1-t11-root-verify.log. T1 초기6dc3308의 고정 retry-store44968857595도 양API 공식ZIP SHA256과 원본XML을 대조해 각각7/7/실패·오류·skip·중복0으로 확인했으나 R3/R4 신규 수정/회귀의 통과 증거로 대체하지 않는다. T1 최신검증은 여전히 pending이다.

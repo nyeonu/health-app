@@ -33,10 +33,12 @@ class DestinationSyncTest {
         var currentReads = 0
         var beforeCurrent: () -> Unit = {}
         var sequence = 1
+        var removeOnFinish: LocalDate? = null
         var failConfirmation = false
         var failDay = false
         var failFailureJournal = false
         var callbackError: Exception? = null
+        val mutations = mutableListOf<SyncMutation>()
         val events = mutableListOf<String>()
         val scopeQueryDays = mutableListOf<LocalDate>()
         var state: SyncState
@@ -86,6 +88,7 @@ class DestinationSyncTest {
         }
         override suspend fun reset(expected: DestinationGeneration?) = SyncCommit(CommitStatus.INVALID, generation)
         override suspend fun transact(expected: DestinationGeneration?, mutation: SyncMutation): SyncCommit {
+            mutations += mutation
             val key = mutation.day?.let { it.date to it.scopeKey } ?: mutation.confirmation?.key?.let { it.date to it.scopeKey }
             val status = selected().validateMutation(expected, mutation, rows[key], date.plusDays(2))
             if (status != CommitStatus.COMMITTED) return SyncCommit(status, state.generation)
@@ -114,7 +117,10 @@ class DestinationSyncTest {
                     row.datasets.getValue(confirmation.key.dataset).copy(phase = FilePhase.CONFIRMED,
                         targetHandle = confirmation.targetHandle, confirmedAt = confirmation.confirmedAt)))
             }
-            mutation.finishAt?.let { state = state.copy(attempt = state.attempt!!.copy(finishedAt = it)) }
+            mutation.finishAt?.let {
+                state = state.copy(attempt = state.attempt!!.copy(finishedAt = it))
+                removeOnFinish?.let { removed -> rows.remove(removed to state.scopeKey!!) }
+            }
             return SyncCommit(CommitStatus.COMMITTED, state.generation)
         }
     }
@@ -127,6 +133,7 @@ class DestinationSyncTest {
         val requestedReads = mutableListOf<Map<DataType, ReadScope>>()
         var reads = 0
         var readFailure: Exception? = null
+        var invalidSnapshot = false
         var blocked = false
         var steps: Long? = 12L
         var beforeRead: () -> Unit = {}
@@ -142,7 +149,7 @@ class DestinationSyncTest {
                 val effective = requestedScopes.mapValues { if (blocked) ReadScope.BLOCKED else it.value }
                 val granted = effective.filterValues { it != ReadScope.BLOCKED }.keys
                 val start = DayWindow.start(date).plusSeconds(3600)
-                return ScopedSnapshot(HealthSnapshot(date, steps.takeIf { DataType.STEPS in granted }, emptyList(),
+                return ScopedSnapshot(HealthSnapshot(if (invalidSnapshot) date.minusDays(1) else date, steps.takeIf { DataType.STEPS in granted }, emptyList(),
                     if (DataType.HEART_RATE in granted) listOf(HeartRateSample("hr", "synthetic", start, 70)) else emptyList(),
                     if (DataType.SLEEP in granted) listOf(SleepSession("sleep", "synthetic", start, start.plusSeconds(3600))) else emptyList(),
                     if (DataType.EXERCISE in granted) listOf(ExerciseSession("workout", "synthetic", start, start.plusSeconds(3600), 1)) else emptyList(),
@@ -210,6 +217,101 @@ class DestinationSyncTest {
         suspend fun run(trigger: SyncTrigger = SyncTrigger.MANUAL) = engine
             .run(trigger, store.state.generation, store.state.attempt!!.id)
         fun day() = store.rows.getValue(date to store.state.scopeKey!!)
+    }
+
+    @Test
+    fun `Automatic source failures preserve reasons and stop before later days while manual continues`() = runBlocking {
+        for (reason in listOf(BlockReason.SOURCE_LIMIT_EXCEEDED, BlockReason.SOURCE_ACCESS_REQUIRED, BlockReason.SOURCE_READ_FAILED)) {
+            val f = Fixture()
+            f.observedAt = now.plusSeconds(86400)
+            f.store.admit(all, SyncTrigger.SCHEDULED)
+            val owner = AutomaticOwner("00000000-0000-0000-0000-000000000077", f.store.state.attempt!!.id, 1)
+            f.store.state = f.store.state.copy(attempt = f.store.state.attempt!!.copy(
+                dates = listOf(date, date.plusDays(1)), retryBudgetKey = automaticRetryBudgetKey(owner.lineageId)))
+            f.readFailure = if (reason == BlockReason.SOURCE_READ_FAILED) IllegalStateException() else SourceReadException(reason)
+            val result = f.engine.run(SyncTrigger.SCHEDULED, f.store.generation, owner.attemptId, owner, false)
+            assertEquals(BatchStatus.BLOCKED, result.status)
+            assertEquals(reason, f.day().blocker)
+            assertEquals(1, f.reads)
+            assertTrue(f.written.isEmpty())
+            assertTrue(f.store.mutations.all { it.automaticOwner == owner && it.finishAt == null })
+            assertNull(f.store.state.attempt!!.finishedAt)
+        }
+        val manual = Fixture()
+        manual.observedAt = now.plusSeconds(86400)
+        manual.store.state = manual.store.state.copy(attempt = manual.store.state.attempt!!.copy(dates = listOf(date, date.plusDays(1))))
+        manual.readFailure = IllegalStateException()
+        assertEquals(BatchStatus.BLOCKED, manual.run().status)
+        assertEquals(2, manual.reads)
+        assertNotNull(manual.store.state.attempt!!.finishedAt)
+    }
+
+    @Test
+    fun `Revision failure preserves earlier confirmations and automatic preparation carries actual revision and owner`() = runBlocking {
+        val f = Fixture()
+        assertEquals(BatchStatus.COMPLETED, f.run().status)
+        val previous = f.day()
+        val writes = f.written.size
+        f.store.admit(all, SyncTrigger.SCHEDULED)
+        val owner = AutomaticOwner("00000000-0000-0000-0000-000000000077", f.store.state.attempt!!.id, 2)
+        f.store.state = f.store.state.copy(attempt = f.store.state.attempt!!.copy(retryBudgetKey = automaticRetryBudgetKey(owner.lineageId)))
+        f.invalidSnapshot = true
+        assertEquals(BatchStatus.BLOCKED, f.engine.run(SyncTrigger.SCHEDULED, f.store.generation, owner.attemptId, owner, false).status)
+        assertEquals(BlockReason.SOURCE_READ_FAILED, f.day().blocker)
+        assertEquals(previous.revision, f.day().revision)
+        assertEquals(previous.datasets, f.day().datasets)
+        assertEquals(writes, f.written.size)
+
+        val good = Fixture()
+        good.store.admit(all, SyncTrigger.SCHEDULED)
+        val goodOwner = AutomaticOwner(owner.lineageId, good.store.state.attempt!!.id, 0)
+        good.store.state = good.store.state.copy(attempt = good.store.state.attempt!!.copy(retryBudgetKey = automaticRetryBudgetKey(goodOwner.lineageId)))
+        assertEquals(BatchStatus.COMPLETED, good.engine.run(SyncTrigger.SCHEDULED, good.store.generation, goodOwner.attemptId, goodOwner, false).status)
+        assertTrue(good.store.mutations.all { it.automaticOwner == goodOwner && it.finishAt == null })
+        assertEquals(good.day().revision, good.store.mutations.first { it.day?.revision != null }.day!!.revision)
+        assertTrue(good.store.mutations.any { it.confirmation != null })
+    }
+
+    @Test
+    fun `Manual missing day takes priority over blocked day`() = runBlocking {
+        val f = Fixture()
+        f.observedAt = now.plusSeconds(86400)
+        f.store.state = f.store.state.copy(attempt = f.store.state.attempt!!.copy(dates = listOf(date, date.plusDays(1))))
+        f.readFailure = IllegalStateException()
+        f.store.removeOnFinish = date.plusDays(1)
+        assertEquals(BatchStatus.PENDING, f.run().status)
+        assertEquals(BlockReason.SOURCE_READ_FAILED, f.day().blocker)
+        assertNull(f.store.rows[date.plusDays(1) to f.store.state.scopeKey!!])
+    }
+
+    @Test
+    fun `Automatic destination failure stops later days and cancellation journals with owner`() = runBlocking {
+        for (cancelled in listOf(false, true)) {
+            val f = Fixture()
+            f.observedAt = now.plusSeconds(86400)
+            f.store.admit(all, SyncTrigger.SCHEDULED)
+            val owner = AutomaticOwner("00000000-0000-0000-0000-000000000077", f.store.state.attempt!!.id, 1)
+            f.store.state = f.store.state.copy(attempt = f.store.state.attempt!!.copy(
+                dates = listOf(date, date.plusDays(1)), retryBudgetKey = automaticRetryBudgetKey(owner.lineageId)))
+            f.failAfter = 2
+            f.cancel = cancelled
+            f.destinationReason = BlockReason.DESTINATION_TRANSIENT_FAILURE
+            if (cancelled) {
+                try {
+                    f.engine.run(SyncTrigger.SCHEDULED, f.store.generation, owner.attemptId, owner, false)
+                    fail("취소를 전파해야 한다")
+                } catch (_: CancellationException) { }
+            } else {
+                assertEquals(BatchStatus.RETRYABLE,
+                    f.engine.run(SyncTrigger.SCHEDULED, f.store.generation, owner.attemptId, owner, false).status)
+            }
+            assertEquals(1, f.reads)
+            assertEquals(2, f.day().datasets.values.count { it.phase == FilePhase.CONFIRMED })
+            assertEquals(2, f.day().datasets.values.count { it.phase == FilePhase.INDETERMINATE })
+            assertTrue(f.store.mutations.all { it.automaticOwner == owner && it.finishAt == null })
+            assertEquals(DayPhase.INDETERMINATE, f.store.mutations.last().day!!.phase)
+            assertNull(f.store.state.attempt!!.finishedAt)
+        }
     }
 
     private fun profiling(): SyncProfiling {

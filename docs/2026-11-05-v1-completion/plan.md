@@ -765,3 +765,7 @@ PR19 current-head8b9f38e의 Native43534668761과 JVM43534668764가 모두 SUCCES
 ### 2026-11-22 T1 인증 finalization 전달 보정
 
 기존 auth 실패 frozen-date blocker 원자성 정책을 변경하지 않고 AutomaticFinishOutcome에 ACCOUNT_AUTHORIZATION_BLOCKED 값을 추가해 store에 해당 분류를 전달한다. 모델 ledger 상태는 BLOCKED이며 generic BLOCKED에서 인증 실패를 추정하지 않는다. 기존 store 여섯 서명 및 schema는 유지한다. 상세 작업·복구 집계는 1.0 계획 T1 보정1이다.
+
+### 2026-11-22 명시 manual의 미준비 claim 복구 명확화
+
+finished BLOCKED lineage가 observed revision 전부 null이고 frozen dates의 day journal이 하나도 없으면 아직 준비되지 않은 중단 claim이다. fresh proof 이후의 명시 manual reopen에서 해당 lineage만 lifecycle 종료할 수 있으며 건강 성공/EMPTY를 만들지 않는다. 비eligible 기존 journal/budget은 보존하여 manual 전체를 차단하지 않는다. 기존4종 blocker 해제·uncertain/stale 보존 및 자동 tick/app-open의 retry 재설정 금지는 유지한다.
